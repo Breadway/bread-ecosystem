@@ -8,8 +8,8 @@ This repository contains the core components and tools for the Bread Ecosystem, 
 
 This Rust workspace contains the following crates:
 
-- **[`bakery`](./bakery)**: The package manager for the bread ecosystem.
-- **[`bread-theme`](./bread-theme)**: A shared theming crate integrating pywal and Catppuccin for the bread ecosystem, with optional support for GTK4 and Wayland.
+- **[`bakery`](./bakery)**: The package manager for the Bread Ecosystem.
+- **[`bread-theme`](./bread-theme)**: A shared theming crate integrating pywal and Catppuccin for the Bread Ecosystem, with optional support for GTK4 and Wayland.
 
 ## License
 
