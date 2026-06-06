@@ -2,7 +2,7 @@
 
 Welcome to the **Bread Ecosystem**!
 
-This repository contains the core components and tools for the Breadway ecosystem, primarily focused on package management and theming.
+This repository contains the core components and tools for the Bread Ecosystem, primarily focused on package management and theming.
 
 ## Workspace Members
 
