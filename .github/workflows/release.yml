@@ -6,7 +6,6 @@ on:
 
 env:
   DL_DIR: /srv/breadway-dl
-  ECOSYSTEM_DIR: /home/breadway/Projects/bread-ecosystem
 
 jobs:
   build:
@@ -15,7 +14,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: build
-        run: cargo build --release --locked
+        run: cargo build --release --locked -p bakery
+
+      - name: test
+        run: cargo test --locked --workspace
 
       - name: prepare artifacts
         run: |
@@ -28,11 +30,11 @@ jobs:
           sha256sum "${PKG_DIR}/bakery-x86_64" | awk '{print $1}' \
             > "${PKG_DIR}/bakery-x86_64.sha256"
 
-          # Update the 'latest' symlink.
+          cp bakery.toml "${PKG_DIR}/bakery.toml"
           ln -sfn "${PKG_DIR}" "${DL_DIR}/bakery/latest"
 
       - name: regenerate index.json
-        run: bash "${ECOSYSTEM_DIR}/scripts/gen-index.sh"
+        run: bash "${GITHUB_WORKSPACE}/scripts/gen-index.sh"
 
       - name: upload to GitHub Release
         env:

@@ -16,6 +16,7 @@ OUT="${DL_DIR}/index.json"
 
 # Products are read from the registry. Each line is "name repo".
 products=(
+    "bakery          Breadway/bread-ecosystem"
     "bread           Breadway/bread"
     "breadbar        Breadway/breadbar"
     "breadbox        Breadway/breadbox"
@@ -72,9 +73,12 @@ build_package_json() {
         binaries_json="$(jq -n --argjson arr "${binaries_json}" --argjson e "${entry}" '$arr + [$e]')"
     done
 
-    # Read bakery.toml for this product from a co-located checkout if available,
-    # else use minimal defaults.
-    local bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
+    # Read bakery.toml: the release workflow copies it to DL_DIR alongside the
+    # binaries; fall back to a sibling checkout for local dev use.
+    local bakery_toml="${DL_DIR}/${name}/bakery.toml"
+    if [[ ! -f "${bakery_toml}" ]]; then
+        bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
+    fi
     local description=""
     local system_deps="[]"
     local bread_deps="[]"
