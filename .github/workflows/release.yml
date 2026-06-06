@@ -1,0 +1,46 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  DL_DIR: /srv/breadway-dl
+  ECOSYSTEM_DIR: /home/breadway/Projects/bread-ecosystem
+
+jobs:
+  build:
+    runs-on: [self-hosted, hestia]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build
+        run: cargo build --release --locked
+
+      - name: prepare artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_DIR="${DL_DIR}/bakery/${VERSION}"
+          mkdir -p "${PKG_DIR}"
+
+          cp target/release/bakery "${PKG_DIR}/bakery-x86_64"
+          strip "${PKG_DIR}/bakery-x86_64"
+          sha256sum "${PKG_DIR}/bakery-x86_64" | awk '{print $1}' \
+            > "${PKG_DIR}/bakery-x86_64.sha256"
+
+          # Update the 'latest' symlink.
+          ln -sfn "${PKG_DIR}" "${DL_DIR}/bakery/latest"
+
+      - name: regenerate index.json
+        run: bash "${ECOSYSTEM_DIR}/scripts/gen-index.sh"
+
+      - name: upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_DIR="${DL_DIR}/bakery/${VERSION}"
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${PKG_DIR}/bakery-x86_64" \
+            "${PKG_DIR}/bakery-x86_64.sha256" \
+            --clobber

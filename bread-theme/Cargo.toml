@@ -1,0 +1,20 @@
+[package]
+name = "bread-theme"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared pywal + Catppuccin theming crate for the bread ecosystem"
+repository = "https://github.com/Breadway/bread-ecosystem"
+keywords = ["theming", "pywal", "gtk4", "wayland"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
+
+[features]
+# Enable GTK4 CSS provider helpers (breadbar, breadbox, breadpad use this).
+# bread (daemon) and breadcrumbs (CLI) depend on this crate without the feature.
+gtk = ["dep:gtk4"]

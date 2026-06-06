@@ -1,0 +1,33 @@
+# Human-authored product registry.
+# gen-index.sh reads this + each product's bakery.toml to produce index.json.
+
+[ecosystem]
+name = "bread"
+description = "Reactive desktop automation ecosystem for Arch Linux / Hyprland"
+homepage = "https://breadway.dev"
+dl_base = "https://dl.breadway.dev"
+
+[[products]]
+name = "bread"
+repo = "Breadway/bread"
+description = "Reactive automation daemon and CLI for Linux desktops"
+
+[[products]]
+name = "breadbar"
+repo = "Breadway/breadbar"
+description = "Minimal status bar and notification daemon for Hyprland"
+
+[[products]]
+name = "breadbox"
+repo = "Breadway/breadbox"
+description = "App launcher for Hyprland / Wayland"
+
+[[products]]
+name = "breadcrumbs"
+repo = "Breadway/breadcrumbs"
+description = "Profile-aware Wi-Fi state machine with Tailscale integration"
+
+[[products]]
+name = "breadpad"
+repo = "Breadway/breadpad"
+description = "Quick-capture scratchpad and note viewer with AI classification"
