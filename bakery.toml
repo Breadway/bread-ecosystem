@@ -1,0 +1,8 @@
+name = "bakery"
+description = "Bread ecosystem package manager"
+binaries = ["bakery"]
+system_deps = []
+bread_deps = []
+
+[install]
+post_install = []
