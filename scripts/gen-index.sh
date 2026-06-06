@@ -48,10 +48,14 @@ build_package_json() {
     local version
     version="$(basename "${version_dir}")"
 
-    # Collect all binaries in the version dir (files without .sha256 extension).
+    # Collect all binaries in the version dir (executables only; skip metadata files).
     local binaries_json="[]"
     for bin_path in "${version_dir}"/*; do
         [[ "${bin_path}" == *.sha256 ]] && continue
+        [[ "${bin_path}" == *.toml ]]   && continue
+        [[ "${bin_path}" == *.service ]] && continue
+        [[ "${bin_path}" == *.css ]]    && continue
+        [[ "${bin_path}" == *.txt ]]    && continue
         [[ -f "${bin_path}" ]] || continue
         local bin_name
         bin_name="$(basename "${bin_path}")"
@@ -140,8 +144,8 @@ for entry in "${products[@]}"; do
     name="$(echo "${entry}" | awk '{print $1}')"
     repo="$(echo "${entry}" | awk '{print $2}')"
     echo "processing ${name}…"
-    pkg="$(build_package_json "${name}" "${repo}" 2>&1)" || { echo "  skipping ${name}: ${pkg}"; continue; }
-    [[ -z "${pkg}" ]] && continue
+    pkg="$(build_package_json "${name}" "${repo}")" || { echo "  skipping ${name}"; continue; }
+    [[ -z "${pkg}" ]] && { echo "  skipping ${name}: no output"; continue; }
     packages_json="$(jq -n --argjson m "${packages_json}" --arg k "${name}" --argjson v "${pkg}" '$m + {($k): $v}')"
 done
 
