@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "bakery", about = "Package manager for the bread ecosystem")]
+#[command(name = "bakery", about = "Package manager for the bread ecosystem", version)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
