@@ -63,8 +63,9 @@ fn main() -> Result<()> {
 
     match cli.command {
         Cmd::Install { packages } => {
+            let index = manifest::load(true)?;
             for pkg in &packages {
-                cmd_install(pkg, &bin_dir)?;
+                cmd_install(&index, pkg, &bin_dir)?;
             }
             Ok(())
         }
@@ -76,8 +77,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_install(name: &str, bin_dir: &std::path::Path) -> Result<()> {
-    let index = manifest::load(false)?;
+fn cmd_install(index: &manifest::Index, name: &str, bin_dir: &std::path::Path) -> Result<()> {
     let pkg = index
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("unknown package: {name}"))?;
