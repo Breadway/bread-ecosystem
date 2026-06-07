@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DL_DIR="${DL_DIR:-/srv/breadway-dl}"
 DL_BASE="${DL_BASE:-https://dl.breadway.dev}"
-GH_BASE="https://github.com/Breadway"
+GH_BASE="https://github.com"
 OUT="${DL_DIR}/index.json"
 
 # Products are read from the registry. Each line is "name repo".
