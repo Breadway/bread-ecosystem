@@ -34,7 +34,7 @@ jobs:
             > "${PKG_DIR}/bakery-x86_64.sha256"
 
           cp bakery.toml "${PKG_DIR}/bakery.toml"
-          ln -sfn "${PKG_DIR}" "${DL_DIR}/bakery/latest"
+          ln -sfn "${VERSION}" "${DL_DIR}/bakery/latest"
 
       - name: regenerate index.json
         run: bash "${GITHUB_WORKSPACE}/scripts/gen-index.sh"
