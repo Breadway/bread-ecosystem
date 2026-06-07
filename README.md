@@ -12,11 +12,11 @@ bakery install breadbar
 
 | Package | Description |
 |---------|-------------|
-| `bread` | Reactive automation daemon (`breadd`) + CLI |
-| `breadbar` | Status bar and notification daemon |
-| `breadbox` | Cloud sync daemon (`breadbox-sync`) + file browser |
-| `breadcrumbs` | Network information CLI |
-| `breadpad` | Scratchpad / quick-note app |
+| `bread` | Reactive automation daemon (`breadd`) + CLI — Lua scripting over Hyprland, udev, power, network, and Bluetooth events |
+| `breadbar` | GTK4 status bar (workspaces, clock, CPU/RAM/battery/WiFi/Bluetooth) and D-Bus notification daemon for Hyprland |
+| `breadbox` | GTK4 fuzzy app launcher for Hyprland with context-aware sorting; ships an icon-sync daemon (`breadbox-sync`) |
+| `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale exit-node management and a self-healing watch daemon |
+| `breadpad` | Quick-capture scratchpad popup with AI-powered note classification, reminders, recurrence, and a full note viewer (`breadman`) |
 
 ## Installing bakery
 
@@ -53,9 +53,9 @@ bakery remove <pkg>            # remove a package (data files are never deleted)
 |---------|--------------|
 | `bread` | `libudev` `dbus` |
 | `breadbar` | `gtk4` `gtk4-layer-shell` `dbus` `iw` |
-| `breadbox` | `gtk4` `librsvg` `dbus` |
+| `breadbox` | `gtk4` `gtk4-layer-shell` `librsvg` |
 | `breadcrumbs` | `networkmanager` |
-| `breadpad` | `gtk4` `dbus` |
+| `breadpad` | `gtk4` `gtk4-layer-shell` `dbus` |
 
 ## Theming
 
