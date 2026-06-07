@@ -8,6 +8,11 @@ homepage = "https://breadway.dev"
 dl_base = "https://dl.breadway.dev"
 
 [[products]]
+name = "bakery"
+repo = "Breadway/bread-ecosystem"
+description = "Bread ecosystem package manager"
+
+[[products]]
 name = "bread"
 repo = "Breadway/bread"
 description = "Reactive automation daemon and CLI for Linux desktops"
