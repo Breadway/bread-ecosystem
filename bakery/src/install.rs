@@ -12,9 +12,10 @@ pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
     // 1. Download and verify all binaries.
     let mut binary_names = Vec::new();
     for bin in &pkg.binaries {
-        let dest = bin_dir.join(&bin.name);
+        let install_name = strip_arch_suffix(&bin.name);
+        let dest = bin_dir.join(&install_name);
         fetch_and_place(bin, &dest)?;
-        binary_names.push(bin.name.clone());
+        binary_names.push(install_name.to_string());
     }
 
     // 2. Scaffold config dir + example file.
@@ -238,6 +239,16 @@ fn expand_tilde(path: &str) -> PathBuf {
     } else {
         PathBuf::from(path)
     }
+}
+
+fn strip_arch_suffix(name: &str) -> &str {
+    const SUFFIXES: &[&str] = &["-x86_64", "-aarch64", "-arm64", "-armv7"];
+    for s in SUFFIXES {
+        if let Some(base) = name.strip_suffix(s) {
+            return base;
+        }
+    }
+    name
 }
 
 fn warn_path_if_needed(bin_dir: &Path) {
