@@ -20,9 +20,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install a package
+    /// Install one or more packages
     Install {
-        package: String,
+        #[arg(required = true, num_args = 1..)]
+        packages: Vec<String>,
     },
     /// Remove an installed package (data files are never deleted)
     Remove {
@@ -61,7 +62,12 @@ fn main() -> Result<()> {
     let bin_dir = cli.bin_dir.unwrap_or_else(default_bin_dir);
 
     match cli.command {
-        Cmd::Install { package } => cmd_install(&package, &bin_dir),
+        Cmd::Install { packages } => {
+            for pkg in &packages {
+                cmd_install(pkg, &bin_dir)?;
+            }
+            Ok(())
+        }
         Cmd::Remove { package } => cmd_remove(&package, &bin_dir),
         Cmd::Update { package } => cmd_update(package.as_deref(), &bin_dir),
         Cmd::List { installed } => cmd_list(installed),
@@ -96,7 +102,8 @@ fn cmd_update(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
     let index = manifest::load(true)?; // force refresh on update
     let state = state::State::load()?;
 
-    let targets: Vec<String> = match name {
+    let effective = name.filter(|&n| n != "all");
+    let targets: Vec<String> = match effective {
         Some(n) => vec![n.to_string()],
         None => state.packages.keys().cloned().collect(),
     };
