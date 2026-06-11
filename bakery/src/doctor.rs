@@ -1,37 +1,45 @@
 use anyhow::Result;
 use std::process::Command;
 
-/// Check whether a list of system dependencies are present.
-/// Returns (missing, warnings) — missing are hard fails, warnings are advisory.
-pub fn check_deps(deps: &[String]) -> Result<Vec<String>> {
-    let mut missing = Vec::new();
-    for dep in deps {
-        if !dep_present(dep) {
-            missing.push(dep.clone());
-        }
-    }
-    Ok(missing)
+pub struct DepReport {
+    /// Required deps that are not present — blocks install.
+    pub missing: Vec<String>,
+    /// Optional deps that are not present — advisory only, never blocks.
+    pub warnings: Vec<String>,
 }
 
-fn dep_present(dep: &str) -> bool {
-    // Try `which` first (covers executables like `iw`, `nmcli`).
-    if which(dep) {
+pub fn check_deps(required: &[String], optional: &[String]) -> Result<DepReport> {
+    Ok(DepReport {
+        missing: required.iter().filter(|d| !dep_present(d)).cloned().collect(),
+        warnings: optional.iter().filter(|d| !dep_present(d)).cloned().collect(),
+    })
+}
+
+fn dep_present(pkg: &str) -> bool {
+    // Primary: `pacman -Q` uses the exact Arch package name — no name mapping needed.
+    if pacman_installed(pkg) {
         return true;
     }
-    // Try `pkg-config --exists` for library packages (gtk4, gtk4-layer-shell, librsvg).
-    pkg_config_exists(dep)
+    // Fallback for environments without pacman: native PATH search then pkg-config.
+    path_has(pkg) || pkg_config_exists(pkg)
 }
 
-fn which(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
+fn pacman_installed(pkg: &str) -> bool {
+    Command::new("pacman")
+        .args(["-Q", pkg])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
+/// Check PATH without shelling out to `which` (avoids the external dependency).
+fn path_has(bin: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|dir| dir.join(bin).is_file()))
+        .unwrap_or(false)
+}
+
 fn pkg_config_exists(lib: &str) -> bool {
-    // Arch package names map directly to pkg-config names for GTK libs.
     Command::new("pkg-config")
         .arg("--exists")
         .arg(lib)
@@ -40,33 +48,88 @@ fn pkg_config_exists(lib: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Print a formatted doctor report for a list of system deps.
-/// Returns true if all deps are satisfied.
-pub fn report(package_name: &str, deps: &[String]) -> bool {
-    if deps.is_empty() {
+/// Print a formatted doctor report for a package's system deps.
+/// Returns true if all *required* deps are satisfied.
+pub fn report(package_name: &str, required: &[String], optional: &[String]) -> bool {
+    if required.is_empty() && optional.is_empty() {
         println!("  {package_name}: no system deps required");
         return true;
     }
-    match check_deps(deps) {
+    match check_deps(required, optional) {
         Err(e) => {
-            eprintln!("  error running doctor: {e}");
+            eprintln!("  error running doctor for {package_name}: {e}");
             false
         }
-        Ok(missing) => {
-            if missing.is_empty() {
-                println!("  {package_name}: all system deps satisfied");
+        Ok(rep) => {
+            for warn in &rep.warnings {
+                eprintln!(
+                    "  {package_name}: optional dep not found: {warn} \
+                     (install for full functionality)"
+                );
+            }
+            if rep.missing.is_empty() {
+                println!("  {package_name}: all required system deps satisfied");
                 true
             } else {
                 eprintln!(
                     "  {package_name}: missing system deps: {}",
-                    missing.join(", ")
+                    rep.missing.join(", ")
                 );
-                eprintln!(
-                    "  install with: sudo pacman -S {}",
-                    missing.join(" ")
-                );
+                eprintln!("  install with: sudo pacman -S {}", rep.missing.join(" "));
                 false
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_deps_pass() {
+        let rep = check_deps(&[], &[]).unwrap();
+        assert!(rep.missing.is_empty());
+        assert!(rep.warnings.is_empty());
+    }
+
+    #[test]
+    fn pacman_finds_itself() {
+        // pacman is always installed on Arch — verifies our detection path works.
+        assert!(pacman_installed("pacman"));
+    }
+
+    #[test]
+    fn path_has_finds_sh() {
+        assert!(path_has("sh"));
+    }
+
+    #[test]
+    fn missing_required_dep_detected() {
+        let rep = check_deps(
+            &["this-package-does-not-exist-xyzzy42".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(rep.missing.len(), 1);
+        assert!(rep.warnings.is_empty());
+    }
+
+    #[test]
+    fn missing_optional_dep_becomes_warning_not_error() {
+        let rep = check_deps(
+            &[],
+            &["this-package-does-not-exist-xyzzy42".to_string()],
+        )
+        .unwrap();
+        assert!(rep.missing.is_empty());
+        assert_eq!(rep.warnings.len(), 1);
+    }
+
+    #[test]
+    fn installed_dep_not_missing() {
+        // "pacman" is definitely installed; should not appear in missing.
+        let rep = check_deps(&["pacman".to_string()], &[]).unwrap();
+        assert!(rep.missing.is_empty());
     }
 }

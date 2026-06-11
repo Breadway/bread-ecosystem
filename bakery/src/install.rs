@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::download::fetch_and_place;
-use crate::manifest::{Package, Service};
+use crate::manifest::{fetch_binary, Package, Service};
 use crate::state::{InstalledPackage, State};
 
 pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
@@ -18,15 +18,15 @@ pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
         binary_names.push(install_name.to_string());
     }
 
-    // 2. Scaffold config dir + example file.
+    // 2. Scaffold config dir + download example file.
     if let Some(cfg) = &pkg.config {
-        scaffold_config(cfg)?;
+        scaffold_config(cfg, pkg)?;
     }
 
     // 3. Install systemd user units.
     let mut service_names = Vec::new();
     for svc in &pkg.services {
-        install_service(svc, bin_dir)?;
+        install_service(svc, bin_dir, pkg)?;
         service_names.push(svc.unit.clone());
     }
 
@@ -60,6 +60,8 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path) -> Result<()> {
             return Ok(());
         }
     };
+    // Commit removal immediately — file cleanup below is best-effort.
+    state.save()?;
 
     // Remove binaries.
     for bin in &installed.binaries {
@@ -104,66 +106,111 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path) -> Result<()> {
         println!("  data preserved at {}", data_dir.display());
     }
 
-    state.save()?;
     println!("  {pkg_name} removed");
     Ok(())
 }
 
-fn scaffold_config(cfg: &crate::manifest::ConfigScaffold) -> Result<()> {
+fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Result<()> {
     let dir = expand_tilde(&cfg.dir);
     std::fs::create_dir_all(&dir)?;
+
     if let Some(example) = &cfg.example {
         let dest = dir.join(example);
         if !dest.exists() {
-            // We don't have the actual example file here at install time —
-            // the product repo's release bundle should include it.
-            // For now just note it; release.yml will bundle example configs.
-            println!("  config dir ready at {}", dir.display());
-            println!(
-                "  copy your {example} to {} to configure {}",
-                dest.display(),
-                dir.display()
-            );
+            if let Some((primary, fallback)) = pkg.artifact_urls(example) {
+                match fetch_binary(&primary, &fallback) {
+                    Ok(bytes) => {
+                        std::fs::write(&dest, &bytes)
+                            .with_context(|| format!("writing {}", dest.display()))?;
+                        println!("  installed example config at {}", dest.display());
+                    }
+                    Err(e) => {
+                        eprintln!("  warning: could not download example config {example}: {e}");
+                        println!("  config dir created at {}", dir.display());
+                    }
+                }
+            } else {
+                println!("  config dir created at {}", dir.display());
+            }
         } else {
             println!("  config at {} already exists, skipping", dest.display());
         }
+    } else {
+        println!("  config dir created at {}", dir.display());
     }
     Ok(())
 }
 
-fn install_service(svc: &Service, bin_dir: &Path) -> Result<()> {
+fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
     let service_dir = systemd_user_dir();
     std::fs::create_dir_all(&service_dir)?;
 
     let unit_path = service_dir.join(&svc.unit);
 
-    // The unit file is expected to be bundled alongside the binary in the
-    // release artifact (or embedded). For now, patch ExecStart if the unit
-    // already exists (same pattern as bread/scripts/install.sh).
-    if unit_path.exists() {
-        patch_exec_start(&unit_path, bin_dir)?;
+    // Download the unit file if not already present.
+    if !unit_path.exists() {
+        if let Some((primary, fallback)) = pkg.artifact_urls(&svc.unit) {
+            match fetch_binary(&primary, &fallback) {
+                Ok(bytes) => {
+                    std::fs::write(&unit_path, &bytes)
+                        .with_context(|| format!("writing {}", unit_path.display()))?;
+                    println!("  downloaded unit {}", unit_path.display());
+                }
+                Err(e) => {
+                    eprintln!("  warning: could not download {}: {e}", svc.unit);
+                }
+            }
+        } else {
+            eprintln!("  warning: no artifact URL to download {}", svc.unit);
+        }
     }
 
-    let _ = Command::new("systemctl")
+    if !unit_path.exists() {
+        eprintln!(
+            "  warning: unit file {} not found — skipping service setup",
+            svc.unit
+        );
+        return Ok(());
+    }
+
+    patch_exec_start(&unit_path, bin_dir)?;
+
+    if !Command::new("systemctl")
         .args(["--user", "daemon-reload"])
-        .status();
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        eprintln!("  warning: systemctl daemon-reload failed");
+    }
 
     if svc.enable {
-        if Command::new("systemctl")
+        let already_active = Command::new("systemctl")
             .args(["--user", "is-active", "--quiet", &svc.unit])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if already_active {
+            if Command::new("systemctl")
+                .args(["--user", "restart", &svc.unit])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                println!("  {} restarted", svc.unit);
+            } else {
+                eprintln!("  warning: failed to restart {}", svc.unit);
+            }
+        } else if Command::new("systemctl")
+            .args(["--user", "enable", "--now", &svc.unit])
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
         {
-            let _ = Command::new("systemctl")
-                .args(["--user", "restart", &svc.unit])
-                .status();
-            println!("  {} restarted", svc.unit);
-        } else {
-            let _ = Command::new("systemctl")
-                .args(["--user", "enable", "--now", &svc.unit])
-                .status();
             println!("  {} enabled and started", svc.unit);
+        } else {
+            eprintln!("  warning: failed to enable {}", svc.unit);
         }
     }
 
@@ -176,7 +223,6 @@ fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
         .lines()
         .map(|line| {
             if line.trim_start().starts_with("ExecStart=") {
-                // Replace only the path prefix, keep args.
                 let rest = line.splitn(2, '=').nth(1).unwrap_or("");
                 let argv: Vec<&str> = rest.split_whitespace().collect();
                 if let Some(bin_name) = argv.first().and_then(|p| Path::new(p).file_name()) {
@@ -196,7 +242,13 @@ fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write(unit_path, patched)?;
+    // Preserve trailing newline if the original had one.
+    let output = if text.ends_with('\n') {
+        format!("{patched}\n")
+    } else {
+        patched
+    };
+    std::fs::write(unit_path, output)?;
     Ok(())
 }
 
@@ -241,7 +293,7 @@ fn expand_tilde(path: &str) -> PathBuf {
     }
 }
 
-fn strip_arch_suffix(name: &str) -> &str {
+pub fn strip_arch_suffix(name: &str) -> &str {
     const SUFFIXES: &[&str] = &["-x86_64", "-aarch64", "-arm64", "-armv7"];
     for s in SUFFIXES {
         if let Some(base) = name.strip_suffix(s) {
@@ -260,5 +312,55 @@ fn warn_path_if_needed(bin_dir: &Path) {
             bin_str
         );
         println!("    export PATH=\"{}:$PATH\"", bin_str);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn strip_known_suffixes() {
+        assert_eq!(strip_arch_suffix("breadd-x86_64"), "breadd");
+        assert_eq!(strip_arch_suffix("breadd-aarch64"), "breadd");
+        assert_eq!(strip_arch_suffix("breadd-arm64"), "breadd");
+        assert_eq!(strip_arch_suffix("breadd-armv7"), "breadd");
+        assert_eq!(strip_arch_suffix("bakery-x86_64"), "bakery");
+        assert_eq!(strip_arch_suffix("breadd"), "breadd");
+    }
+
+    #[test]
+    fn patch_exec_start_with_args() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.service");
+        fs::write(&path, "[Service]\nExecStart=/old/path/bin arg1 arg2\n").unwrap();
+        patch_exec_start(&path, Path::new("/new/bin")).unwrap();
+        let out = fs::read_to_string(&path).unwrap();
+        assert!(out.contains("ExecStart=/new/bin/bin arg1 arg2"));
+        assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn patch_exec_start_no_args() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.service");
+        fs::write(&path, "[Service]\nExecStart=/old/path/daemon\n").unwrap();
+        patch_exec_start(&path, Path::new("/usr/local/bin")).unwrap();
+        let out = fs::read_to_string(&path).unwrap();
+        assert!(out.contains("ExecStart=/usr/local/bin/daemon"));
+        assert!(!out.contains("daemon "));
+    }
+
+    #[test]
+    fn patch_exec_start_non_exec_lines_unchanged() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.service");
+        fs::write(&path, "[Unit]\nDescription=foo\nExecStart=/bin/foo\n").unwrap();
+        patch_exec_start(&path, Path::new("/usr/bin")).unwrap();
+        let out = fs::read_to_string(&path).unwrap();
+        assert!(out.contains("Description=foo"));
+        assert!(out.contains("ExecStart=/usr/bin/foo"));
     }
 }

@@ -33,7 +33,12 @@ impl State {
             std::fs::create_dir_all(dir)?;
         }
         let text = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, text).context("writing installed.json")
+        // Write to a temp file then rename for atomicity — avoids a torn write
+        // if the process is killed mid-save.
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, &text).context("writing installed.json.tmp")?;
+        std::fs::rename(&tmp, &path).context("atomically replacing installed.json")?;
+        Ok(())
     }
 
     pub fn is_installed(&self, name: &str) -> bool {
@@ -57,4 +62,59 @@ fn state_path() -> PathBuf {
                 .join(".local/state")
         })
         .join("bakery/installed.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pkg(name: &str, version: &str) -> InstalledPackage {
+        InstalledPackage {
+            name: name.to_string(),
+            version: version.to_string(),
+            binaries: vec![],
+            services: vec![],
+            installed_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn record_and_is_installed() {
+        let mut state = State::default();
+        assert!(!state.is_installed("foo"));
+        state.record(pkg("foo", "1.0.0"));
+        assert!(state.is_installed("foo"));
+    }
+
+    #[test]
+    fn remove_installed() {
+        let mut state = State::default();
+        state.record(pkg("foo", "1.0.0"));
+        let removed = state.remove("foo");
+        assert!(removed.is_some());
+        assert!(!state.is_installed("foo"));
+    }
+
+    #[test]
+    fn remove_unknown_returns_none() {
+        let mut state = State::default();
+        assert!(state.remove("nope").is_none());
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let mut state = State::default();
+        state.record(InstalledPackage {
+            name: "bar".to_string(),
+            version: "2.0.0".to_string(),
+            binaries: vec!["bar".to_string()],
+            services: vec!["bar.service".to_string()],
+            installed_at: "2026-06-01T00:00:00Z".to_string(),
+        });
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: State = serde_json::from_str(&json).unwrap();
+        assert!(restored.is_installed("bar"));
+        assert_eq!(restored.packages["bar"].version, "2.0.0");
+        assert_eq!(restored.packages["bar"].services, ["bar.service"]);
+    }
 }
