@@ -49,13 +49,18 @@ bakery remove <pkg>            # remove a package (data files are never deleted)
 
 ## System dependencies by product
 
-| Package | Arch packages |
-|---------|--------------|
-| `bread` | `libudev` `dbus` |
-| `breadbar` | `gtk4` `gtk4-layer-shell` `dbus` `iw` |
-| `breadbox` | `gtk4` `gtk4-layer-shell` `librsvg` |
-| `breadcrumbs` | `networkmanager` |
-| `breadpad` | `gtk4` `gtk4-layer-shell` `dbus` |
+`bakery doctor` checks these automatically before any install. Required deps block installation; optional deps generate a warning but never block.
+
+| Package | Required | Optional |
+|---------|----------|---------|
+| `bakery` | _(statically linked, none)_ | — |
+| `bread` | `systemd-libs` `openssl` `zlib` | `bluez` `hyprland` |
+| `breadbar` | `gtk4` `gtk4-layer-shell` `iw` `libpulse` | `hyprland` |
+| `breadbox` | `gtk4` `gtk4-layer-shell` `librsvg` | `hyprland` |
+| `breadcrumbs` | `networkmanager` | `tailscale` `sudo` `xdg-utils` |
+| `breadpad` | `gtk4` `gtk4-layer-shell` | `rocm-hip-runtime` `ollama` `hyprland` |
+
+Install all required deps with `sudo pacman -S <packages>`. Use `pacman -Q <pkg>` to check whether any are already present.
 
 ## Theming
 
@@ -89,6 +94,22 @@ and mirrors the binary to GitHub Releases as a fallback.
 
 `bakery` always tries `dl.breadway.dev` first and transparently falls back
 to the GitHub Release URL recorded in the manifest.
+
+### Release artifact contract
+
+Each product's `release.yml` **must** upload the following files alongside
+the binary to `dl.breadway.dev/<name>/<version>/`:
+
+| File | Purpose |
+|------|---------|
+| `bakery.toml` | Metadata (deps, services, config) read by `gen-index.sh` |
+| `<binary>-x86_64.sha256` | Checksum verified by `bakery install` and `get.sh` |
+| `*.service` | systemd unit files installed by `bakery install` |
+| `*.example.toml` / `config.example.toml` | Example configs copied on first install |
+
+`gen-index.sh` **fails loudly** if `bakery.toml` is missing — this is by
+design to catch omissions in the release workflow before they silently
+produce empty metadata in production.
 
 ## License
 

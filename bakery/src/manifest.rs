@@ -23,7 +23,7 @@ pub struct Service {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConfigScaffold {
     pub dir: String,
-    /// relative to the product repo root; copied as-is if absent at install time
+    /// Example config filename, relative to the release artifact directory.
     pub example: Option<String>,
 }
 
@@ -36,12 +36,29 @@ pub struct Package {
     #[serde(default)]
     pub system_deps: Vec<String>,
     #[serde(default)]
+    pub optional_system_deps: Vec<String>,
+    #[serde(default)]
     pub bread_deps: Vec<String>,
     #[serde(default)]
     pub services: Vec<Service>,
     pub config: Option<ConfigScaffold>,
     #[serde(default)]
     pub post_install: Vec<String>,
+}
+
+impl Package {
+    /// Returns `(primary_url, github_url)` for any artifact filename in this
+    /// package's release directory. Derived by stripping the filename from the
+    /// first binary's URLs.
+    pub fn artifact_urls(&self, filename: &str) -> Option<(String, String)> {
+        let first = self.binaries.first()?;
+        let dl_base = first.dl_url.rsplit_once('/')?.0;
+        let gh_base = first.github_url.rsplit_once('/')?.0;
+        Some((
+            format!("{dl_base}/{filename}"),
+            format!("{gh_base}/{filename}"),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -67,8 +84,7 @@ pub fn load(force_refresh: bool) -> Result<Index> {
     let cache_path = cache_path();
 
     if !force_refresh && cache_is_fresh(&cache_path) {
-        let text = std::fs::read_to_string(&cache_path)
-            .context("reading cached index")?;
+        let text = std::fs::read_to_string(&cache_path).context("reading cached index")?;
         return serde_json::from_str(&text).context("parsing cached index");
     }
 
@@ -132,6 +148,6 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
     resp.into_reader()
         .read_to_end(&mut buf)
-        .context("reading binary")?;
+        .context("reading response")?;
     Ok(buf)
 }

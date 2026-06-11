@@ -6,6 +6,7 @@ mod state;
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -31,8 +32,12 @@ enum Cmd {
     },
     /// Update one or all installed packages
     Update {
-        /// Package to update; omit to update all installed packages
+        /// Package to update (omit or use --all to update everything installed)
+        #[arg(conflicts_with = "all")]
         package: Option<String>,
+        /// Update all installed packages
+        #[arg(long, conflicts_with = "package")]
+        all: bool,
     },
     /// List packages
     List {
@@ -70,7 +75,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Remove { package } => cmd_remove(&package, &bin_dir),
-        Cmd::Update { package } => cmd_update(package.as_deref(), &bin_dir),
+        Cmd::Update { package, all } => cmd_update(package.as_deref(), all, &bin_dir),
         Cmd::List { installed } => cmd_list(installed),
         Cmd::Info { package } => cmd_info(&package),
         Cmd::Doctor { package } => cmd_doctor(package.as_deref()),
@@ -78,16 +83,43 @@ fn main() -> Result<()> {
 }
 
 fn cmd_install(index: &manifest::Index, name: &str, bin_dir: &std::path::Path) -> Result<()> {
+    let mut visited = HashSet::new();
+    install_with_deps(index, name, bin_dir, &mut visited)
+}
+
+/// Recursively installs `name` and any bread_deps, skipping already-installed
+/// packages. The `visited` set prevents cycles.
+fn install_with_deps(
+    index: &manifest::Index,
+    name: &str,
+    bin_dir: &std::path::Path,
+    visited: &mut HashSet<String>,
+) -> Result<()> {
+    if !visited.insert(name.to_string()) {
+        return Ok(());
+    }
+
     let pkg = index
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("unknown package: {name}"))?;
 
-    // Doctor runs first — bail if system deps are missing.
-    println!("checking system dependencies…");
-    let missing = doctor::check_deps(&pkg.system_deps)?;
-    if !missing.is_empty() {
-        eprintln!("missing system dependencies for {name}: {}", missing.join(", "));
-        eprintln!("install with: sudo pacman -S {}", missing.join(" "));
+    // Install bread_deps first (skip those already recorded in state).
+    let state = state::State::load()?;
+    for dep in pkg.bread_deps.clone() {
+        if !state.is_installed(&dep) {
+            println!("installing bread dependency: {dep}");
+            install_with_deps(index, &dep, bin_dir, visited)?;
+        }
+    }
+
+    println!("checking system dependencies for {name}…");
+    let rep = doctor::check_deps(&pkg.system_deps, &pkg.optional_system_deps)?;
+    for warn in &rep.warnings {
+        eprintln!("  note: optional dep not installed: {warn}");
+    }
+    if !rep.missing.is_empty() {
+        eprintln!("missing system deps for {name}: {}", rep.missing.join(", "));
+        eprintln!("install with: sudo pacman -S {}", rep.missing.join(" "));
         bail!("system deps not satisfied");
     }
 
@@ -98,16 +130,22 @@ fn cmd_remove(name: &str, bin_dir: &std::path::Path) -> Result<()> {
     install::remove_package(name, bin_dir)
 }
 
-fn cmd_update(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
-    let index = manifest::load(true)?; // force refresh on update
+fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path) -> Result<()> {
+    let index = manifest::load(true)?;
     let state = state::State::load()?;
 
-    let effective = name.filter(|&n| n != "all");
-    let targets: Vec<String> = match effective {
-        Some(n) => vec![n.to_string()],
-        None => state.packages.keys().cloned().collect(),
+    let targets: Vec<String> = if all || name.is_none() {
+        state.packages.keys().cloned().collect()
+    } else {
+        vec![name.unwrap().to_string()]
     };
 
+    if targets.is_empty() {
+        println!("no packages installed");
+        return Ok(());
+    }
+
+    let mut any_failed = false;
     for pkg_name in &targets {
         let installed = match state.packages.get(pkg_name.as_str()) {
             Some(p) => p,
@@ -123,15 +161,45 @@ fn cmd_update(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
                 continue;
             }
         };
+
         if installed.version == latest.version {
             println!("{pkg_name} is already at {}", installed.version);
-        } else {
-            println!(
-                "updating {pkg_name} {} → {}",
-                installed.version, latest.version
-            );
-            install::install_package(latest, bin_dir)?;
+            continue;
         }
+
+        println!(
+            "updating {pkg_name} {} → {}",
+            installed.version, latest.version
+        );
+
+        let rep = match doctor::check_deps(&latest.system_deps, &latest.optional_system_deps) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("  doctor check failed for {pkg_name}: {e}");
+                any_failed = true;
+                continue;
+            }
+        };
+        for warn in &rep.warnings {
+            eprintln!("  note: optional dep not installed: {warn}");
+        }
+        if !rep.missing.is_empty() {
+            eprintln!(
+                "  missing deps for {pkg_name}: {} — skipping update",
+                rep.missing.join(", ")
+            );
+            any_failed = true;
+            continue;
+        }
+
+        if let Err(e) = install::install_package(latest, bin_dir) {
+            eprintln!("  failed to update {pkg_name}: {e}");
+            any_failed = true;
+        }
+    }
+
+    if any_failed {
+        bail!("one or more packages could not be updated");
     }
     Ok(())
 }
@@ -180,15 +248,32 @@ fn cmd_info(name: &str) -> Result<()> {
     println!("{} {}", pkg.name, pkg.version);
     println!("  {}", pkg.description);
     println!("  status:      {status}");
-    println!("  binaries:    {}", pkg.binaries.iter().map(|b| b.name.as_str()).collect::<Vec<_>>().join(", "));
+    println!(
+        "  binaries:    {}",
+        pkg.binaries
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     if !pkg.system_deps.is_empty() {
         println!("  system deps: {}", pkg.system_deps.join(", "));
+    }
+    if !pkg.optional_system_deps.is_empty() {
+        println!("  optional deps: {}", pkg.optional_system_deps.join(", "));
     }
     if !pkg.bread_deps.is_empty() {
         println!("  bread deps:  {}", pkg.bread_deps.join(", "));
     }
     if !pkg.services.is_empty() {
-        println!("  services:    {}", pkg.services.iter().map(|s| s.unit.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "  services:    {}",
+            pkg.services
+                .iter()
+                .map(|s| s.unit.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     Ok(())
 }
@@ -198,7 +283,12 @@ fn cmd_doctor(name: Option<&str>) -> Result<()> {
     let state = state::State::load()?;
 
     let targets: Vec<String> = match name {
-        Some(n) => vec![n.to_string()],
+        Some(n) => {
+            if index.get(n).is_none() {
+                bail!("unknown package: {n}");
+            }
+            vec![n.to_string()]
+        }
         None => state.packages.keys().cloned().collect(),
     };
 
@@ -210,9 +300,12 @@ fn cmd_doctor(name: Option<&str>) -> Result<()> {
     let mut all_ok = true;
     for pkg_name in &targets {
         if let Some(pkg) = index.get(pkg_name) {
-            if !doctor::report(pkg_name, &pkg.system_deps) {
+            if !doctor::report(pkg_name, &pkg.system_deps, &pkg.optional_system_deps) {
                 all_ok = false;
             }
+        } else {
+            eprintln!("  {pkg_name}: not found in index (removed from registry?)");
+            all_ok = false;
         }
     }
 

@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # Generate dl.breadway.dev/index.json from:
 #   - registry/bread-ecosystem.toml   (product list)
-#   - <repo>/bakery.toml              (per-product metadata)
-#   - /srv/breadway-dl/               (built binaries + sha256 files)
+#   - <DL_DIR>/<name>/bakery.toml     (per-product metadata, uploaded by release.yml)
+#   - <DL_DIR>/                       (built binaries + sha256 files)
 #
+# Fallback for local dev: looks for ../name/bakery.toml (sibling repo checkout).
 # Run on hestia after each product build, before the dl server is refreshed.
-# Requires: jq, python3 (for toml parsing via tomllib), sha256sum
+# Requires: jq, python3 (tomllib, stdlib since 3.11), sha256sum
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DL_DIR="${DL_DIR:-/srv/breadway-dl}"
 DL_BASE="${DL_BASE:-https://dl.breadway.dev}"
 GH_BASE="https://github.com"
 OUT="${DL_DIR}/index.json"
 
-# Products are read from the registry. Each line is "name repo".
-products=(
-    "bakery          Breadway/bread-ecosystem"
-    "bread           Breadway/bread"
-    "breadbar        Breadway/breadbar"
-    "breadbox        Breadway/breadbox"
-    "breadcrumbs     Breadway/breadcrumbs"
-    "breadpad        Breadway/breadpad"
-)
+# Read the product list from the registry TOML instead of a hardcoded array.
+mapfile -t products < <(python3 -c "
+import tomllib, sys
+with open('${SCRIPT_DIR}/registry/bread-ecosystem.toml', 'rb') as f:
+    d = tomllib.load(f)
+for p in d['products']:
+    print(p['name'], p['repo'])
+")
 
 # Build a JSON package entry for one product.
 # $1 = product name, $2 = github repo slug
@@ -34,14 +34,14 @@ build_package_json() {
     local pkg_dir="${DL_DIR}/${name}"
     if [[ ! -d "${pkg_dir}" ]]; then
         echo "  warning: no release dir for ${name} at ${pkg_dir}" >&2
-        return
+        return 1
     fi
 
     # The latest symlink must point to the current version dir.
     local latest_link="${pkg_dir}/latest"
     if [[ ! -L "${latest_link}" ]]; then
         echo "  warning: no 'latest' symlink for ${name}" >&2
-        return
+        return 1
     fi
     local version_dir
     version_dir="$(readlink -f "${latest_link}")"
@@ -51,11 +51,11 @@ build_package_json() {
     # Collect all binaries in the version dir (executables only; skip metadata files).
     local binaries_json="[]"
     for bin_path in "${version_dir}"/*; do
-        [[ "${bin_path}" == *.sha256 ]] && continue
-        [[ "${bin_path}" == *.toml ]]   && continue
+        [[ "${bin_path}" == *.sha256 ]]  && continue
+        [[ "${bin_path}" == *.toml ]]    && continue
         [[ "${bin_path}" == *.service ]] && continue
-        [[ "${bin_path}" == *.css ]]    && continue
-        [[ "${bin_path}" == *.txt ]]    && continue
+        [[ "${bin_path}" == *.css ]]     && continue
+        [[ "${bin_path}" == *.txt ]]     && continue
         [[ -f "${bin_path}" ]] || continue
         local bin_name
         bin_name="$(basename "${bin_path}")"
@@ -77,45 +77,77 @@ build_package_json() {
         binaries_json="$(jq -n --argjson arr "${binaries_json}" --argjson e "${entry}" '$arr + [$e]')"
     done
 
-    # Read bakery.toml: the release workflow copies it to DL_DIR alongside the
-    # binaries; fall back to a sibling checkout for local dev use.
+    # Locate bakery.toml: the release workflow copies it to DL_DIR alongside the
+    # binaries.  Fall back to a sibling repo checkout for local dev use.
     local bakery_toml="${DL_DIR}/${name}/bakery.toml"
     if [[ ! -f "${bakery_toml}" ]]; then
         bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
     fi
-    local description=""
-    local system_deps="[]"
-    local bread_deps="[]"
-    local services="[]"
-    local config="null"
-    local post_install="[]"
+    if [[ ! -f "${bakery_toml}" ]]; then
+        echo "ERROR: bakery.toml not found for ${name} — release.yml must upload it to ${DL_DIR}/${name}/bakery.toml" >&2
+        return 1
+    fi
 
-    if [[ -f "${bakery_toml}" ]]; then
-        description="$(python3 -c "
-import tomllib, sys
+    local description system_deps optional_system_deps bread_deps services config post_install
+
+    description="$(python3 -c "
+import tomllib
 with open('${bakery_toml}', 'rb') as f:
     d = tomllib.load(f)
 print(d.get('description', ''))
 " 2>/dev/null || true)"
-        system_deps="$(python3 -c "
-import tomllib, json, sys
+
+    system_deps="$(python3 -c "
+import tomllib, json
 with open('${bakery_toml}', 'rb') as f:
     d = tomllib.load(f)
 print(json.dumps(d.get('system_deps', [])))
 " 2>/dev/null || echo "[]")"
-        bread_deps="$(python3 -c "
-import tomllib, json, sys
+
+    optional_system_deps="$(python3 -c "
+import tomllib, json
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+print(json.dumps(d.get('optional_system_deps', [])))
+" 2>/dev/null || echo "[]")"
+
+    bread_deps="$(python3 -c "
+import tomllib, json
 with open('${bakery_toml}', 'rb') as f:
     d = tomllib.load(f)
 print(json.dumps(d.get('bread_deps', [])))
 " 2>/dev/null || echo "[]")"
-        post_install="$(python3 -c "
-import tomllib, json, sys
+
+    # [[service]] entries → [{unit, enable}]
+    services="$(python3 -c "
+import tomllib, json
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+svcs = d.get('service', [])
+print(json.dumps([{'unit': s['unit'], 'enable': s.get('enable', False)} for s in svcs]))
+" 2>/dev/null || echo "[]")"
+
+    # [config] → {dir, example?} or null
+    config="$(python3 -c "
+import tomllib, json
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+cfg = d.get('config')
+if cfg:
+    obj = {'dir': cfg['dir']}
+    if 'example' in cfg:
+        obj['example'] = cfg['example']
+    print(json.dumps(obj))
+else:
+    print('null')
+" 2>/dev/null || echo "null")"
+
+    post_install="$(python3 -c "
+import tomllib, json
 with open('${bakery_toml}', 'rb') as f:
     d = tomllib.load(f)
 print(json.dumps(d.get('install', {}).get('post_install', [])))
 " 2>/dev/null || echo "[]")"
-    fi
 
     jq -n \
         --arg name "${name}" \
@@ -123,8 +155,10 @@ print(json.dumps(d.get('install', {}).get('post_install', [])))
         --arg version "${version}" \
         --argjson binaries "${binaries_json}" \
         --argjson system_deps "${system_deps}" \
+        --argjson optional_system_deps "${optional_system_deps}" \
         --argjson bread_deps "${bread_deps}" \
         --argjson services "${services}" \
+        --argjson config "${config}" \
         --argjson post_install "${post_install}" \
         '{
             name: $name,
@@ -132,8 +166,10 @@ print(json.dumps(d.get('install', {}).get('post_install', [])))
             version: $version,
             binaries: $binaries,
             system_deps: $system_deps,
+            optional_system_deps: $optional_system_deps,
             bread_deps: $bread_deps,
             services: $services,
+            config: $config,
             post_install: $post_install
         }'
 }

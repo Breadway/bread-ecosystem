@@ -45,3 +45,34 @@ fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn sha256_hex(data: &[u8]) -> String {
+        hex::encode(Sha256::digest(data))
+    }
+
+    #[test]
+    fn verify_correct_hash() {
+        let bytes = b"hello bakery";
+        let hash = sha256_hex(bytes);
+        assert!(verify_sha256(bytes, &hash).is_ok());
+    }
+
+    #[test]
+    fn verify_wrong_hash_fails() {
+        let bytes = b"hello bakery";
+        let wrong = "0".repeat(64);
+        assert!(verify_sha256(bytes, &wrong).is_err());
+    }
+
+    #[test]
+    fn verify_empty_bytes() {
+        let bytes = b"";
+        let hash = sha256_hex(bytes);
+        assert!(verify_sha256(bytes, &hash).is_ok());
+    }
+}
