@@ -77,14 +77,15 @@ build_package_json() {
         binaries_json="$(jq -n --argjson arr "${binaries_json}" --argjson e "${entry}" '$arr + [$e]')"
     done
 
-    # Locate bakery.toml: the release workflow copies it to DL_DIR alongside the
-    # binaries.  Fall back to a sibling repo checkout for local dev use.
-    local bakery_toml="${DL_DIR}/${name}/bakery.toml"
+    # Locate bakery.toml. The release workflow copies it into the version dir
+    # alongside the binaries (${version_dir}/bakery.toml). Fall back to a
+    # sibling repo checkout for local dev use.
+    local bakery_toml="${version_dir}/bakery.toml"
     if [[ ! -f "${bakery_toml}" ]]; then
         bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
     fi
     if [[ ! -f "${bakery_toml}" ]]; then
-        echo "ERROR: bakery.toml not found for ${name} — release.yml must upload it to ${DL_DIR}/${name}/bakery.toml" >&2
+        echo "ERROR: bakery.toml not found for ${name} — release.yml must copy it to \${DL_DIR}/${name}/\${VERSION}/bakery.toml" >&2
         return 1
     fi
 
