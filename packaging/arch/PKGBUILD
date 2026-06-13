@@ -1,0 +1,24 @@
+# Maintainer: Breadway <rileyhorsham@gmail.com>
+
+pkgname=bakery
+pkgver=0.2.3
+pkgrel=1
+pkgdesc="Package manager for the bread ecosystem"
+arch=('x86_64')
+url="https://github.com/Breadway/bread-ecosystem"
+license=('MIT')
+depends=('glibc' 'gcc-libs')
+makedepends=('rust' 'cargo')
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  cargo build --release --locked -p bakery
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm755 target/release/bakery "${pkgdir}/usr/bin/bakery"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}
