@@ -18,6 +18,36 @@ bakery install breadbar
 | `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale exit-node management and a self-healing watch daemon |
 | `breadpad` | Quick-capture scratchpad popup with AI-powered note classification, reminders, recurrence, and a full note viewer (`breadman`) |
 
+## Recommended keybinds
+
+The ecosystem assumes a Hyprland setup with `SUPER` as the modifier. The
+conventional bindings (used by BOS and recommended for any install):
+
+| Keys | Action |
+|------|--------|
+| `SUPER+Space` | `breadbox` — app launcher |
+| `SUPER+U` | `breadpad` — quick-capture notes/reminders |
+| `SUPER+M` | `breadman` — note viewer / manager |
+| `SUPER+,` | settings (`bos-settings`, where installed) |
+
+`breadbar` and `breadd` are services started at login (`exec-once`), not bound
+to keys.
+
+## Theming
+
+All GUIs share one look via `bread-theme`. The `bread-theme` CLI renders the
+component stylesheet from your pywal palette (Catppuccin Mocha fallback) to
+`$XDG_RUNTIME_DIR/bread/theme.css`; every app loads that file and **live-reloads**
+it, so changing your wallpaper recolours the whole ecosystem with no rebuilds:
+
+```sh
+wal -i ~/Pictures/wall.png   # regenerate pywal palette
+bread-theme generate         # render the shared stylesheet (run from a wal hook)
+```
+
+See [`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md) for the tokens (fonts,
+spacing, radii, colour roles) the stylesheet is built from.
+
 ## Installing bakery
 
 `bakery` is the package manager for the ecosystem. Install it with the bootstrap script:
