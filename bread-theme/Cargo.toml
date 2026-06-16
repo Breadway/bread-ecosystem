@@ -18,3 +18,9 @@ gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
 # Enable GTK4 CSS provider helpers (breadbar, breadbox, breadpad use this).
 # bread (daemon) and breadcrumbs (CLI) depend on this crate without the feature.
 gtk = ["dep:gtk4"]
+
+# The generator CLI. It only touches the gtk-free lib API (render + write), so
+# it builds without the gtk feature and stays light.
+[[bin]]
+name = "bread-theme"
+path = "src/bin/bread-theme.rs"
