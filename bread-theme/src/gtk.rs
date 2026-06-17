@@ -7,12 +7,52 @@ use std::path::Path;
 thread_local! {
     static SHARED_PROVIDER: RefCell<Option<CssProvider>> = const { RefCell::new(None) };
     static SHARED_MONITOR:  RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static APP_PROVIDER:    RefCell<Option<CssProvider>> = const { RefCell::new(None) };
+    static APP_MONITOR:     RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    #[allow(clippy::type_complexity)]
+    static APP_BUILDER:     RefCell<Option<Box<dyn Fn() -> String>>> = const { RefCell::new(None) };
 }
 
 fn reload_shared() {
     let css = std::fs::read_to_string(crate::shared_css_path())
         .unwrap_or_else(|_| crate::render());
     SHARED_PROVIDER.with(|cell| apply_css(&css, cell));
+}
+
+fn reload_app() {
+    let css = APP_BUILDER.with(|b| b.borrow().as_ref().map(|f| f()));
+    if let Some(css) = css {
+        APP_PROVIDER.with(|cell| apply_css(&css, cell));
+    }
+}
+
+/// Apply an app's *own* stylesheet and keep it live across palette changes.
+///
+/// `build` is called now to produce the app-specific CSS, and again every time
+/// the shared theme file is rewritten — i.e. whenever `bread-theme reload` (or
+/// `generate`) runs after pywal changes. The app recolours in place, no restart.
+///
+/// This is the counterpart to [`apply_shared`]: that hot-reloads the *shared*
+/// component sheet; this hot-reloads the app's *own* rules (which are built from
+/// the palette, so they'd otherwise be frozen at startup). Apps that build their
+/// CSS from [`crate::stylesheet`] themselves can use this alone; apps that layer
+/// on top of [`apply_shared`] call both.
+///
+/// Call once at startup. The closure should read the current palette
+/// ([`crate::load_palette`]) each time so it picks up the new colours.
+pub fn apply_app_css<F: Fn() -> String + 'static>(build: F) {
+    APP_BUILDER.with(|b| *b.borrow_mut() = Some(Box::new(build)));
+    reload_app();
+    APP_MONITOR.with(|cell| {
+        if cell.borrow().is_some() {
+            return;
+        }
+        let file = gio::File::for_path(crate::shared_css_path());
+        if let Ok(monitor) = file.monitor_file(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE) {
+            monitor.connect_changed(|_, _, _, _| reload_app());
+            *cell.borrow_mut() = Some(monitor);
+        }
+    });
 }
 
 /// Load the ecosystem's shared stylesheet (the file written by

@@ -54,10 +54,34 @@ pub fn css_vars(p: &Palette) -> String {
     )
 }
 
+/// Relative luminance (WCAG, sRGB) of a `#rrggbb` colour, 0.0 (black) – 1.0 (white).
+pub fn luminance(hex: &str) -> f32 {
+    let h = hex.trim_start_matches('#');
+    let lin = |i: usize| -> f32 {
+        let c = u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0) as f32 / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4)
+}
+
+/// Pick a legible ink (near-black or near-white) for text drawn on `hex`.
+/// 0.179 is the WCAG crossover where contrast against black equals contrast
+/// against white — so whichever side we pick always wins. This is what keeps
+/// text readable no matter how light or dark pywal makes a given palette slot,
+/// without altering the palette colours themselves.
+pub fn ink_on(hex: &str) -> &'static str {
+    if luminance(hex) > 0.179 { "#11111b" } else { "#f5f5f5" }
+}
+
 /// Canonical `@define-color` block: the single naming all bread apps share.
 /// `surface` = color0 (darkest surface), `overlay` = color7 (muted), and
 /// `accent` = color4. Apps must use these names, not raw palette slots, so the
 /// whole ecosystem recolours together.
+///
+/// The `on-*` colours are computed ink (black/white) guaranteed to be legible on
+/// the matching background — use `@on-surface` for text on a `@surface` panel,
+/// `@on-accent` on an `@accent` button, etc. They exist because pywal can emit a
+/// light value in any slot, and white text on a light surface disappears.
 fn define_colors(p: &Palette) -> String {
     format!(
         "@define-color bg {bg};\n\
@@ -70,10 +94,20 @@ fn define_colors(p: &Palette) -> String {
          @define-color yellow {c3};\n\
          @define-color blue {c4};\n\
          @define-color pink {c5};\n\
-         @define-color teal {c6};\n",
+         @define-color teal {c6};\n\
+         @define-color on-bg {on_bg};\n\
+         @define-color on-surface {on_surface};\n\
+         @define-color on-accent {on_accent};\n\
+         @define-color on-red {on_red};\n\
+         @define-color on-overlay {on_overlay};\n",
         bg = p.background, fg = p.foreground,
         c0 = p.color0, c1 = p.color1, c2 = p.color2, c3 = p.color3,
         c4 = p.color4, c5 = p.color5, c6 = p.color6, c7 = p.color7,
+        on_bg = ink_on(&p.background),
+        on_surface = ink_on(&p.color0),
+        on_accent = ink_on(&p.color4),
+        on_red = ink_on(&p.color1),
+        on_overlay = ink_on(&p.color7),
     )
 }
 
@@ -88,50 +122,53 @@ pub fn stylesheet(p: &Palette) -> String {
     format!(
         "{vars}\
          * {{ font-family: '{font}'; font-size: {base}px; }}\n\
-         window {{ background-color: @bg; color: @fg; }}\n\
-         label {{ color: @fg; }}\n\
-         .dim-label, .dim {{ color: @fg; opacity: 0.6; font-size: {sec}px; }}\n\
-         .title {{ font-size: 1.4em; font-weight: bold; color: @fg; }}\n\
-         .heading {{ font-weight: bold; color: @fg; opacity: 0.85; }}\n\
-         .subtitle {{ color: @fg; opacity: 0.7; font-size: {sec}px; }}\n\
-         button {{ background-color: @surface; color: @fg; border: none;\
+         /* Colour is set on containers; labels inherit it, so text on any panel,\
+            button, or accent is always the legible ink for that background. Bare\
+            `label {{ color }}` is deliberately avoided — as a type selector it\
+            would override a container's colour on its own child labels. */\n\
+         window {{ background-color: @bg; color: @on-bg; }}\n\
+         .dim-label, .dim {{ opacity: 0.6; font-size: {sec}px; }}\n\
+         .title {{ font-size: 1.4em; font-weight: bold; }}\n\
+         .heading {{ font-weight: bold; opacity: 0.85; }}\n\
+         .subtitle {{ opacity: 0.7; font-size: {sec}px; }}\n\
+         button {{ background-color: @surface; color: @on-surface; border: none;\
              border-radius: {r1}px; padding: {sm}px {lg}px; }}\n\
-         button:hover {{ background-color: alpha(@fg, 0.14); }}\n\
-         button:active {{ background-color: alpha(@fg, 0.20); }}\n\
+         button:hover {{ background-color: alpha(@on-surface, 0.14); }}\n\
+         button:active {{ background-color: alpha(@on-surface, 0.20); }}\n\
          button:disabled {{ opacity: 0.5; }}\n\
-         button.flat {{ background-color: transparent; }}\n\
-         button.suggested-action {{ background-color: @accent; color: @bg; }}\n\
+         button.flat {{ background-color: transparent; color: @on-bg; }}\n\
+         button.suggested-action {{ background-color: @accent; color: @on-accent; }}\n\
          button.suggested-action:hover {{ background-color: alpha(@accent, 0.85); }}\n\
-         button.destructive-action {{ background-color: @red; color: @bg; }}\n\
+         button.destructive-action {{ background-color: @red; color: @on-red; }}\n\
          button.destructive-action:hover {{ background-color: alpha(@red, 0.85); }}\n\
-         entry, spinbutton {{ background-color: @surface; color: @fg;\
+         entry, spinbutton {{ background-color: @surface; color: @on-surface;\
              border: 1px solid @overlay; border-radius: {r2}px;\
-             padding: {xs}px {sm}px; caret-color: @fg; }}\n\
+             padding: {xs}px {sm}px; caret-color: @on-surface; }}\n\
          entry:focus-within, spinbutton:focus-within {{ border-color: @accent; outline: none; }}\n\
-         entry image, spinbutton button {{ color: @fg; }}\n\
-         dropdown > button {{ background-color: @surface; border-radius: {r2}px; }}\n\
-         popover > contents {{ background-color: @surface; color: @fg; border-radius: {r1}px; }}\n\
+         entry image, spinbutton button {{ color: @on-surface; }}\n\
+         dropdown > button {{ background-color: @surface; color: @on-surface; border-radius: {r2}px; }}\n\
+         popover > contents {{ background-color: @surface; color: @on-surface; border-radius: {r1}px; }}\n\
          switch {{ background-color: @overlay; border-radius: {pill}px; }}\n\
          switch:checked {{ background-color: @accent; }}\n\
-         switch slider {{ background-color: @fg; border-radius: {pill}px; }}\n\
+         switch slider {{ background-color: @on-surface; border-radius: {pill}px; }}\n\
          list, listbox {{ background-color: transparent; }}\n\
          row {{ border-radius: {r2}px; }}\n\
-         row:selected, list row:selected {{ background-color: @accent; color: @bg; }}\n\
-         .sidebar {{ background-color: @surface; }}\n\
-         .sidebar row {{ padding: {sm}px {md}px; color: @fg; }}\n\
-         .sidebar row:selected {{ background-color: @accent; color: @bg; }}\n\
+         row:selected, list row:selected {{ background-color: @accent; color: @on-accent; }}\n\
+         .sidebar {{ background-color: @surface; color: @on-surface; }}\n\
+         .sidebar row {{ padding: {sm}px {md}px; }}\n\
+         .sidebar row:selected {{ background-color: @accent; color: @on-accent; }}\n\
          .sidebar .section-header {{ padding: {md}px {md}px {xs}px {md}px;\
-             font-size: {sec}px; font-weight: bold; color: @fg; opacity: 0.55; }}\n\
-         .card {{ background-color: @surface; border-radius: {r1}px; padding: {md}px; }}\n\
-         .chip, .pill {{ background-color: @overlay; color: @fg; border-radius: {pill}px;\
+             font-size: {sec}px; font-weight: bold; opacity: 0.55; }}\n\
+         .card {{ background-color: @surface; color: @on-surface; border-radius: {r1}px; padding: {md}px; }}\n\
+         .chip, .pill {{ background-color: @overlay; color: @on-overlay; border-radius: {pill}px;\
              padding: {xs}px {md}px; font-size: {sec}px; }}\n\
-         .chip.active, .pill.active {{ background-color: @accent; color: @bg; }}\n\
+         .chip.active, .pill.active {{ background-color: @accent; color: @on-accent; }}\n\
          scrollbar {{ background-color: transparent; }}\n\
-         scrollbar slider {{ background-color: alpha(@fg, 0.25); border-radius: {pill}px;\
+         scrollbar slider {{ background-color: alpha(@on-bg, 0.25); border-radius: {pill}px;\
              min-width: 6px; min-height: 6px; }}\n\
-         scrollbar slider:hover {{ background-color: alpha(@fg, 0.45); }}\n\
+         scrollbar slider:hover {{ background-color: alpha(@on-bg, 0.45); }}\n\
          textview, .mono {{ font-family: monospace; }}\n\
-         textview text {{ background-color: @surface; color: @fg; }}\n",
+         textview text {{ background-color: @surface; color: @on-surface; }}\n",
         vars = define_colors(p),
         font = FONT_FAMILY,
         base = FONT_SIZE_BASE,
@@ -215,6 +252,42 @@ mod tests {
             assert!(css.contains(sel), "stylesheet missing selector: {sel}");
         }
         assert!(css.contains("Varela Round"));
+    }
+
+    #[test]
+    fn luminance_black_and_white_are_extremes() {
+        assert!(luminance("#000000") < 0.01);
+        assert!(luminance("#ffffff") > 0.99);
+    }
+
+    #[test]
+    fn ink_on_picks_dark_text_for_light_backgrounds() {
+        // Light pywal slots (the case that made white text vanish) get dark ink.
+        assert_eq!(ink_on("#ffffff"), "#11111b");
+        assert_eq!(ink_on("#f9e2af"), "#11111b"); // pale yellow
+        assert_eq!(ink_on("#a6e3a1"), "#11111b"); // pale green
+    }
+
+    #[test]
+    fn ink_on_picks_light_text_for_dark_backgrounds() {
+        assert_eq!(ink_on("#000000"), "#f5f5f5");
+        assert_eq!(ink_on("#1e1e2e"), "#f5f5f5"); // catppuccin base
+    }
+
+    #[test]
+    fn stylesheet_defines_on_colors() {
+        let css = stylesheet(&Palette::default());
+        for name in &["on-bg", "on-surface", "on-accent", "on-red", "on-overlay"] {
+            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+        }
+    }
+
+    #[test]
+    fn stylesheet_has_no_blanket_label_color_rule() {
+        // A bare `label { color: ... }` would override container colours on child
+        // labels — the bug that made coloured-background text illegible.
+        let css = stylesheet(&Palette::default());
+        assert!(!css.contains("label { color:"), "blanket label colour rule reintroduced");
     }
 
     #[test]
