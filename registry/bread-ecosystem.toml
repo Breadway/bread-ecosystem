@@ -36,3 +36,8 @@ description = "Profile-aware Wi-Fi state machine with Tailscale integration"
 name = "breadpad"
 repo = "Breadway/breadpad"
 description = "Quick-capture scratchpad and note viewer with AI classification"
+
+[[products]]
+name = "breadpaper"
+repo = "Breadway/breadpaper"
+description = "Wallpaper manager for the bread desktop"
