@@ -2,42 +2,66 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Full 8-colour pywal palette. Catppuccin Mocha is the fallback.
+/// BOS's fixed dark theme — background, surface, overlay, and foreground never
+/// come from pywal. Only the accent slots (color1-6) track the wallpaper.
+/// Without this, a light or muddy-toned wallpaper (a beige bread photo, a
+/// snapshot, a bright desktop screenshot) makes pywal hand back a light or
+/// off-hue background, and every bread GUI's panels inherit it — the app
+/// stops looking like a dark BOS tool and starts looking like whatever colour
+/// the wallpaper happened to be.
+const FIXED_BACKGROUND: &str = "#0c0c0c";
+const FIXED_FOREGROUND: &str = "#e8e8e8";
+const FIXED_SURFACE: &str = "#1a1a1a";
+const FIXED_OVERLAY: &str = "#d8d8d8";
+
+/// Accent fallback when no pywal palette exists yet (fresh install, before
+/// any wallpaper has been set for real) — BOS's own bread-toned accents,
+/// matching the curated default `colors.json` baked into every install.
+const DEFAULT_COLOR1: &str = "#b98749";
+const DEFAULT_COLOR2: &str = "#cd9450";
+const DEFAULT_COLOR3: &str = "#e3a85c";
+const DEFAULT_COLOR4: &str = "#eab672";
+const DEFAULT_COLOR5: &str = "#f6c477";
+const DEFAULT_COLOR6: &str = "#eabe82";
+
+/// Full 8-colour pywal palette. background/foreground/color0/color7 are
+/// BOS's fixed dark theme (see [`FIXED_BACKGROUND`] etc.); only color1-6
+/// are ever pywal-derived.
 #[derive(Debug, Clone)]
 pub struct Palette {
     pub background: String,
     pub foreground: String,
-    /// ANSI color0 — darkest surface / overlay
+    /// Fixed — darkest surface / overlay, never pywal-derived.
     pub color0: String,
-    /// ANSI color1 — red
+    /// ANSI color1 — red (pywal accent)
     pub color1: String,
-    /// ANSI color2 — green
+    /// ANSI color2 — green (pywal accent)
     pub color2: String,
-    /// ANSI color3 — yellow
+    /// ANSI color3 — yellow (pywal accent)
     pub color3: String,
-    /// ANSI color4 — blue (primary accent)
+    /// ANSI color4 — blue / primary accent (pywal accent)
     pub color4: String,
-    /// ANSI color5 — pink / magenta
+    /// ANSI color5 — pink / magenta (pywal accent)
     pub color5: String,
-    /// ANSI color6 — teal / cyan
+    /// ANSI color6 — teal / cyan (pywal accent)
     pub color6: String,
-    /// ANSI color7 — light overlay / muted fg
+    /// Fixed — light overlay / muted fg, never pywal-derived.
     pub color7: String,
 }
 
 impl Default for Palette {
     fn default() -> Self {
         Palette {
-            background: "#1e1e2e".into(),
-            foreground: "#cdd6f4".into(),
-            color0: "#45475a".into(),
-            color1: "#f38ba8".into(),
-            color2: "#a6e3a1".into(),
-            color3: "#f9e2af".into(),
-            color4: "#89b4fa".into(),
-            color5: "#f5c2e7".into(),
-            color6: "#94e2d5".into(),
-            color7: "#bac2de".into(),
+            background: FIXED_BACKGROUND.into(),
+            foreground: FIXED_FOREGROUND.into(),
+            color0: FIXED_SURFACE.into(),
+            color1: DEFAULT_COLOR1.into(),
+            color2: DEFAULT_COLOR2.into(),
+            color3: DEFAULT_COLOR3.into(),
+            color4: DEFAULT_COLOR4.into(),
+            color5: DEFAULT_COLOR5.into(),
+            color6: DEFAULT_COLOR6.into(),
+            color7: FIXED_OVERLAY.into(),
         }
     }
 }
@@ -46,16 +70,9 @@ impl Default for Palette {
 struct WalColors {
     #[serde(default)]
     colors: HashMap<String, String>,
-    special: Option<WalSpecial>,
 }
 
-#[derive(Deserialize)]
-struct WalSpecial {
-    background: Option<String>,
-    foreground: Option<String>,
-}
-
-/// Load palette from pywal's `colors.json`. Falls back to Catppuccin Mocha.
+/// Load palette from pywal's `colors.json`. Falls back to [`Palette::default`].
 pub fn load_palette() -> Palette {
     let path = wal_path();
     std::fs::read_to_string(&path)
@@ -70,18 +87,16 @@ pub(crate) fn from_wal_json(json: &str) -> Option<Palette> {
         wal.colors.get(k).cloned().unwrap_or_else(|| fallback.into())
     };
     Some(Palette {
-        background: wal.special.as_ref().and_then(|s| s.background.clone())
-            .unwrap_or_else(|| "#1e1e2e".into()),
-        foreground: wal.special.as_ref().and_then(|s| s.foreground.clone())
-            .unwrap_or_else(|| "#cdd6f4".into()),
-        color0: c("color0", "#45475a"),
-        color1: c("color1", "#f38ba8"),
-        color2: c("color2", "#a6e3a1"),
-        color3: c("color3", "#f9e2af"),
-        color4: c("color4", "#89b4fa"),
-        color5: c("color5", "#f5c2e7"),
-        color6: c("color6", "#94e2d5"),
-        color7: c("color7", "#bac2de"),
+        background: FIXED_BACKGROUND.into(),
+        foreground: FIXED_FOREGROUND.into(),
+        color0: FIXED_SURFACE.into(),
+        color1: c("color1", DEFAULT_COLOR1),
+        color2: c("color2", DEFAULT_COLOR2),
+        color3: c("color3", DEFAULT_COLOR3),
+        color4: c("color4", DEFAULT_COLOR4),
+        color5: c("color5", DEFAULT_COLOR5),
+        color6: c("color6", DEFAULT_COLOR6),
+        color7: FIXED_OVERLAY.into(),
     })
 }
 
@@ -105,39 +120,39 @@ mod tests {
     }"##;
 
     #[test]
-    fn default_is_catppuccin_mocha() {
+    fn default_is_bos_fixed_dark_theme() {
         let p = Palette::default();
-        assert_eq!(p.background, "#1e1e2e");
-        assert_eq!(p.foreground, "#cdd6f4");
-        assert_eq!(p.color4, "#89b4fa");
+        assert_eq!(p.background, "#0c0c0c");
+        assert_eq!(p.foreground, "#e8e8e8");
+        assert_eq!(p.color0, "#1a1a1a");
+        assert_eq!(p.color7, "#d8d8d8");
+        assert_eq!(p.color4, "#eab672");
     }
 
     #[test]
-    fn wal_json_parses_special() {
+    fn wal_json_background_and_surface_ignore_pywal() {
+        // TOKYO_NIGHT's special/color0/color7 must NOT leak through — bg,
+        // surface, overlay, and fg are always BOS's fixed dark values,
+        // whatever pywal extracted from the wallpaper.
         let p = from_wal_json(TOKYO_NIGHT).unwrap();
-        assert_eq!(p.background, "#1a1b26");
-        assert_eq!(p.foreground, "#c0caf5");
+        assert_eq!(p.background, "#0c0c0c");
+        assert_eq!(p.foreground, "#e8e8e8");
+        assert_eq!(p.color0, "#1a1a1a");
+        assert_eq!(p.color7, "#d8d8d8");
     }
 
     #[test]
-    fn wal_json_parses_colors() {
+    fn wal_json_parses_accent_colors() {
         let p = from_wal_json(TOKYO_NIGHT).unwrap();
-        assert_eq!(p.color0, "#15161e");
+        assert_eq!(p.color1, "#f7768e");
         assert_eq!(p.color4, "#7aa2f7");
-        assert_eq!(p.color7, "#a9b1d6");
+        assert_eq!(p.color6, "#7dcfff");
     }
 
     #[test]
-    fn wal_json_missing_special_uses_catppuccin_fallback() {
+    fn wal_json_missing_accent_color_uses_bos_default() {
         let p = from_wal_json(r#"{"colors":{}}"#).unwrap();
-        assert_eq!(p.background, "#1e1e2e");
-        assert_eq!(p.foreground, "#cdd6f4");
-    }
-
-    #[test]
-    fn wal_json_missing_color_uses_catppuccin_fallback() {
-        let p = from_wal_json(r##"{"special":{"background":"#ff0000","foreground":"#ffffff"},"colors":{}}"##).unwrap();
-        assert_eq!(p.color4, "#89b4fa");
+        assert_eq!(p.color4, "#eab672");
     }
 
     #[test]
@@ -147,9 +162,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_object_returns_all_defaults() {
+    fn empty_object_returns_bos_defaults() {
         let p = from_wal_json("{}").unwrap();
-        assert_eq!(p.background, "#1e1e2e");
+        assert_eq!(p.background, "#0c0c0c");
+        assert_eq!(p.color4, "#eab672");
     }
 
     #[test]
