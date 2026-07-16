@@ -1,0 +1,49 @@
+name: release bread-theme
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: [self-hosted, hestia]
+    steps:
+      - name: checkout
+        run: |
+          set -euo pipefail
+          rm -rf src && mkdir src
+          git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
+            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+
+      - name: build
+        run: cd src && cargo build --release --locked -p bread-theme --bin bread-theme
+
+      - name: prepare artifacts
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_DIR="/srv/breadway-dl/bread-theme/${VERSION}"
+          mkdir -p "${PKG_DIR}"
+          cp "src/target/release/bread-theme" "${PKG_DIR}/bread-theme-x86_64"
+          strip "${PKG_DIR}/bread-theme-x86_64"
+          sha256sum "${PKG_DIR}/bread-theme-x86_64" | awk '{print $1}' \
+            > "${PKG_DIR}/bread-theme-x86_64.sha256"
+          cp src/bread-theme/bakery.toml "${PKG_DIR}/bakery.toml"
+          ln -sfn "${VERSION}" "/srv/breadway-dl/bread-theme/latest"
+
+      - name: regenerate index.json
+        run: cd src && bash scripts/gen-index.sh
+
+      - name: upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_DIR="/srv/breadway-dl/bread-theme/${VERSION}"
+          gh release create "${GITHUB_REF_NAME}" --repo Breadway/bread-ecosystem \
+            --title "bread-ecosystem ${GITHUB_REF_NAME}" --generate-notes 2>/dev/null || true
+          gh release upload "${GITHUB_REF_NAME}" --repo Breadway/bread-ecosystem \
+            "${PKG_DIR}/bread-theme-x86_64" \
+            "${PKG_DIR}/bread-theme-x86_64.sha256" \
+            --clobber

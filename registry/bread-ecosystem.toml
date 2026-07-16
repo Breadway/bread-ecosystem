@@ -13,6 +13,11 @@ repo = "Breadway/bread-ecosystem"
 description = "Bread ecosystem package manager"
 
 [[products]]
+name = "bread-theme"
+repo = "Breadway/bread-ecosystem"
+description = "Shared pywal + Catppuccin theming CLI for the bread ecosystem"
+
+[[products]]
 name = "bread"
 repo = "Breadway/bread"
 description = "Reactive automation daemon and CLI for Linux desktops"
