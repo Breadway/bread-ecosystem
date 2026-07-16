@@ -31,7 +31,31 @@ jobs:
           cp src/bread-theme/bakery.toml "${PKG_DIR}/bakery.toml"
           ln -sfn "${VERSION}" "/srv/breadway-dl/bread-theme/latest"
 
+      # Signs the bread-theme binary with the shared bakery ecosystem signing
+      # key (same key that signs index.json — get.sh / manifest.rs pin the
+      # matching public key). BAKERY_MINISIGN_SEC_KEY_PATH is a *path on this
+      # runner's disk* (hestia has persistent storage, unlike a fresh
+      # GitHub-hosted runner), not the key contents — see the handoff note
+      # in scripts/gen-index.sh. Dormant (binary ships unsigned, as today)
+      # until that secret is provisioned.
+      - name: sign release binary
+        env:
+          MINISIGN_SEC_KEY: ${{ secrets.BAKERY_MINISIGN_SEC_KEY_PATH }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_DIR="/srv/breadway-dl/bread-theme/${VERSION}"
+          if [ -n "${MINISIGN_SEC_KEY:-}" ]; then
+            minisign -W -S -s "${MINISIGN_SEC_KEY}" -m "${PKG_DIR}/bread-theme-x86_64" \
+              -x "${PKG_DIR}/bread-theme-x86_64.minisig" </dev/null
+            echo "signed bread-theme-x86_64"
+          else
+            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set — shipping bread-theme-x86_64 UNSIGNED"
+          fi
+
       - name: regenerate index.json
+        env:
+          MINISIGN_SEC_KEY: ${{ secrets.BAKERY_MINISIGN_SEC_KEY_PATH }}
         run: cd src && bash scripts/gen-index.sh
 
       - name: upload to GitHub Release
@@ -43,7 +67,6 @@ jobs:
           PKG_DIR="/srv/breadway-dl/bread-theme/${VERSION}"
           gh release create "${GITHUB_REF_NAME}" --repo Breadway/bread-ecosystem \
             --title "bread-ecosystem ${GITHUB_REF_NAME}" --generate-notes 2>/dev/null || true
-          gh release upload "${GITHUB_REF_NAME}" --repo Breadway/bread-ecosystem \
-            "${PKG_DIR}/bread-theme-x86_64" \
-            "${PKG_DIR}/bread-theme-x86_64.sha256" \
-            --clobber
+          ASSETS="${PKG_DIR}/bread-theme-x86_64 ${PKG_DIR}/bread-theme-x86_64.sha256"
+          [ -f "${PKG_DIR}/bread-theme-x86_64.minisig" ] && ASSETS="${ASSETS} ${PKG_DIR}/bread-theme-x86_64.minisig"
+          gh release upload "${GITHUB_REF_NAME}" --repo Breadway/bread-ecosystem ${ASSETS} --clobber

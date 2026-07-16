@@ -32,7 +32,12 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
+/// Verify that `bytes` hashes to `expected_hex` under SHA-256.
+///
+/// Shared by every artifact download path — binaries (via
+/// [`fetch_and_place`]), and config-example / systemd-unit downloads in
+/// `install.rs` — so all downloaded artifacts get the same integrity check.
+pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let actual = hex::encode(hasher.finalize());

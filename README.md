@@ -36,7 +36,9 @@ to keys.
 ## Theming
 
 All GUIs share one look via `bread-theme`. The `bread-theme` CLI renders the
-component stylesheet from your pywal palette (Catppuccin Mocha fallback) to
+component stylesheet from your pywal palette, layered on a fixed BOS dark
+base (background/surface/overlay never come from pywal — only the accent
+colors do, so a light wallpaper can't wash out the UI), to
 `$XDG_RUNTIME_DIR/bread/theme.css`; every app loads that file and **live-reloads**
 it, so changing your wallpaper recolours the whole ecosystem with no rebuilds:
 
@@ -95,8 +97,12 @@ Install all required deps with `sudo pacman -S <packages>`. Use `pacman -Q <pkg>
 ## Theming
 
 All GUI products (breadbar, breadbox, breadpad) read pywal colors from
-`~/.cache/wal/colors.json` and fall back to Catppuccin Mocha when that file
-is absent. Per-app CSS overrides live at `~/.config/<app>/style.css`.
+`~/.cache/wal/colors.json` for accents only; background, surface, overlay,
+and foreground are always BOS's fixed dark values (see
+[`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md#color-system)) regardless
+of what pywal extracted from the wallpaper. When `colors.json` is absent,
+accents fall back to BOS's curated bread-toned defaults. Per-app CSS
+overrides live at `~/.config/<app>/style.css`.
 
 The shared theming logic lives in the `bread-theme` crate in this repo.
 
@@ -107,7 +113,7 @@ This repo is a Cargo workspace:
 ```
 bread-ecosystem/
 ├── bakery/          # package manager binary
-├── bread-theme/     # shared pywal + Catppuccin theming crate
+├── bread-theme/     # shared pywal + fixed-dark-base theming crate
 ├── registry/        # bread-ecosystem.toml — product registry
 └── scripts/
     ├── get.sh       # curl | sh bootstrap

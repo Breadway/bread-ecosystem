@@ -1,1 +1,7 @@
 /target/
+
+# minisign secret keys must never be committed — the bakery/index signing
+# key lives outside this repo entirely (see scripts/gen-index.sh /
+# scripts/get.sh for how it's consumed via MINISIGN_SEC_KEY).
+*.minisign-sec
+minisign.key

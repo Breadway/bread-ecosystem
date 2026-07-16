@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::download::fetch_and_place;
+use crate::download::{fetch_and_place, verify_sha256};
 use crate::manifest::{fetch_binary, Package, Service};
 use crate::state::{InstalledPackage, State};
 
@@ -119,11 +119,28 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
         if !dest.exists() {
             if let Some((primary, fallback)) = pkg.artifact_urls(example) {
                 match fetch_binary(&primary, &fallback) {
-                    Ok(bytes) => {
-                        std::fs::write(&dest, &bytes)
-                            .with_context(|| format!("writing {}", dest.display()))?;
-                        println!("  installed example config at {}", dest.display());
-                    }
+                    Ok(bytes) => match &cfg.example_sha256 {
+                        Some(expected) => match verify_sha256(&bytes, expected) {
+                            Ok(()) => {
+                                std::fs::write(&dest, &bytes)
+                                    .with_context(|| format!("writing {}", dest.display()))?;
+                                println!("  installed example config at {}", dest.display());
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "  warning: checksum mismatch for example config {example}: {e} — not installed"
+                                );
+                                println!("  config dir created at {}", dir.display());
+                            }
+                        },
+                        None => {
+                            eprintln!(
+                                "  warning: index.json has no sha256 for example config \
+                                 {example} — refusing to install an unverified download"
+                            );
+                            println!("  config dir created at {}", dir.display());
+                        }
+                    },
                     Err(e) => {
                         eprintln!("  warning: could not download example config {example}: {e}");
                         println!("  config dir created at {}", dir.display());
@@ -151,11 +168,19 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
     if !unit_path.exists() {
         if let Some((primary, fallback)) = pkg.artifact_urls(&svc.unit) {
             match fetch_binary(&primary, &fallback) {
-                Ok(bytes) => {
-                    std::fs::write(&unit_path, &bytes)
-                        .with_context(|| format!("writing {}", unit_path.display()))?;
-                    println!("  downloaded unit {}", unit_path.display());
-                }
+                Ok(bytes) => match verify_sha256(&bytes, &svc.sha256) {
+                    Ok(()) => {
+                        std::fs::write(&unit_path, &bytes)
+                            .with_context(|| format!("writing {}", unit_path.display()))?;
+                        println!("  downloaded unit {}", unit_path.display());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "  warning: checksum mismatch for unit {}: {e} — not installed",
+                            svc.unit
+                        );
+                    }
+                },
                 Err(e) => {
                     eprintln!("  warning: could not download {}: {e}", svc.unit);
                 }

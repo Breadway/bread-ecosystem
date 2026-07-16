@@ -15,7 +15,7 @@ description = "Bread ecosystem package manager"
 [[products]]
 name = "bread-theme"
 repo = "Breadway/bread-ecosystem"
-description = "Shared pywal + Catppuccin theming CLI for the bread ecosystem"
+description = "Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem"
 
 [[products]]
 name = "bread"

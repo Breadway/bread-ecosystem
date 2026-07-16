@@ -110,4 +110,12 @@ check "post_install[0]" \
     "echo installed" \
     "$(jq -r '.packages.fakepkg.post_install[0]' "${OUT}")"
 
+check "services[0].sha256" \
+    "$(sha256sum "${PKG_VER_DIR}/fakepkg.service" | awk '{print $1}')" \
+    "$(jq -r '.packages.fakepkg.services[0].sha256' "${OUT}")"
+
+check "config.example_sha256" \
+    "$(sha256sum "${PKG_VER_DIR}/fakepkg.example.toml" | awk '{print $1}')" \
+    "$(jq -r '.packages.fakepkg.config.example_sha256' "${OUT}")"
+
 echo "OK: all gen-index assertions passed"

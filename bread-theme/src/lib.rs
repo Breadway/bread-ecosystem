@@ -24,31 +24,23 @@ pub mod tokens {
     pub const RADIUS_PILL: u16 = 999;
 }
 
-/// Emit the `@define-color` block that all bread apps use.
-/// Apps append their own rules below this; user CSS goes on top.
+/// Emit the `@define-color` block that all bread apps use, plus the shared
+/// font rule.
+///
+/// Kept for API compatibility with older callers that only want the color
+/// variables (not the full [`stylesheet`] component rules). It used to carry
+/// its own hand-written `@define-color` block that predated the `accent` and
+/// computed-ink (`on-*`) colors — that duplication is exactly what let it
+/// drift out of sync and reintroduce the illegible-text bug (light pywal
+/// colors + no computed ink meant white-on-white / black-on-black text
+/// wherever a caller's own CSS referenced `@on-surface`, `@on-accent`, etc.,
+/// since those names simply didn't exist in this block). It now delegates
+/// to the same [`define_colors`] the full stylesheet uses, so there is only
+/// one color-block implementation and it cannot drift again.
 pub fn css_vars(p: &Palette) -> String {
     format!(
-        "@define-color bg {bg};\n\
-         @define-color fg {fg};\n\
-         @define-color surface {c0};\n\
-         @define-color red {c1};\n\
-         @define-color green {c2};\n\
-         @define-color yellow {c3};\n\
-         @define-color blue {c4};\n\
-         @define-color pink {c5};\n\
-         @define-color teal {c6};\n\
-         @define-color overlay {c7};\n\
-         * {{ font-family: '{font}'; font-size: {size}px; }}\n",
-        bg = p.background,
-        fg = p.foreground,
-        c0 = p.color0,
-        c1 = p.color1,
-        c2 = p.color2,
-        c3 = p.color3,
-        c4 = p.color4,
-        c5 = p.color5,
-        c6 = p.color6,
-        c7 = p.color7,
+        "{vars}* {{ font-family: '{font}'; font-size: {size}px; }}\n",
+        vars = define_colors(p),
         font = tokens::FONT_FAMILY,
         size = tokens::FONT_SIZE_BASE,
     )
@@ -239,6 +231,33 @@ mod tests {
         let css = css_vars(&Palette::default());
         assert!(css.contains("Varela Round"));
         assert!(css.contains("14px"));
+    }
+
+    #[test]
+    fn css_vars_includes_accent_and_computed_ink_colors() {
+        // Regression test: css_vars() used to be a second, hand-written
+        // @define-color block that predated `accent` and the computed `on-*`
+        // ink colors. Any caller whose own CSS referenced `@on-surface` /
+        // `@on-accent` etc. against that older block would hit an undefined
+        // color name — the illegible-text bug. css_vars() must now emit
+        // exactly the same color set as the full stylesheet.
+        let css = css_vars(&Palette::default());
+        for name in &["accent", "on-bg", "on-surface", "on-accent", "on-red", "on-overlay"] {
+            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+        }
+    }
+
+    #[test]
+    fn css_vars_and_stylesheet_agree_on_color_block() {
+        // Both must derive their color variables from the same
+        // `define_colors` implementation, so they can't drift apart again.
+        let p = Palette::default();
+        let vars = css_vars(&p);
+        let sheet = stylesheet(&p);
+        for name in &["bg", "fg", "surface", "overlay", "accent", "on-bg", "on-surface", "on-accent"] {
+            let needle = format!("@define-color {name} ");
+            assert!(vars.contains(&needle) && sheet.contains(&needle));
+        }
     }
 
     #[test]

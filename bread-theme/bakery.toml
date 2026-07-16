@@ -1,5 +1,5 @@
 name = "bread-theme"
-description = "Shared pywal + Catppuccin theming CLI for the bread ecosystem — generates the shared GTK4 stylesheet every bread app loads"
+description = "Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem — generates the shared GTK4 stylesheet every bread app loads"
 binaries = ["bread-theme"]
 system_deps = []
 optional_system_deps = ["python-pywal"]

@@ -119,8 +119,12 @@ with open('${bakery_toml}', 'rb') as f:
 print(json.dumps(d.get('bread_deps', [])))
 " 2>/dev/null || echo "[]")"
 
-    # [[service]] entries → [{unit, enable}]
-    services="$(python3 -c "
+    # [[service]] entries → [{unit, enable, sha256}]. sha256 comes from the
+    # actual unit file shipped in this version dir — the same
+    # artifact-integrity guarantee binaries already get. A missing unit file
+    # gets an empty sha256; install.rs refuses to install an unverified
+    # download rather than silently skipping the check.
+    service_units="$(python3 -c "
 import tomllib, json
 with open('${bakery_toml}', 'rb') as f:
     d = tomllib.load(f)
@@ -128,7 +132,24 @@ svcs = d.get('service', [])
 print(json.dumps([{'unit': s['unit'], 'enable': s.get('enable', False)} for s in svcs]))
 " 2>/dev/null || echo "[]")"
 
-    # [config] → {dir, example?} or null
+    services="[]"
+    while IFS= read -r svc_entry; do
+        [[ -z "${svc_entry}" ]] && continue
+        unit_name="$(echo "${svc_entry}" | jq -r '.unit')"
+        enable="$(echo "${svc_entry}" | jq -r '.enable')"
+        unit_path="${version_dir}/${unit_name}"
+        unit_sha256=""
+        if [[ -f "${unit_path}" ]]; then
+            unit_sha256="$(sha256sum "${unit_path}" | awk '{print $1}')"
+        else
+            echo "  warning: service unit '${unit_name}' not found at ${unit_path}" >&2
+        fi
+        svc_json="$(jq -n --arg unit "${unit_name}" --argjson enable "${enable}" --arg sha256 "${unit_sha256}" \
+            '{unit: $unit, enable: $enable, sha256: $sha256}')"
+        services="$(jq -n --argjson arr "${services}" --argjson e "${svc_json}" '$arr + [$e]')"
+    done < <(echo "${service_units}" | jq -c '.[]')
+
+    # [config] → {dir, example?, example_sha256?} or null
     config="$(python3 -c "
 import tomllib, json
 with open('${bakery_toml}', 'rb') as f:
@@ -142,6 +163,19 @@ if cfg:
 else:
     print('null')
 " 2>/dev/null || echo "null")"
+    if [[ "${config}" != "null" ]]; then
+        example_name="$(echo "${config}" | jq -r '.example // empty')"
+        if [[ -n "${example_name}" ]]; then
+            example_path="${version_dir}/${example_name}"
+            example_sha256=""
+            if [[ -f "${example_path}" ]]; then
+                example_sha256="$(sha256sum "${example_path}" | awk '{print $1}')"
+            else
+                echo "  warning: config.example '${example_name}' not found at ${example_path}" >&2
+            fi
+            config="$(echo "${config}" | jq -c --arg sha "${example_sha256}" '. + {example_sha256: $sha}')"
+        fi
+    fi
 
     post_install="$(python3 -c "
 import tomllib, json
@@ -194,3 +228,42 @@ jq -n \
     > "${OUT}"
 
 echo "wrote ${OUT}"
+
+# Sign the index so `bakery` can verify it before trusting a single byte.
+# Every artifact sha256 and post_install hook string lives inside index.json,
+# so a valid signature over these raw bytes transitively covers all of it —
+# no separate per-artifact signing is needed.
+#
+# MINISIGN_SEC_KEY must point at the *secret* key file generated with
+# `minisign -G`. It is intentionally never read from inside either git repo;
+# point it at wherever the key actually lives on the machine that runs this
+# script (e.g. a root-only path on hestia), and set MINISIGN_SEC_KEY_PASSWORD
+# too if the key was generated with a password.
+#
+# This step is a no-op (with a loud warning) if the key isn't configured, so
+# existing unsigned publishing flows don't break until the key is actually
+# wired up — see the handoff note in the fix commit for this repo.
+if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
+    if [[ ! -f "${MINISIGN_SEC_KEY}" ]]; then
+        echo "ERROR: MINISIGN_SEC_KEY=${MINISIGN_SEC_KEY} does not exist" >&2
+        exit 1
+    fi
+    if ! command -v minisign >/dev/null 2>&1; then
+        echo "ERROR: MINISIGN_SEC_KEY is set but the 'minisign' binary is not installed" >&2
+        exit 1
+    fi
+    sign_args=(-S -s "${MINISIGN_SEC_KEY}" -m "${OUT}" -x "${OUT}.minisig")
+    if [[ -n "${MINISIGN_SEC_KEY_PASSWORD:-}" ]]; then
+        MINISIGN_PASSWORD="${MINISIGN_SEC_KEY_PASSWORD}" minisign "${sign_args[@]}" </dev/null
+    else
+        # -W: the key has no password (matches how CI-facing signing keys are
+        # normally generated, since there's no human to type a passphrase).
+        minisign -W "${sign_args[@]}" </dev/null
+    fi
+    echo "signed ${OUT} -> ${OUT}.minisig"
+else
+    echo "WARNING: MINISIGN_SEC_KEY not set — index.json was NOT signed." >&2
+    echo "         bakery clients built with signature verification will reject" >&2
+    echo "         this index. Set MINISIGN_SEC_KEY before running this in" >&2
+    echo "         production once the signing key has been provisioned." >&2
+fi
