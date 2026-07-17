@@ -66,3 +66,8 @@ description = "Wayland clipboard history manager for Hyprland"
 name = "breadshot"
 repo = "Breadway/breadshot"
 description = "Screenshot utility for the bread ecosystem"
+
+[[products]]
+name = "bos-settings"
+repo = "Breadway/bos-settings"
+description = "System settings app for Bread OS"
