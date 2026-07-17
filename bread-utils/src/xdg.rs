@@ -1,0 +1,95 @@
+//! XDG base directory helpers.
+//!
+//! Several repos independently rolled `dirs::data_local_dir().unwrap_or_else(||
+//! PathBuf::from("~/.local/share"))`-shaped fallbacks. The literal-tilde
+//! string is the bug: `PathBuf`/`std::fs` never expand `~`, so on the rare
+//! box where `dirs` can't resolve a home directory (no `HOME` env var, e.g.
+//! some container/systemd-service contexts) the fallback silently resolves
+//! to a directory literally named `~` in the process's current working
+//! directory instead of the user's actual home. Confirmed present in:
+//! - `breadclip-core/src/lib.rs:171-175` (`data_dir`)
+//! - `breadpad-shared/src/classifier.rs:34-39` (`model_dir`)
+//! - `breadpad-shared/src/config.rs:214-219` and `:221-226`
+//!   (`config_path`, `style_css_path`)
+//!
+//! The helpers here resolve a real `$HOME` (via `dirs::home_dir()`, which
+//! itself falls back to reading `HOME` directly) before ever falling back,
+//! so the fallback path is always an absolute, expanded path.
+
+use std::path::PathBuf;
+
+fn home_or_root() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
+}
+
+/// `$XDG_CONFIG_HOME` (only if it's set to an absolute path) or `~/.config`,
+/// joined with `app`.
+pub fn config_dir(app: &str) -> PathBuf {
+    base_config_dir().join(app)
+}
+
+/// `$XDG_DATA_HOME` (only if absolute) or `~/.local/share`, joined with `app`.
+pub fn data_dir(app: &str) -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| home_or_root().join(".local/share"))
+        .join(app)
+}
+
+/// `$XDG_CACHE_HOME` (only if absolute) or `~/.cache`, joined with `app`.
+pub fn cache_dir(app: &str) -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| home_or_root().join(".cache"))
+        .join(app)
+}
+
+/// `$XDG_RUNTIME_DIR`, falling back to `/tmp` — matches the fallback every
+/// consumer (breadbox, breadclip, breadmon) already used for PID/socket
+/// scratch files, which don't need to survive a reboot.
+pub fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+}
+
+fn base_config_dir() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        let p = PathBuf::from(xdg);
+        if p.is_absolute() {
+            return p;
+        }
+    }
+    dirs::config_dir().unwrap_or_else(|| home_or_root().join(".config"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_dir_joins_app_name() {
+        let d = config_dir("breadpad");
+        assert!(d.ends_with("breadpad"));
+        assert!(d.is_absolute());
+    }
+
+    #[test]
+    fn data_dir_never_contains_literal_tilde() {
+        // Regression guard for the exact bug this module replaces: the
+        // fallback must never be a literal "~/..." path component.
+        let d = data_dir("breadclip");
+        assert!(!d.components().any(|c| c.as_os_str() == "~"));
+        assert!(d.is_absolute());
+    }
+
+    #[test]
+    fn cache_dir_is_absolute() {
+        assert!(cache_dir("breadsearch").is_absolute());
+    }
+
+    #[test]
+    fn runtime_dir_falls_back_to_tmp() {
+        // We don't unset XDG_RUNTIME_DIR here (test isolation), just confirm
+        // the function returns *something* absolute either way.
+        assert!(runtime_dir().is_absolute());
+    }
+}

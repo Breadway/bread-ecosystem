@@ -1,5 +1,5 @@
 [workspace]
-members = ["bakery", "bread-theme"]
+members = ["bakery", "bread-theme", "bread-utils", "bread-onnx"]
 resolver = "2"
 
 [workspace.package]
@@ -20,6 +20,7 @@ hex = "0.4"
 clap = { version = "4", features = ["derive", "env"] }
 chrono = "0.4"
 minisign-verify = "0.2"
+tracing = "0.1"
 
 [profile.release]
 lto = "thin"

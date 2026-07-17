@@ -1,0 +1,30 @@
+[package]
+name = "bread-utils"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared plumbing for the bread ecosystem: Hyprland IPC, single-instance toggling, timeout-guarded subprocess execution, atomic file writes, XDG paths, and a GTK4 layer-shell popup scaffold"
+repository = "https://github.com/Breadway/bread-ecosystem"
+keywords = ["hyprland", "wayland", "xdg", "gtk4"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
+gtk4-layer-shell = { version = "0.8", optional = true }
+toml_edit = { version = "0.22", optional = true }
+
+[features]
+# Enable the layer-shell popup scaffold (breadbox, breadclip). Kept optional
+# so headless/daemon consumers (breadmon, breadhelp's CLI half, breadcrumbs)
+# don't have to pull in GTK4 + layer-shell just for `hypr`/`proc`/`xdg`.
+gtk = ["dep:gtk4", "dep:gtk4-layer-shell"]
+# Enable the non-destructive TOML doc load/save discipline (bos-settings,
+# breadhelp). Optional so consumers that don't edit TOML configs (breadbox,
+# breadclip, breadmon, ...) don't pull in toml_edit.
+toml = ["dep:toml_edit"]
+
+[dev-dependencies]
+tempfile = "3"
