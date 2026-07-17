@@ -11,12 +11,24 @@
 //! - `breadpad-shared/src/classifier.rs:34-39` (`model_dir`)
 //! - `breadpad-shared/src/config.rs:214-219` and `:221-226`
 //!   (`config_path`, `style_css_path`)
+//! - `breadmon/src/profile.rs:31-35` (`profiles_dir`)
+//! - `breadarr-shared/src/config.rs:316-321`'s own `expand_home` helper,
+//!   which had the same bug in a different shape: its *own* fallback (when
+//!   `HOME` itself isn't set) returned the literal, unexpanded input string
+//!   rather than a real path.
 //!
 //! The helpers here resolve a real `$HOME` (via `dirs::home_dir()`, which
 //! itself falls back to reading `HOME` directly) before ever falling back,
 //! so the fallback path is always an absolute, expanded path.
 
 use std::path::PathBuf;
+
+/// A real, absolute home directory — `dirs::home_dir()`, falling back to
+/// `/root` only if that itself fails (no `HOME` env var *and* no passwd-db
+/// entry, e.g. some minimal container contexts). Never a literal `"~"`.
+pub fn home_dir() -> PathBuf {
+    home_or_root()
+}
 
 fn home_or_root() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
@@ -78,6 +90,13 @@ mod tests {
         let d = config_dir("breadpad");
         assert!(d.ends_with("breadpad"));
         assert!(d.is_absolute());
+    }
+
+    #[test]
+    fn home_dir_is_absolute_and_never_a_literal_tilde() {
+        let d = home_dir();
+        assert!(d.is_absolute());
+        assert!(!d.components().any(|c| c.as_os_str() == "~"));
     }
 
     #[test]
