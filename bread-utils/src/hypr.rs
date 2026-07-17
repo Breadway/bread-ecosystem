@@ -217,6 +217,7 @@ mod tests {
     // vars would be flaky.
     #[test]
     fn socket_path_env_var_behavior() {
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         unsafe { env::remove_var("HYPRLAND_INSTANCE_SIGNATURE") };
         assert!(socket_path(Socket::Request).is_none());
 

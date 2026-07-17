@@ -25,7 +25,15 @@ fn home_or_root() -> PathBuf {
 /// `$XDG_CONFIG_HOME` (only if it's set to an absolute path) or `~/.config`,
 /// joined with `app`.
 pub fn config_dir(app: &str) -> PathBuf {
-    base_config_dir().join(app)
+    config_home().join(app)
+}
+
+/// The bare `$XDG_CONFIG_HOME` (or `~/.config`) directory, with no app name
+/// joined on — for callers that build up multiple sub-paths themselves
+/// (e.g. `bos-settings`, which joins a different bread* app's name per
+/// config file it edits).
+pub fn config_home() -> PathBuf {
+    base_config_dir()
 }
 
 /// `$XDG_DATA_HOME` (only if absolute) or `~/.local/share`, joined with `app`.
@@ -88,6 +96,7 @@ mod tests {
 
     #[test]
     fn runtime_dir_falls_back_to_tmp() {
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         // We don't unset XDG_RUNTIME_DIR here (test isolation), just confirm
         // the function returns *something* absolute either way.
         assert!(runtime_dir().is_absolute());

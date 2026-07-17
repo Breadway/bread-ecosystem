@@ -138,6 +138,9 @@ mod tests {
 
     #[test]
     fn first_acquire_succeeds_and_releases_on_drop() {
+        // Guards against `hypr`'s env-var test concurrently pointing
+        // XDG_RUNTIME_DIR at a nonexistent path mid-test — see `env_test_lock`.
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         let app = unique_app("first");
         match try_acquire(&app).unwrap() {
             Acquire::Acquired(_guard) => {}
@@ -150,6 +153,7 @@ mod tests {
 
     #[test]
     fn second_acquire_while_first_is_held_reports_held_by_other_with_our_pid() {
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         let app = unique_app("second");
         let guard = match try_acquire(&app).unwrap() {
             Acquire::Acquired(g) => g,
@@ -170,6 +174,7 @@ mod tests {
 
     #[test]
     fn lock_is_released_after_guard_drop_so_a_later_instance_can_acquire() {
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         let app = unique_app("release");
         let guard = match try_acquire(&app).unwrap() {
             Acquire::Acquired(g) => g,
@@ -185,6 +190,7 @@ mod tests {
 
     #[test]
     fn toggle_or_kill_starts_when_nothing_else_is_running() {
+        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         let app = unique_app("toggle-start");
         match toggle_or_kill(&app).unwrap() {
             Toggle::Started(_guard) => {}

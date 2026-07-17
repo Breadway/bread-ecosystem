@@ -25,6 +25,18 @@ pub mod proc;
 pub mod singleton;
 pub mod xdg;
 
+/// Serializes tests that read or mutate process-global env vars
+/// (`XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE`) — `cargo test` runs
+/// tests in parallel threads within one process by default, and
+/// `std::env::set_var` is process-wide, so a `hypr` test temporarily
+/// pointing `XDG_RUNTIME_DIR` at a nonexistent path can otherwise race a
+/// concurrently-running `singleton` or `xdg` test that expects the real one.
+#[cfg(test)]
+pub(crate) fn env_test_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 #[cfg(feature = "toml")]
 pub mod tomlcfg;
 
