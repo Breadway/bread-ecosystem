@@ -70,6 +70,7 @@ impl Provider {
         Ok(match self {
             Provider::Cpu => ort::ep::CPU::default().build(),
             Provider::MiGraphX { device_id } => {
+                ensure_migraphx_cache_path_default()?;
                 ort::ep::MIGraphX::default().with_device_id(*device_id).build()
             }
             Provider::Cuda { device_id } => {
@@ -97,7 +98,8 @@ impl Provider {
     /// reminder of exactly what to grep ONNX Runtime's own log output for —
     /// this is the "at minimum log EP registration success/failure loudly
     /// by default" half of the fix, independent of whether the caller has
-    /// wired up `tracing_subscriber` (see [`crate::init_tracing`]).
+    /// wired up `tracing_subscriber` (all three current consumers already
+    /// do, at their own startup).
     pub(crate) fn log_selection(&self) {
         tracing::info!("bread-onnx: requesting {} execution provider", self.name());
         if !matches!(self, Provider::Cpu) {
@@ -105,9 +107,46 @@ impl Provider {
                 "bread-onnx: check ONNX Runtime's own log output for \"Successfully registered \
                  `{}`\" — if it's missing, the ONNX Runtime build in use wasn't compiled/shipped \
                  with this provider and inference silently fell back to CPU. This line only \
-                 appears if a `tracing` subscriber is initialized (see `bread_onnx::init_tracing`).",
+                 appears if a `tracing` subscriber is initialized.",
                 self.ort_registration_name()
             );
         }
     }
+}
+
+/// MIGraphX has no Rust-level "cache directory" builder (unlike OpenVINO/
+/// Vitis above) — it's controlled purely by the `ORT_MIGRAPHX_MODEL_CACHE_PATH`
+/// environment variable, read by the underlying MIGraphX library at EP-
+/// registration time. Left unset, MIGraphX still *works*, but recompiles
+/// every kernel from scratch on every single session build — no persistence
+/// between runs, or even between two sessions in the same process. Found via
+/// this pass's own migration: `breadmill`'s packaged systemd unit already
+/// sets this explicitly (`packaging/breadmill.service`), but nothing
+/// enforced any other consumer doing the same, and `breadpad` (which had no
+/// systemd unit or cache path at all) hit exactly this — every
+/// `Classifier::load` call during its own test suite recompiled from a cold
+/// cache, visible as repeated `migraphx_save: Error: ... write_buffer:
+/// Failure opening file: ""/<hash>.mxr` log lines (an empty path prefix,
+/// i.e. the env var was never set) and multi-minute test runs.
+///
+/// This sets a sensible shared default (`~/.cache/bread-onnx/migraphx`) if
+/// the caller hasn't already set one — so every consumer gets kernel-cache
+/// persistence for free instead of only the ones that remembered to
+/// configure it themselves.
+fn ensure_migraphx_cache_path_default() -> anyhow::Result<()> {
+    if std::env::var_os("ORT_MIGRAPHX_MODEL_CACHE_PATH").is_some() {
+        return Ok(());
+    }
+    let dir = bread_utils::xdg::cache_dir("bread-onnx").join("migraphx");
+    std::fs::create_dir_all(&dir)?;
+    tracing::info!(
+        "bread-onnx: ORT_MIGRAPHX_MODEL_CACHE_PATH not set; defaulting to {} \
+         so MIGraphX kernel compiles persist across runs",
+        dir.display()
+    );
+    // SAFETY: this runs before any session build spawns worker threads that
+    // might read the environment concurrently — same caveat as any
+    // `set_var` call, documented here rather than papered over.
+    unsafe { std::env::set_var("ORT_MIGRAPHX_MODEL_CACHE_PATH", &dir) };
+    Ok(())
 }
