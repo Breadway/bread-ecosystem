@@ -51,9 +51,20 @@ pub fn socket_path(kind: Socket) -> Option<PathBuf> {
 /// IPC socket and return the raw response body. Blocking/synchronous — this
 /// matches every current consumer (breadbox, breadclip), which call it from
 /// non-async GTK app code.
+///
+/// Read/write timeouts are set on the socket (both original hand-rolled
+/// implementations this replaces — breadbox's `get_active_workspace`,
+/// breadclip's `hyprctl_json` — had none): a Hyprland instance that's
+/// wedged or mid-reload could otherwise hang this call, and every current
+/// caller runs it on the GTK main thread, so a hang here freezes the whole
+/// UI, not just this query.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub fn request(request: &str) -> Option<String> {
     let socket = socket_path(Socket::Request)?;
     let mut stream = UnixStream::connect(&socket).ok()?;
+    stream.set_read_timeout(Some(REQUEST_TIMEOUT)).ok()?;
+    stream.set_write_timeout(Some(REQUEST_TIMEOUT)).ok()?;
     stream.write_all(request.as_bytes()).ok()?;
     stream.shutdown(std::net::Shutdown::Write).ok()?;
 
