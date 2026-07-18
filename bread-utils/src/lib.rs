@@ -18,6 +18,9 @@
 //!   load/save discipline built on [`atomic`].
 //! - [`gtk_popup`] (feature `gtk`) — shared layer-shell popup window setup,
 //!   list navigation, and click-outside-to-close.
+//! - [`bread_client`] (feature `bread-client`) — a persistent-connection
+//!   client for breadd's IPC socket (emit + subscribe), for sibling
+//!   `bread*` app daemons integrating with the bread automation fabric.
 
 pub mod atomic;
 pub mod hypr;
@@ -42,3 +45,6 @@ pub mod tomlcfg;
 
 #[cfg(feature = "gtk")]
 pub mod gtk_popup;
+
+#[cfg(feature = "bread-client")]
+pub mod bread_client;

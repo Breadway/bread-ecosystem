@@ -17,6 +17,7 @@ bakery install breadbar
 | `breadbox` | GTK4 fuzzy app launcher for Hyprland with context-aware sorting; ships an icon-sync daemon (`breadbox-sync`) |
 | `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale exit-node management and a self-healing watch daemon |
 | `breadpad` | Quick-capture scratchpad popup with AI-powered note classification, reminders, recurrence, and a full note viewer (`breadman`) |
+| `breadpaper` | Wallpaper manager for the bread desktop |
 
 ## Recommended keybinds
 
@@ -35,19 +36,31 @@ to keys.
 
 ## Theming
 
-All GUIs share one look via `bread-theme`. The `bread-theme` CLI renders the
-component stylesheet from your pywal palette, layered on a fixed BOS dark
-base (background/surface/overlay never come from pywal — only the accent
-colors do, so a light wallpaper can't wash out the UI), to
-`$XDG_RUNTIME_DIR/bread/theme.css`; every app loads that file and **live-reloads**
-it, so changing your wallpaper recolours the whole ecosystem with no rebuilds:
+All GUI products (breadbar, breadbox, breadpad) share one stylesheet via
+`bread-theme`. Background, surface, overlay, and foreground are always BOS's
+fixed dark values; only the accent colors are read from the pywal palette in
+`~/.cache/wal/colors.json`. When that file is absent, the accents fall back
+to BOS's curated bread-toned defaults (not Catppuccin Mocha). The stylesheet
+is written to `$XDG_RUNTIME_DIR/bread/theme.css`; running apps watch that
+file and recolour live when it changes. Per-app CSS overrides live at
+`~/.config/<app>/style.css`.
 
 ```sh
 wal -i ~/Pictures/wall.png   # regenerate pywal palette
 bread-theme generate         # render the shared stylesheet (run from a wal hook)
 ```
 
-See [`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md) for the tokens (fonts,
+`bread-theme` subcommands:
+
+| Subcommand | Description |
+|------------|-------------|
+| `generate` | Render the current palette and write the shared stylesheet (default) |
+| `reload` | Same as `generate`; use after a palette change to trigger live recolour in running apps |
+| `path` | Print the stylesheet path |
+| `print` | Render the stylesheet to stdout without writing |
+
+The shared theming logic lives in the `bread-theme` crate in this repo. See
+[`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md) for the design tokens (fonts,
 spacing, radii, colour roles) the stylesheet is built from.
 
 ## Installing bakery
@@ -93,18 +106,6 @@ bakery remove <pkg>            # remove a package (data files are never deleted)
 | `breadpad` | `gtk4` `gtk4-layer-shell` | `rocm-hip-runtime` `ollama` `hyprland` |
 
 Install all required deps with `sudo pacman -S <packages>`. Use `pacman -Q <pkg>` to check whether any are already present.
-
-## Theming
-
-All GUI products (breadbar, breadbox, breadpad) read pywal colors from
-`~/.cache/wal/colors.json` for accents only; background, surface, overlay,
-and foreground are always BOS's fixed dark values (see
-[`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md#color-system)) regardless
-of what pywal extracted from the wallpaper. When `colors.json` is absent,
-accents fall back to BOS's curated bread-toned defaults. Per-app CSS
-overrides live at `~/.config/<app>/style.css`.
-
-The shared theming logic lives in the `bread-theme` crate in this repo.
 
 ## Workspace
 

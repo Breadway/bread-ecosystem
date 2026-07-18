@@ -1,11 +1,11 @@
-# Maintainer: Breadway <rileyhorsham@gmail.com>
+# Maintainer: Breadway <plasticbread849@gmail.com>
 
 pkgname=bakery
 pkgver=0.2.3
 pkgrel=1
 pkgdesc="Package manager for the bread ecosystem"
 arch=('x86_64')
-url="https://github.com/Breadway/bread-ecosystem"
+url="https://git.breadway.dev/Breadway/bread-ecosystem"
 license=('MIT')
 # Some Rust deps (ring/mlua) build vendored C/asm into static archives; makepkg's
 # default -flto=auto emits GCC LTO bitcode the Rust (lld) link cannot read,
