@@ -17,7 +17,7 @@ const CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 3600);
 /// bytes are trusted or parsed. This is the single control point: the
 /// per-artifact `sha256` fields and `post_install` hook strings all live
 /// inside `index.json` itself, so a valid signature transitively covers them.
-const PUBKEY: &str = "RWRh2Zr5SUinvVFCtD7S7HwGjfrye6j31Xq2mYXRdkGFDWe3yHF7W11K";
+const PUBKEY: &str = "RWTBR8w/IJ+jaylOv80b52DzekKbSR2CvOVGvzB0ipGBaMhJPAOiEWq8";
 
 /// Verify `bytes` against `sig_text` (the contents of an `index.json.minisig`
 /// file) using the pinned [`PUBKEY`]. Returns an error on any failure —

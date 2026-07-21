@@ -9,7 +9,7 @@ set -eu
 # index.json and the bakery binary itself). Do not source this from the
 # network — it must be baked into this script so a compromised dl server
 # can't swap it out along with a malicious binary.
-BAKERY_MINISIGN_PUBKEY="RWRh2Zr5SUinvVFCtD7S7HwGjfrye6j31Xq2mYXRdkGFDWe3yHF7W11K"
+BAKERY_MINISIGN_PUBKEY="RWTBR8w/IJ+jaylOv80b52DzekKbSR2CvOVGvzB0ipGBaMhJPAOiEWq8"
 
 BAKERY_VERSION="${BAKERY_VERSION:-latest}"
 BIN_DIR="${BAKERY_BIN_DIR:-$HOME/.local/bin}"
