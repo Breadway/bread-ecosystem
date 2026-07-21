@@ -56,6 +56,7 @@ build_package_json() {
         [[ "${bin_path}" == *.service ]] && continue
         [[ "${bin_path}" == *.css ]]     && continue
         [[ "${bin_path}" == *.txt ]]     && continue
+        [[ "${bin_path}" == *.minisig ]] && continue
         [[ -f "${bin_path}" ]] || continue
         local bin_name
         bin_name="$(basename "${bin_path}")"
