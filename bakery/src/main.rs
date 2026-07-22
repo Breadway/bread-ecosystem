@@ -3,11 +3,14 @@ mod download;
 mod install;
 mod manifest;
 mod state;
+mod track;
+mod ui;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use track::Track;
 
 #[derive(Parser)]
 #[command(name = "bakery", about = "Package manager for the bread ecosystem", version)]
@@ -54,6 +57,20 @@ enum Cmd {
         /// Package to check; omit to check all installed packages
         package: Option<String>,
     },
+    /// View or switch which build track bakery follows (stable/beta/dev)
+    Track {
+        #[command(subcommand)]
+        action: TrackCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrackCmd {
+    /// Show the currently selected track
+    Show,
+    /// Switch tracks. Only changes the preference — run `bakery update --all`
+    /// afterwards to actually install builds from the new track.
+    Set { track: Track },
 }
 
 fn default_bin_dir() -> PathBuf {
@@ -65,21 +82,50 @@ fn default_bin_dir() -> PathBuf {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let bin_dir = cli.bin_dir.unwrap_or_else(default_bin_dir);
+    let track = state::State::load()?.track;
 
     match cli.command {
         Cmd::Install { packages } => {
-            let index = manifest::load(true)?;
+            let index = manifest::load(true, track)?;
             for pkg in &packages {
                 cmd_install(&index, pkg, &bin_dir)?;
             }
             Ok(())
         }
         Cmd::Remove { package } => cmd_remove(&package, &bin_dir),
-        Cmd::Update { package, all } => cmd_update(package.as_deref(), all, &bin_dir),
-        Cmd::List { installed } => cmd_list(installed),
-        Cmd::Info { package } => cmd_info(&package),
-        Cmd::Doctor { package } => cmd_doctor(package.as_deref()),
+        Cmd::Update { package, all } => cmd_update(package.as_deref(), all, &bin_dir, track),
+        Cmd::List { installed } => cmd_list(installed, track),
+        Cmd::Info { package } => cmd_info(&package, track),
+        Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track),
+        Cmd::Track { action } => cmd_track(action),
     }
+}
+
+fn cmd_track(action: TrackCmd) -> Result<()> {
+    let mut state = state::State::load()?;
+    match action {
+        TrackCmd::Show => {
+            println!("current track: {}", ui::style(state.track.as_str(), ui::CYAN));
+        }
+        TrackCmd::Set { track } => {
+            if state.track == track {
+                println!("already on track {track}");
+                return Ok(());
+            }
+            // Fail fast on a bad/unreachable track rather than silently
+            // recording a preference bakery can't actually serve.
+            manifest::load(true, track)
+                .with_context(|| format!("could not validate {track} track, not switching"))?;
+            state.set_track(track);
+            state.save()?;
+            println!(
+                "switched to {} — run 'bakery update --all' to install {} builds",
+                ui::style(track.as_str(), ui::CYAN),
+                track
+            );
+        }
+    }
+    Ok(())
 }
 
 fn cmd_install(index: &manifest::Index, name: &str, bin_dir: &std::path::Path) -> Result<()> {
@@ -130,8 +176,8 @@ fn cmd_remove(name: &str, bin_dir: &std::path::Path) -> Result<()> {
     install::remove_package(name, bin_dir)
 }
 
-fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path) -> Result<()> {
-    let index = manifest::load(true)?;
+fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: Track) -> Result<()> {
+    let index = manifest::load(true, track)?;
     let state = state::State::load()?;
 
     let targets: Vec<String> = if all || name.is_none() {
@@ -162,14 +208,16 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path) -> Resul
             }
         };
 
-        if installed.version == latest.version {
-            println!("{pkg_name} is already at {}", installed.version);
+        if !is_newer(&installed.version, &latest.version) {
+            println!("{}", ui::style(&format!("{pkg_name} is already at {}", installed.version), ui::GREEN));
             continue;
         }
 
         println!(
-            "updating {pkg_name} {} → {}",
-            installed.version, latest.version
+            "updating {pkg_name} {} {} {}",
+            ui::style(&installed.version, ui::DIM),
+            ui::style("→", ui::CYAN),
+            ui::style(&latest.version, ui::BOLD)
         );
 
         let rep = match doctor::check_deps(&latest.system_deps, &latest.optional_system_deps) {
@@ -204,7 +252,28 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path) -> Resul
     Ok(())
 }
 
-fn cmd_list(installed_only: bool) -> Result<()> {
+/// Is `latest` newer than `installed`? Real semver comparison — the
+/// previous plain string-equality check couldn't tell "different" from
+/// "actually newer", so it would happily "update" a package to a lexically
+/// different but not-newer version. Falls back to a simple inequality check
+/// (with a warning) for any version string that isn't valid semver, rather
+/// than hard-erroring on packages built before this convention existed.
+fn is_newer(installed: &str, latest: &str) -> bool {
+    match (semver::Version::parse(installed), semver::Version::parse(latest)) {
+        (Ok(i), Ok(l)) => l > i,
+        _ => {
+            if installed != latest {
+                eprintln!(
+                    "  warning: '{installed}' or '{latest}' is not valid semver, \
+                     falling back to a plain inequality check"
+                );
+            }
+            installed != latest
+        }
+    }
+}
+
+fn cmd_list(installed_only: bool, track: Track) -> Result<()> {
     let state = state::State::load()?;
 
     if installed_only {
@@ -217,35 +286,39 @@ fn cmd_list(installed_only: bool) -> Result<()> {
         return Ok(());
     }
 
-    let index = manifest::load(false)?;
+    if !matches!(track, Track::Stable) {
+        println!("tracking:{}\n", ui::track_badge(track));
+    }
+
+    let index = manifest::load(false, track)?;
     let mut names: Vec<&str> = index.packages.keys().map(|s| s.as_str()).collect();
     names.sort();
     for name in names {
         let pkg = &index.packages[name];
         let tag = if state.is_installed(name) {
-            format!(" [installed {}]", state.packages[name].version)
+            ui::style(&format!(" [installed {}]", state.packages[name].version), ui::GREEN)
         } else {
             String::new()
         };
-        println!("  {} {} — {}{}", pkg.name, pkg.version, pkg.description, tag);
+        println!("  {:<14} {:<10} — {}{}", pkg.name, pkg.version, pkg.description, tag);
     }
     Ok(())
 }
 
-fn cmd_info(name: &str) -> Result<()> {
-    let index = manifest::load(false)?;
+fn cmd_info(name: &str, track: Track) -> Result<()> {
+    let index = manifest::load(false, track)?;
     let pkg = index
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("unknown package: {name}"))?;
 
     let state = state::State::load()?;
     let status = if let Some(inst) = state.packages.get(name) {
-        format!("installed ({})", inst.version)
+        ui::style(&format!("installed ({})", inst.version), ui::GREEN)
     } else {
-        "not installed".to_string()
+        ui::style("not installed", ui::DIM)
     };
 
-    println!("{} {}", pkg.name, pkg.version);
+    println!("{}{} {}", ui::style(&pkg.name, ui::BOLD), ui::track_badge(track), pkg.version);
     println!("  {}", pkg.description);
     println!("  status:      {status}");
     println!(
@@ -278,8 +351,8 @@ fn cmd_info(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_doctor(name: Option<&str>) -> Result<()> {
-    let index = manifest::load(false)?;
+fn cmd_doctor(name: Option<&str>, track: Track) -> Result<()> {
+    let index = manifest::load(false, track)?;
     let state = state::State::load()?;
 
     let targets: Vec<String> = match name {
@@ -310,7 +383,41 @@ fn cmd_doctor(name: Option<&str>) -> Result<()> {
     }
 
     if all_ok {
-        println!("all checks passed");
+        println!("{}", ui::ok("all checks passed"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_newer_detects_real_semver_increase() {
+        assert!(is_newer("0.3.1", "0.3.2"));
+        assert!(is_newer("0.3.1", "0.4.0"));
+        assert!(!is_newer("0.3.2", "0.3.1"));
+    }
+
+    #[test]
+    fn is_newer_false_when_equal() {
+        assert!(!is_newer("0.3.1", "0.3.1"));
+    }
+
+    #[test]
+    fn is_newer_orders_dev_prereleases_within_a_track() {
+        // Two dev builds of the same upcoming patch, ordered by their
+        // timestamp+sha build suffix.
+        assert!(is_newer(
+            "0.3.2-dev.20260722120000+aaa1111",
+            "0.3.2-dev.20260722130000+bbb2222"
+        ));
+    }
+
+    #[test]
+    fn is_newer_falls_back_to_inequality_on_unparseable_versions() {
+        // Pre-semver version strings should never hard-fail an update check.
+        assert!(is_newer("weird-version-1", "weird-version-2"));
+        assert!(!is_newer("weird-version-1", "weird-version-1"));
+    }
 }

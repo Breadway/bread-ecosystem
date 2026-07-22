@@ -1,0 +1,80 @@
+name: dev bakery
+
+# Publishes a dev-track build on every push to `dev` — separate from
+# release-bakery.yml's tag-triggered stable releases. See docs/release-channels.md
+# for the three-track policy (stable/beta/dev) this is part of.
+on:
+  push:
+    branches: ['dev']
+    paths:
+      - 'bakery/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.forgejo/workflows/dev-bakery.yml'
+
+jobs:
+  build:
+    runs-on: [self-hosted, hestia]
+    steps:
+      - name: checkout
+        run: |
+          set -euo pipefail
+          rm -rf src && mkdir src
+          git clone --branch dev --depth 1 \
+            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+
+      - name: build
+        run: cd src && cargo build --release --locked -p bakery
+
+      - name: test
+        run: cd src && cargo test --release --locked -p bakery
+
+      # Auto-bumps the patch version from Cargo.toml and appends a
+      # timestamp+sha dev suffix — no developer discipline required, and the
+      # result is visibly "ahead of" the last stable patch release while
+      # staying valid semver (comparable within the dev track by bakery's
+      # `is_newer`).
+      - name: compute dev version
+        run: |
+          set -euo pipefail
+          cd src
+          CUR="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')"
+          IFS='.' read -r MA MI PA <<< "${CUR}"
+          SHA="$(git rev-parse --short HEAD)"
+          TS="$(date -u +%Y%m%d%H%M%S)"
+          echo "VERSION=${MA}.${MI}.$((PA + 1))-dev.${TS}+${SHA}" >> "$GITHUB_ENV"
+
+      - name: prepare artifacts
+        run: |
+          set -euo pipefail
+          PKG_DIR="/srv/breadway-dl/dev/bakery/${VERSION}"
+          mkdir -p "${PKG_DIR}"
+          cp "src/target/release/bakery" "${PKG_DIR}/bakery-x86_64"
+          strip "${PKG_DIR}/bakery-x86_64"
+          sha256sum "${PKG_DIR}/bakery-x86_64" | awk '{print $1}' \
+            > "${PKG_DIR}/bakery-x86_64.sha256"
+          cp src/bakery.toml "${PKG_DIR}/bakery.toml"
+          ln -sfn "${VERSION}" "/srv/breadway-dl/dev/bakery/latest"
+
+      - name: sign dev binary
+        env:
+          MINISIGN_SEC_KEY: ${{ secrets.BAKERY_MINISIGN_SEC_KEY_PATH }}
+        run: |
+          set -euo pipefail
+          PKG_DIR="/srv/breadway-dl/dev/bakery/${VERSION}"
+          if [ -n "${MINISIGN_SEC_KEY:-}" ]; then
+            minisign -W -S -s "${MINISIGN_SEC_KEY}" -m "${PKG_DIR}/bakery-x86_64" \
+              -x "${PKG_DIR}/bakery-x86_64.minisig" </dev/null
+            echo "signed bakery-x86_64"
+          else
+            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set — shipping bakery-x86_64 UNSIGNED"
+          fi
+
+      # No GitHub Release upload step here, unlike release-bakery.yml — dev
+      # builds happen on every push and would spam a release per commit, so
+      # dl.breadway.dev/dev/ is the only distribution point for this track.
+      - name: regenerate dev index.json
+        env:
+          MINISIGN_SEC_KEY: ${{ secrets.BAKERY_MINISIGN_SEC_KEY_PATH }}
+          TRACK: dev
+        run: cd src && bash scripts/gen-index.sh

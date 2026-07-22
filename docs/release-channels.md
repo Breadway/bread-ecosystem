@@ -50,6 +50,44 @@ release or package workflow — just the repo itself, e.g. breadarr today).
 binary, via its own `release-iso.yml`. It is never on either channel and
 should never carry a `bakery.toml` or `PKGBUILD`.
 
+## Build tracks (stable/beta/dev) — orthogonal to channels
+
+Within the **bakery channel only**, a repo can additionally publish up to
+three **tracks**: `stable` (the existing tag-triggered `v*` flow, unchanged),
+`beta` (a deliberate promotion triggered by a `beta-v*` tag), and `dev`
+(published automatically on every push to the `dev` branch). Don't confuse
+"track" with "channel" above — channel is *how* a binary reaches a user
+(bakery vs. pacman); track is *which build* of a bakery-channel package they
+get.
+
+Each track lives in its own subtree so they never collide:
+
+| Track  | Index URL | Artifact root | Trigger |
+|---|---|---|---|
+| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `v*` |
+| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `beta-v*` |
+| dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `dev` |
+
+`scripts/gen-index.sh` takes a `TRACK` env var (default `stable`) to select
+which subtree it reads/writes — every existing stable release workflow needs
+zero changes. Dev/beta builds skip the GitHub Release upload step entirely
+(no release-per-commit spam for dev, and beta doesn't need a GitHub mirror
+either) — `dl.breadway.dev` is their only distribution point.
+
+Adding beta/dev to a bakery-channel repo: copy `dev-bakery.yml` /
+`beta-bakery.yml` (or `bread`'s `dev-release.yml` / `beta-release.yml` if the
+repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
+the repo/binary names the same way the checklist below describes for
+`release.yml`. Not every bakery-channel repo needs beta/dev on day one —
+`gen-index.sh` silently skips any product with no release dir under a given
+track's tree, same as it already does for an unreleased product on stable.
+
+Client side: `bakery track show` / `bakery track set <stable|beta|dev>`
+remembers a global track preference (`~/.local/state/bakery/installed.json`)
+and validates the target track's index is reachable and signed before
+switching — it never auto-reinstalls on switch, run `bakery update --all`
+afterwards.
+
 ## mirror.yml is not part of this policy
 
 Every repo previously carried its own `.forgejo/workflows/mirror.yml` doing
@@ -82,13 +120,14 @@ missing it; that gap is intentional and about to be moot everywhere.
 
 ## Current state (as of this pass)
 
-| Repo | bakery | pacman | notes |
-|---|---|---|---|
-| bread-ecosystem (bakery product) | yes | yes | `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
-| bread-ecosystem (bread-theme product) | yes | no | |
-| bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | yes | complete, used as templates |
-| breadclip, breadmon, breadsearch, breadshot | yes | no | complete |
-| breadlock, breadhelp | no | yes | breadlock's `bakery.toml` was removed as orphaned; its README wrongly claimed it was a registry entry |
-| bos-settings | yes | yes | was missing both the registry entry and `release.yml`; both added |
-| bos | no | no | ISO-only via `release-iso.yml`; had an erroneous `bakery.toml` copy-pasted from bos-settings, removed |
-| breadarr | no | no | had an orphaned `bakery.toml` with no registry entry and zero workflows; removed. Not yet assigned a channel — do that deliberately when it's ready to ship, don't infer it from a stray config file |
+| Repo | bakery | pacman | tracks | notes |
+|---|---|---|---|---|
+| bread-ecosystem (bakery product) | yes | yes | stable, beta, dev | `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
+| bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | |
+| bread | yes | yes | stable, beta, dev | pilot repo for the beta/dev track rollout |
+| breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | yes | stable only | complete, used as templates; not yet rolled out to beta/dev |
+| breadclip, breadmon, breadsearch, breadshot | yes | no | stable only | complete |
+| breadlock, breadhelp | no | yes | n/a | breadlock's `bakery.toml` was removed as orphaned; its README wrongly claimed it was a registry entry |
+| bos-settings | yes | yes | stable only | was missing both the registry entry and `release.yml`; both added |
+| bos | no | no | n/a | ISO-only via `release-iso.yml`; had an erroneous `bakery.toml` copy-pasted from bos-settings, removed |
+| breadarr | no | no | n/a | had an orphaned `bakery.toml` with no registry entry and zero workflows; removed. Not yet assigned a channel — do that deliberately when it's ready to ship, don't infer it from a stray config file |

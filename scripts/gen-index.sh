@@ -1,19 +1,38 @@
 #!/usr/bin/env bash
-# Generate dl.breadway.dev/index.json from:
-#   - registry/bread-ecosystem.toml   (product list)
-#   - <DL_DIR>/<name>/bakery.toml     (per-product metadata, uploaded by release.yml)
-#   - <DL_DIR>/                       (built binaries + sha256 files)
+# Generate dl.breadway.dev/index.json (or a track-prefixed sibling — see
+# TRACK below) from:
+#   - registry/bread-ecosystem.toml         (product list)
+#   - <PKG_ROOT>/<name>/bakery.toml         (per-product metadata, uploaded by release.yml)
+#   - <PKG_ROOT>/                           (built binaries + sha256 files)
 #
 # Fallback for local dev: looks for ../name/bakery.toml (sibling repo checkout).
 # Run on hestia after each product build, before the dl server is refreshed.
+#
+# TRACK selects which build track to generate an index for: "stable"
+# (default — reads/writes DL_DIR directly, byte-for-byte the same behavior
+# as before tracks existed), "beta", or "dev" (both read/write a
+# DL_DIR/<track>/ subtree, so they never collide with stable's paths). A
+# product with no release dir under the selected track's tree is skipped
+# with a warning, same as an unreleased product is today — most products
+# won't have a beta/dev build for a while after this lands.
 # Requires: jq, python3 (tomllib, stdlib since 3.11), sha256sum
 set -euo pipefail
 
 SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DL_DIR="${DL_DIR:-/srv/breadway-dl}"
 DL_BASE="${DL_BASE:-https://dl.breadway.dev}"
+TRACK="${TRACK:-stable}"
 GH_BASE="https://github.com"
-OUT="${DL_DIR}/index.json"
+
+if [[ "${TRACK}" == "stable" ]]; then
+    PKG_ROOT="${DL_DIR}"
+    URL_ROOT="${DL_BASE}"
+    OUT="${DL_DIR}/index.json"
+else
+    PKG_ROOT="${DL_DIR}/${TRACK}"
+    URL_ROOT="${DL_BASE}/${TRACK}"
+    OUT="${DL_DIR}/${TRACK}/index.json"
+fi
 
 # Read the product list from the registry TOML instead of a hardcoded array.
 mapfile -t products < <(python3 -c "
@@ -30,8 +49,8 @@ build_package_json() {
     local name="$1"
     local repo="$2"
 
-    # Find the latest version dir under DL_DIR/<name>/
-    local pkg_dir="${DL_DIR}/${name}"
+    # Find the latest version dir under PKG_ROOT/<name>/
+    local pkg_dir="${PKG_ROOT}/${name}"
     if [[ ! -d "${pkg_dir}" ]]; then
         echo "  warning: no release dir for ${name} at ${pkg_dir}" >&2
         return 1
@@ -65,8 +84,17 @@ build_package_json() {
         if [[ -f "${sha256_path}" ]]; then
             sha256="$(awk '{print $1}' "${sha256_path}")"
         fi
-        local dl_url="${DL_BASE}/${name}/${version}/${bin_name}"
-        local gh_url="${GH_BASE}/${repo}/releases/download/v${version}/${bin_name}"
+        local dl_url="${URL_ROOT}/${name}/${version}/${bin_name}"
+        # dev/beta builds never get a real GitHub Release (see the dev/beta
+        # CI workflows — that step is intentionally skipped for those
+        # tracks), so github_url just mirrors dl_url rather than pointing at
+        # a release asset that doesn't exist.
+        local gh_url
+        if [[ "${TRACK}" == "stable" ]]; then
+            gh_url="${GH_BASE}/${repo}/releases/download/v${version}/${bin_name}"
+        else
+            gh_url="${dl_url}"
+        fi
 
         local entry
         entry="$(jq -n \
@@ -86,7 +114,7 @@ build_package_json() {
         bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
     fi
     if [[ ! -f "${bakery_toml}" ]]; then
-        echo "ERROR: bakery.toml not found for ${name} — release.yml must copy it to \${DL_DIR}/${name}/\${VERSION}/bakery.toml" >&2
+        echo "ERROR: bakery.toml not found for ${name} — the release workflow must copy it to \${PKG_ROOT}/${name}/\${VERSION}/bakery.toml" >&2
         return 1
     fi
 

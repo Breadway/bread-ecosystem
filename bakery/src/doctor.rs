@@ -1,3 +1,4 @@
+use crate::ui;
 use anyhow::Result;
 use std::process::Command;
 
@@ -52,28 +53,37 @@ fn pkg_config_exists(lib: &str) -> bool {
 /// Returns true if all *required* deps are satisfied.
 pub fn report(package_name: &str, required: &[String], optional: &[String]) -> bool {
     if required.is_empty() && optional.is_empty() {
-        println!("  {package_name}: no system deps required");
+        println!("  {}", ui::ok(&format!("{package_name}: no system deps required")));
         return true;
     }
     match check_deps(required, optional) {
         Err(e) => {
-            eprintln!("  error running doctor for {package_name}: {e}");
+            eprintln!("  {}", ui::fail(&format!("error running doctor for {package_name}: {e}")));
             false
         }
         Ok(rep) => {
             for warn in &rep.warnings {
                 eprintln!(
-                    "  {package_name}: optional dep not found: {warn} \
-                     (install for full functionality)"
+                    "  {}",
+                    ui::style(
+                        &format!(
+                            "{package_name}: optional dep not found: {warn} \
+                             (install for full functionality)"
+                        ),
+                        ui::YELLOW
+                    )
                 );
             }
             if rep.missing.is_empty() {
-                println!("  {package_name}: all required system deps satisfied");
+                println!("  {}", ui::ok(&format!("{package_name}: all required system deps satisfied")));
                 true
             } else {
                 eprintln!(
-                    "  {package_name}: missing system deps: {}",
-                    rep.missing.join(", ")
+                    "  {}",
+                    ui::fail(&format!(
+                        "{package_name}: missing system deps: {}",
+                        rep.missing.join(", ")
+                    ))
                 );
                 eprintln!("  install with: sudo pacman -S {}", rep.missing.join(" "));
                 false

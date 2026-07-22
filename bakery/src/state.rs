@@ -1,3 +1,4 @@
+use crate::track::Track;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,6 +15,11 @@ pub struct InstalledPackage {
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct State {
+    // `#[serde(default)]` lets an installed.json written by a pre-track
+    // bakery binary deserialize straight into Track::Stable with no
+    // migration step.
+    #[serde(default)]
+    pub track: Track,
     pub packages: HashMap<String, InstalledPackage>,
 }
 
@@ -51,6 +57,10 @@ impl State {
 
     pub fn remove(&mut self, name: &str) -> Option<InstalledPackage> {
         self.packages.remove(name)
+    }
+
+    pub fn set_track(&mut self, track: Track) {
+        self.track = track;
     }
 }
 
@@ -99,6 +109,23 @@ mod tests {
     fn remove_unknown_returns_none() {
         let mut state = State::default();
         assert!(state.remove("nope").is_none());
+    }
+
+    #[test]
+    fn track_defaults_to_stable_on_old_shape_json() {
+        // Simulates installed.json written before the track field existed.
+        let old_shape = r#"{"packages":{}}"#;
+        let state: State = serde_json::from_str(old_shape).unwrap();
+        assert_eq!(state.track, Track::Stable);
+    }
+
+    #[test]
+    fn set_track_updates_and_roundtrips() {
+        let mut state = State::default();
+        state.set_track(Track::Dev);
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: State = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.track, Track::Dev);
     }
 
     #[test]

@@ -1,12 +1,33 @@
+use crate::track::Track;
 use anyhow::{bail, Context, Result};
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-const PRIMARY_URL: &str = "https://dl.breadway.dev/index.json";
-const SIG_URL: &str = "https://dl.breadway.dev/index.json.minisig";
+const DEFAULT_BASE_URL: &str = "https://dl.breadway.dev";
 const CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 3600);
+
+/// The `https://dl.breadway.dev` base can be overridden for local/staging
+/// testing (e.g. serving a fake index from `python3 -m http.server`) without
+/// rebuilding bakery — same pattern as `main.rs`'s `BAKERY_BIN_DIR` override.
+fn base_url() -> String {
+    std::env::var("BAKERY_INDEX_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string())
+}
+
+/// Index URL for `track`. `Stable` keeps the exact pre-track path
+/// (`{base}/index.json`) so existing infra and warm caches are unaffected;
+/// `Beta`/`Dev` live under a track-prefixed subpath.
+fn primary_url(track: Track) -> String {
+    match track {
+        Track::Stable => format!("{}/index.json", base_url()),
+        Track::Beta | Track::Dev => format!("{}/{}/index.json", base_url(), track.as_str()),
+    }
+}
+
+fn sig_url(track: Track) -> String {
+    format!("{}.minisig", primary_url(track))
+}
 
 /// The bakery index-signing public key.
 ///
@@ -120,8 +141,8 @@ impl Index {
     }
 }
 
-/// Load the manifest, using the on-disk cache when it is fresh enough.
-/// Always fetches if `force_refresh` is true.
+/// Load the manifest for `track`, using the on-disk cache when it is fresh
+/// enough. Always fetches if `force_refresh` is true.
 ///
 /// Every path — fresh fetch or cached read — verifies the minisign
 /// signature over the raw `index.json` bytes before the JSON is parsed or
@@ -130,12 +151,12 @@ impl Index {
 /// (possibly tampered, possibly just stale-format) cache and triggers one
 /// re-fetch from the network rather than bricking the CLI outright; if the
 /// freshly fetched copy also fails to verify, that's a hard error.
-pub fn load(force_refresh: bool) -> Result<Index> {
-    let cache_path = cache_path();
+pub fn load(force_refresh: bool, track: Track) -> Result<Index> {
+    let cache_path = cache_path(track);
     let sig_cache_path = sig_cache_path(&cache_path);
 
     if !force_refresh && cache_is_fresh(&cache_path) {
-        match read_and_verify_cache(&cache_path, &sig_cache_path) {
+        match read_and_verify_cache(&cache_path, &sig_cache_path, track) {
             Ok(index) => return Ok(index),
             Err(err) => {
                 eprintln!(
@@ -145,14 +166,20 @@ pub fn load(force_refresh: bool) -> Result<Index> {
         }
     }
 
-    fetch_and_cache(&cache_path, &sig_cache_path)
+    fetch_and_cache(&cache_path, &sig_cache_path, track)
 }
 
-fn read_and_verify_cache(cache_path: &PathBuf, sig_cache_path: &PathBuf) -> Result<Index> {
+fn read_and_verify_cache(
+    cache_path: &PathBuf,
+    sig_cache_path: &PathBuf,
+    track: Track,
+) -> Result<Index> {
     let bytes = std::fs::read(cache_path).context("reading cached index")?;
     let sig_text = std::fs::read_to_string(sig_cache_path)
         .context("reading cached index.json.minisig (cache predates signing support)")?;
-    verify_index_signature(&bytes, &sig_text)?;
+    verify_index_signature(&bytes, &sig_text).with_context(|| {
+        format!("cached {track} index failed signature verification")
+    })?;
     serde_json::from_slice(&bytes).context("parsing cached index")
 }
 
@@ -163,13 +190,18 @@ fn cache_is_fresh(path: &PathBuf) -> bool {
         .unwrap_or(false)
 }
 
-fn fetch_and_cache(cache_path: &PathBuf, sig_cache_path: &PathBuf) -> Result<Index> {
-    let bytes = fetch_bytes(PRIMARY_URL)?;
-    let sig_text = fetch_text(SIG_URL).context(
+fn fetch_and_cache(cache_path: &PathBuf, sig_cache_path: &PathBuf, track: Track) -> Result<Index> {
+    let bytes = fetch_bytes(&primary_url(track)).with_context(|| {
+        format!(
+            "fetching {track} index — has a {track} build been published yet? \
+             run 'bakery track set stable' to switch back"
+        )
+    })?;
+    let sig_text = fetch_text(&sig_url(track)).context(
         "fetching index.json.minisig — the index must be signed before it can be trusted",
     )?;
     verify_index_signature(&bytes, &sig_text)
-        .context("freshly fetched index.json failed signature verification")?;
+        .with_context(|| format!("freshly fetched {track} index failed signature verification"))?;
 
     if let Some(dir) = cache_path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -193,10 +225,19 @@ fn fetch_text(url: &str) -> Result<String> {
         .context("reading response body")
 }
 
-pub fn cache_path() -> PathBuf {
+/// Cache filename for `track`. `Stable` keeps the pre-track filename
+/// (`index.json`) so an existing warm cache survives an upgrade to a
+/// track-aware bakery; `Beta`/`Dev` get their own sibling files so switching
+/// tracks doesn't clobber each other's cache.
+pub fn cache_path(track: Track) -> PathBuf {
+    let file_name = match track {
+        Track::Stable => "index.json".to_string(),
+        Track::Beta | Track::Dev => format!("index-{}.json", track.as_str()),
+    };
     dirs::cache_dir()
         .unwrap_or_else(|| PathBuf::from("~/.cache"))
-        .join("bakery/index.json")
+        .join("bakery")
+        .join(file_name)
 }
 
 /// Download a binary blob from `primary_url`, falling back to `fallback_url`
@@ -275,5 +316,38 @@ znmVfINB4jFDR2a4wuY8rOKlUBeSDOFjMkHYDXV3vxvAjK+r4V12ae9ZRQkfVtQ1YIEmFXbnJfbxywg+
         // Guards against a future typo/truncation in the hardcoded PUBKEY —
         // it must at least parse as a valid minisign public key.
         PublicKey::from_base64(PUBKEY).expect("PUBKEY must be a valid minisign public key");
+    }
+
+    #[test]
+    fn stable_cache_path_matches_pre_track_filename() {
+        // Must stay exactly "index.json" so an existing warm cache from a
+        // pre-track bakery binary is still used after an upgrade.
+        assert_eq!(
+            cache_path(Track::Stable).file_name().unwrap(),
+            "index.json"
+        );
+    }
+
+    #[test]
+    fn beta_and_dev_cache_paths_are_distinct_siblings() {
+        let stable = cache_path(Track::Stable);
+        let beta = cache_path(Track::Beta);
+        let dev = cache_path(Track::Dev);
+        assert_ne!(stable, beta);
+        assert_ne!(stable, dev);
+        assert_ne!(beta, dev);
+        assert_eq!(beta.parent(), stable.parent());
+        assert_eq!(dev.parent(), stable.parent());
+    }
+
+    #[test]
+    fn stable_url_has_no_track_prefix() {
+        assert_eq!(primary_url(Track::Stable), format!("{}/index.json", base_url()));
+    }
+
+    #[test]
+    fn beta_and_dev_urls_are_track_prefixed() {
+        assert_eq!(primary_url(Track::Beta), format!("{}/beta/index.json", base_url()));
+        assert_eq!(primary_url(Track::Dev), format!("{}/dev/index.json", base_url()));
     }
 }

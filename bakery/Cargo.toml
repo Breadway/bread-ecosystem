@@ -19,6 +19,7 @@ hex = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 minisign-verify = { workspace = true }
+semver = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
