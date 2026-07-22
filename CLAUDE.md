@@ -2,17 +2,16 @@
 
 Scope: this file covers *repo hygiene* — branching, remotes, CI, cleanup. It is not project documentation.
 
-## Branch model
-- `main` — release branch, always tag-ready. Don't commit directly to it; the only thing that lands there is a `beta` merge (see release lifecycle below).
-- `dev` — integration branch. Land day-to-day work here first. Publishes a dev-track build automatically on every push (see CI below) — this is the "push, test, fix forward with another push" loop.
-- `beta` — frozen stabilization branch, cut from `dev`. Publishes a beta-track build automatically on every push, same as `dev`. While frozen, only `fix/<issue>` branches merged directly into `beta` should land there — `dev` keeps moving independently for the next cycle.
-- All new work — features and bug fixes alike — goes on short-lived branches: `feature/<name>` or `fix/<issue>`. Normally these branch off `dev` and merge back into `dev`. During a beta freeze, a fix for a beta-reported issue branches off `beta` instead, merges into `beta` to unblock testers, and should also be cherry-picked/merged into `dev` so the bug doesn't quietly regress there.
-
-## Release lifecycle
-1. Work lands on `dev` via `feature/x` / `fix/x` branches. Every push to `dev` auto-publishes a dev-track build (`bakery track set dev`) — test it, fix issues with another push to `dev`.
-2. Once `dev` has gone roughly **a week** without new issues, cut `beta` fresh from `dev`'s current tip: `git branch -f beta dev` (from a clean checkout — don't `git checkout main`/`git merge` for this, use a plain branch-pointer move), then force-push `beta` to both remotes. This freezes it.
-3. `beta` auto-publishes on every push, same as `dev`. Anyone can file issues against it on Forgejo. Fixes land via `fix/<issue>` → `beta` (and should be forwarded into `dev` too).
-4. Once `beta` has gone roughly **a month** without new issues, merge `beta` → `main`, then push a `vX.Y.Z` tag from `main` to actually cut the stable release (the merge alone triggers no CI — only the tag does). Reset `beta` fresh from `dev` again to start the next cycle.
+This repo follows the branch/release workflow documented in `CONTRIBUTING.md`
+— read and follow it for any git, branch, or release work here (the
+dev/beta/main lifecycle, `feature/x`/`fix/x` branch naming, when to cut or
+reset `beta`, etc). Don't improvise a different workflow. The short version:
+`main` is tag-ready and only moves via a `beta` merge; `dev` and `beta` both
+auto-publish a build on every push (dev-track / beta-track respectively);
+`beta` is a frozen stabilization branch cut from `dev` roughly weekly and
+promoted to `main` roughly monthly. `git branch -f beta dev` (plain
+branch-pointer move) is how `beta` gets reset — never `git checkout
+main`/`git merge` for this.
 
 ## Remotes
 - `origin` — Forgejo (`git.breadway.dev` via Hestia, SSH) — authoritative.

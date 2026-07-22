@@ -147,9 +147,8 @@ missing it; that gap is intentional and about to be moot everywhere.
 |---|---|---|---|---|
 | bread-ecosystem (bakery product) | yes | yes | stable, beta, dev | `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
 | bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | |
-| bread | yes | yes | stable, beta, dev | pilot repo for the beta/dev track rollout |
-| breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | yes | stable only | complete, used as templates; not yet rolled out to beta/dev |
-| breadclip, breadmon, breadsearch, breadshot | yes | no | stable only | complete |
+| bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | yes | stable, beta, dev | complete on all three tracks |
+| breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | complete on all three tracks |
 | breadlock, breadhelp | no | yes | n/a | breadlock's `bakery.toml` was removed as orphaned; its README wrongly claimed it was a registry entry |
 | bos-settings | yes | yes | stable only | was missing both the registry entry and `release.yml`; both added |
 | bos | no | no | n/a | ISO-only via `release-iso.yml`; had an erroneous `bakery.toml` copy-pasted from bos-settings, removed |
