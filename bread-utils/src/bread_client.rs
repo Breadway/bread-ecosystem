@@ -115,6 +115,50 @@ impl BreadClient {
         let _ = writeln!(stream, "{line}");
     }
 
+    /// Send a one-shot IPC request and return its `result`, or `None` on any
+    /// failure — breadd unreachable, a malformed response, or an `error`
+    /// field in the response. Mirrors `emit`'s graceful-degradation stance:
+    /// a caller checks for `None` the same way it'd handle "daemon not
+    /// installed," not via a `Result` that forces error-path plumbing for
+    /// what is, for most callers (a refresh-on-connect read), an expected
+    /// possibility rather than an exceptional one.
+    ///
+    /// Unlike `emit`, this is not restricted to the client's own namespace —
+    /// `method`/`params` map directly onto breadd's IPC method table (see
+    /// `Documentation.md`'s "Dictionary: IPC protocol"), most of which
+    /// (`state.get`, `widgets.list`, ...) are cross-namespace reads by
+    /// design. Only first-party compiled code links `bread-utils`, so this
+    /// carries the same trust level as `emit`'s own request construction.
+    pub fn request(&self, method: &str, params: Value) -> Option<Value> {
+        let request = json!({
+            "id": "0",
+            "method": method,
+            "params": params,
+        });
+        let line = serde_json::to_string(&request).ok()?;
+
+        let mut stream = UnixStream::connect(bread_shared::resolve_socket_path()).ok()?;
+        stream
+            .set_write_timeout(Some(Duration::from_millis(200)))
+            .ok()?;
+        stream
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .ok()?;
+        writeln!(stream, "{line}").ok()?;
+
+        let mut response_line = String::new();
+        BufReader::new(stream).read_line(&mut response_line).ok()?;
+        if response_line.trim().is_empty() {
+            return None;
+        }
+
+        let value: Value = serde_json::from_str(&response_line).ok()?;
+        if value.get("error").is_some() {
+            return None;
+        }
+        value.get("result").cloned()
+    }
+
     /// Subscribe to events matching `pattern` (glob: `*`/`**`/`?`), invoking
     /// `on_event` for each one on a dedicated background thread. Typically
     /// called with `"bread.command.<app_id>.**"` to receive commands
@@ -288,6 +332,14 @@ mod tests {
         // observe the (correctly suppressed) call against in a unit test;
         // the cross-process behavior is covered by breadd's own
         // integration tests for the IPC-side of namespace validation.
+    }
+
+    #[test]
+    fn request_returns_none_when_daemon_is_unreachable() {
+        // No daemon present in the test environment; must return None
+        // promptly rather than blocking or panicking.
+        let client = BreadClient::connect("clip");
+        assert!(client.request("widgets.list", json!(null)).is_none());
     }
 
     #[test]
