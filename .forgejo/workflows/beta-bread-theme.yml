@@ -53,4 +53,10 @@ jobs:
         env:
           MINISIGN_SEC_KEY: ${{ secrets.BAKERY_MINISIGN_SEC_KEY_PATH }}
           TRACK: beta
-        run: cd src && bash scripts/gen-index.sh
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate beta index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the beta track)"
+            exit 1
+          fi
+          cd src && bash scripts/gen-index.sh
