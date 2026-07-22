@@ -65,41 +65,85 @@ pub fn ink_on(hex: &str) -> &'static str {
     if luminance(hex) > 0.179 { "#11111b" } else { "#f5f5f5" }
 }
 
-/// Canonical `@define-color` block: the single naming all bread apps share.
+/// Canonical (name, value) list: the single naming all bread apps share.
 /// `surface` = color0 (darkest surface), `overlay` = color7 (muted), and
 /// `accent` = color4. Apps must use these names, not raw palette slots, so the
 /// whole ecosystem recolours together.
 ///
 /// The `on-*` colours are computed ink (black/white) guaranteed to be legible on
-/// the matching background — use `@on-surface` for text on a `@surface` panel,
-/// `@on-accent` on an `@accent` button, etc. They exist because pywal can emit a
+/// the matching background — use `on-surface` for text on a `surface` panel,
+/// `on-accent` on an `accent` button, etc. They exist because pywal can emit a
 /// light value in any slot, and white text on a light surface disappears.
+///
+/// [`define_colors`] (GTK `@define-color`) and [`css_custom_properties`] (web
+/// `:root { --name: ... }`) both format this same list rather than each
+/// hand-writing their own — see `css_vars_and_stylesheet_agree_on_color_block`
+/// and `css_custom_properties_matches_define_colors_name_set` for the
+/// regression tests this exists to satisfy.
+fn color_pairs(p: &Palette) -> [(&'static str, String); 16] {
+    [
+        ("bg", p.background.clone()),
+        ("fg", p.foreground.clone()),
+        ("surface", p.color0.clone()),
+        ("overlay", p.color7.clone()),
+        ("accent", p.color4.clone()),
+        ("red", p.color1.clone()),
+        ("green", p.color2.clone()),
+        ("yellow", p.color3.clone()),
+        ("blue", p.color4.clone()),
+        ("pink", p.color5.clone()),
+        ("teal", p.color6.clone()),
+        ("on-bg", ink_on(&p.background).to_string()),
+        ("on-surface", ink_on(&p.color0).to_string()),
+        ("on-accent", ink_on(&p.color4).to_string()),
+        ("on-red", ink_on(&p.color1).to_string()),
+        ("on-overlay", ink_on(&p.color7).to_string()),
+    ]
+}
+
+/// GTK `@define-color` block built from [`color_pairs`].
 fn define_colors(p: &Palette) -> String {
+    color_pairs(p)
+        .iter()
+        .map(|(name, value)| format!("@define-color {name} {value};\n"))
+        .collect()
+}
+
+/// CSS custom-properties block (`:root { --bg: ...; --on-accent: ...; }`) for
+/// web frontends (Tauri), using the exact same names as [`define_colors`] so
+/// the GTK and web outputs cannot drift apart independently — both are
+/// generated from [`color_pairs`], not two hand-written copies.
+pub fn css_custom_properties(p: &Palette) -> String {
+    let vars: String = color_pairs(p)
+        .iter()
+        .map(|(name, value)| format!("  --{name}: {value};\n"))
+        .collect();
+    format!(":root {{\n{vars}}}\n")
+}
+
+/// CSS custom-properties for [`tokens`] (font, spacing, radii) — the web
+/// counterpart to [`tokens`] being hand-read by GTK code, so a web frontend
+/// isn't hand-copying the same numbers into a second source of truth.
+pub fn css_tokens() -> String {
+    use tokens::*;
     format!(
-        "@define-color bg {bg};\n\
-         @define-color fg {fg};\n\
-         @define-color surface {c0};\n\
-         @define-color overlay {c7};\n\
-         @define-color accent {c4};\n\
-         @define-color red {c1};\n\
-         @define-color green {c2};\n\
-         @define-color yellow {c3};\n\
-         @define-color blue {c4};\n\
-         @define-color pink {c5};\n\
-         @define-color teal {c6};\n\
-         @define-color on-bg {on_bg};\n\
-         @define-color on-surface {on_surface};\n\
-         @define-color on-accent {on_accent};\n\
-         @define-color on-red {on_red};\n\
-         @define-color on-overlay {on_overlay};\n",
-        bg = p.background, fg = p.foreground,
-        c0 = p.color0, c1 = p.color1, c2 = p.color2, c3 = p.color3,
-        c4 = p.color4, c5 = p.color5, c6 = p.color6, c7 = p.color7,
-        on_bg = ink_on(&p.background),
-        on_surface = ink_on(&p.color0),
-        on_accent = ink_on(&p.color4),
-        on_red = ink_on(&p.color1),
-        on_overlay = ink_on(&p.color7),
+        ":root {{\n\
+         \x20\x20--font-family: '{font}';\n\
+         \x20\x20--font-size-base: {base}px;\n\
+         \x20\x20--font-size-secondary: {sec}px;\n\
+         \x20\x20--space-xs: {xs}px;\n\
+         \x20\x20--space-sm: {sm}px;\n\
+         \x20\x20--space-md: {md}px;\n\
+         \x20\x20--space-lg: {lg}px;\n\
+         \x20\x20--space-xl: {xl}px;\n\
+         \x20\x20--radius-primary: {r1}px;\n\
+         \x20\x20--radius-secondary: {r2}px;\n\
+         \x20\x20--radius-tertiary: {r3}px;\n\
+         \x20\x20--radius-pill: {pill}px;\n\
+         }}\n",
+        font = FONT_FAMILY, base = FONT_SIZE_BASE, sec = FONT_SIZE_SECONDARY,
+        xs = SPACE_XS, sm = SPACE_SM, md = SPACE_MD, lg = SPACE_LG, xl = SPACE_XL,
+        r1 = RADIUS_PRIMARY, r2 = RADIUS_SECONDARY, r3 = RADIUS_TERTIARY, pill = RADIUS_PILL,
     )
 }
 
@@ -271,6 +315,38 @@ mod tests {
             assert!(css.contains(sel), "stylesheet missing selector: {sel}");
         }
         assert!(css.contains("Varela Round"));
+    }
+
+    #[test]
+    fn css_custom_properties_matches_define_colors_name_set() {
+        // Both must derive from the same color_pairs() list, so the web
+        // output can't drift from the GTK one the way css_vars/stylesheet
+        // used to (see css_vars_and_stylesheet_agree_on_color_block above).
+        let p = Palette::default();
+        let gtk = define_colors(&p);
+        let web = css_custom_properties(&p);
+        for (name, _) in color_pairs(&p) {
+            assert!(gtk.contains(&format!("@define-color {name} ")), "gtk missing {name}");
+            assert!(web.contains(&format!("--{name}: ")), "web missing {name}");
+        }
+    }
+
+    #[test]
+    fn css_custom_properties_is_valid_root_block() {
+        let p = Palette::default();
+        let css = css_custom_properties(&p);
+        assert!(css.starts_with(":root {\n"));
+        assert!(css.trim_end().ends_with('}'));
+        assert!(css.contains(&format!("--accent: {};", p.color4)));
+    }
+
+    #[test]
+    fn css_tokens_contains_font_and_spacing_vars() {
+        let css = css_tokens();
+        assert!(css.contains("--font-family: 'Varela Round, sans-serif';"));
+        assert!(css.contains("--font-size-base: 14px;"));
+        assert!(css.contains("--space-md: 12px;"));
+        assert!(css.contains("--radius-pill: 999px;"));
     }
 
     #[test]
