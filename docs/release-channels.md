@@ -54,31 +54,54 @@ should never carry a `bakery.toml` or `PKGBUILD`.
 
 Within the **bakery channel only**, a repo can additionally publish up to
 three **tracks**: `stable` (the existing tag-triggered `v*` flow, unchanged),
-`beta` (a deliberate promotion triggered by a `beta-v*` tag), and `dev`
-(published automatically on every push to the `dev` branch). Don't confuse
-"track" with "channel" above — channel is *how* a binary reaches a user
-(bakery vs. pacman); track is *which build* of a bakery-channel package they
-get.
+`beta` (a frozen stabilization branch), and `dev` (published automatically on
+every push to the `dev` branch). Don't confuse "track" with "channel" above —
+channel is *how* a binary reaches a user (bakery vs. pacman); track is *which
+build* of a bakery-channel package they get.
 
 Each track lives in its own subtree so they never collide:
 
 | Track  | Index URL | Artifact root | Trigger |
 |---|---|---|---|
-| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `v*` |
-| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `beta-v*` |
+| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `v*` on `main` |
+| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push to branch `beta` |
 | dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `dev` |
 
 `scripts/gen-index.sh` takes a `TRACK` env var (default `stable`) to select
 which subtree it reads/writes — every existing stable release workflow needs
 zero changes. Dev/beta builds skip the GitHub Release upload step entirely
-(no release-per-commit spam for dev, and beta doesn't need a GitHub mirror
-either) — `dl.breadway.dev` is their only distribution point.
+(no release-per-commit spam, and beta doesn't need a GitHub mirror either) —
+`dl.breadway.dev` is their only distribution point.
+
+**The full branch lifecycle** (see also `CLAUDE.md`'s Branch model section):
+day-to-day work lands on `feature/<name>` or `fix/<issue>` branches, merged
+into `dev`. `dev` publishes a fresh dev-track build on every push — this is
+the "test for a while, fix forward with another push" loop. When `dev` has
+gone roughly a week without new issues, cut `beta` fresh from `dev`'s current
+tip (`git branch -f beta dev` from a clean checkout, then force-push) — this
+freezes it as the stabilization target. `beta` publishes on every push the
+same way `dev` does, but only `fix/<issue>` branches merged directly into
+`beta` should land there afterward; `dev` keeps moving independently for the
+next cycle. After roughly a month of `beta` going without new issues, merge
+`beta` into `main` and push a `vX.Y.Z` tag from `main` to cut the actual
+stable release (the merge itself triggers nothing — tag-push is what fires
+`release.yml`). Reset `beta` fresh from `dev` again to start the next cycle.
+
+Auto-versioning: both `dev` and `beta` compute their build version from the
+latest published `vX.Y.Z` tag (via `git ls-remote --tags`, not `Cargo.toml` —
+`Cargo.toml` can drift stale relative to the actual last release) plus a
+`-dev.<timestamp>+<sha>` / `-beta.<timestamp>+<sha>` suffix. This is
+self-healing regardless of `Cargo.toml` drift and keeps `bakery`'s semver
+check (`is_newer`) meaningful — it will correctly refuse to "update" to a
+build that isn't actually newer than what's installed.
 
 Adding beta/dev to a bakery-channel repo: copy `dev-bakery.yml` /
 `beta-bakery.yml` (or `bread`'s `dev-release.yml` / `beta-release.yml` if the
 repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
 the repo/binary names the same way the checklist below describes for
-`release.yml`. Not every bakery-channel repo needs beta/dev on day one —
+`release.yml`. Also create the repo's `dev` and `beta` branches if they don't
+exist yet (`git checkout -b dev main` / `git checkout -b beta dev`, push
+both). Not every bakery-channel repo needs beta/dev on day one —
 `gen-index.sh` silently skips any product with no release dir under a given
 track's tree, same as it already does for an unreleased product on stable.
 

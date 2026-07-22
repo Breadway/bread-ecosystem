@@ -123,14 +123,20 @@ bread-ecosystem/
 
 ## Release pipeline
 
-Each product repo (`Breadway/bread`, `Breadway/breadbar`, …) has a
-`.github/workflows/release.yml` that triggers on `v*` tags. The workflow
+Each product repo (`Breadway/bread`, `Breadway/breadbar`, …) has
+`.forgejo/workflows/release-*.yml` that triggers on `v*` tags. The workflow
 runs on a self-hosted runner on hestia, builds a stripped x86_64 binary,
 deposits it at `dl.breadway.dev/<pkg>/<version>/`, updates `index.json`,
 and mirrors the binary to GitHub Releases as a fallback.
 
 `bakery` always tries `dl.breadway.dev` first and transparently falls back
 to the GitHub Release URL recorded in the manifest.
+
+Beyond stable releases, most products also publish **dev** and **beta**
+tracks — continuous builds off the `dev` and `beta` branches, respectively.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the branch/release workflow and
+[`docs/release-channels.md`](docs/release-channels.md) for the full track
+policy. Switch tracks with `bakery track set <stable|beta|dev>`.
 
 ### Release artifact contract
 
