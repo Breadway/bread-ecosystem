@@ -6,6 +6,15 @@
 //! hardcoded view list, and a flat output directory — no versioned
 //! `screenshots/vX.Y.Z/latest` structure or manifest file yet, since those
 //! only earn their complexity once more apps are wired up.
+//!
+//! By default every capture runs inside a throwaway nested Hyprland instance
+//! (see [`isolation`]) rather than the operator's live desktop, so another
+//! window (or their own differently-themed real bar) can't leak into a
+//! capture. `--no-isolate` skips that and captures directly against whatever
+//! session bread-capture itself is running in — useful for debugging the
+//! capture sequence itself, since you can then actually watch it happen.
+
+mod isolation;
 
 use anyhow::Result;
 use clap::Parser;
@@ -29,10 +38,30 @@ struct Cli {
     /// Directory to write captured PNGs into.
     #[arg(long, default_value = "./screenshots")]
     out_dir: PathBuf,
+
+    /// Capture directly against the current session instead of a nested,
+    /// throwaway Hyprland instance. Off by default so captures can't pick up
+    /// whatever else is on the operator's desktop.
+    #[arg(long)]
+    no_isolate: bool,
+
+    /// Width of the isolated session's capture canvas.
+    #[arg(long, default_value_t = 1920)]
+    isolate_width: u32,
+
+    /// Height of the isolated session's capture canvas.
+    #[arg(long, default_value_t = 1080)]
+    isolate_height: u32,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    let _isolation = if cli.no_isolate {
+        None
+    } else {
+        Some(isolation::Isolation::start(cli.isolate_width, cli.isolate_height)?)
+    };
 
     let mut failed = false;
     for (view, filename) in BREADBAR_TARGETS {
