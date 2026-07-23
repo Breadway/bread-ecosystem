@@ -23,19 +23,34 @@ pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
         scaffold_config(cfg, pkg)?;
     }
 
-    // 3. Install systemd user units.
+    // 3. Install license file, if declared.
+    if let Some(license) = &pkg.license_file {
+        install_license(pkg, license)?;
+    }
+
+    // 4. Install desktop entry, if declared.
+    if let Some(desktop) = &pkg.desktop_file {
+        install_desktop_file(pkg, desktop)?;
+    }
+
+    // 5. Download + extract data archive, if declared.
+    if let Some(archive) = &pkg.data_archive {
+        install_data_archive(pkg, archive)?;
+    }
+
+    // 6. Install systemd user units.
     let mut service_names = Vec::new();
     for svc in &pkg.services {
         install_service(svc, bin_dir, pkg)?;
         service_names.push(svc.unit.clone());
     }
 
-    // 4. Run post_install hooks.
+    // 7. Run post_install hooks.
     for cmd in &pkg.post_install {
         run_hook(cmd, &pkg.name)?;
     }
 
-    // 5. Record in state.
+    // 8. Record in state.
     let mut state = State::load()?;
     state.record(InstalledPackage {
         name: pkg.name.clone(),
@@ -154,6 +169,110 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
         }
     } else {
         println!("  config dir created at {}", dir.display());
+    }
+    Ok(())
+}
+
+/// Download `filename` from `pkg`'s release dir, verify it against `sha256`
+/// (refusing an unverified download the same way `scaffold_config` does),
+/// and write it to `dest`. Shared by `install_license`/`install_desktop_file`
+/// since both are "fetch one small artifact, verify, place" — unlike a config
+/// example, these aren't user-editable, so they're always refreshed rather
+/// than skipped when already present.
+fn fetch_verify_write(
+    pkg: &Package,
+    filename: &str,
+    sha256: &Option<String>,
+    dest: &Path,
+    label: &str,
+) -> Result<()> {
+    let Some((primary, fallback)) = pkg.artifact_urls(filename) else {
+        eprintln!("  warning: no artifact URL to download {label} ({filename})");
+        return Ok(());
+    };
+    let bytes = match fetch_binary(&primary, &fallback) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("  warning: could not download {label} {filename}: {e}");
+            return Ok(());
+        }
+    };
+    let Some(expected) = sha256 else {
+        eprintln!(
+            "  warning: index.json has no sha256 for {label} {filename} — \
+             refusing to install an unverified download"
+        );
+        return Ok(());
+    };
+    if let Err(e) = verify_sha256(&bytes, expected) {
+        eprintln!("  warning: checksum mismatch for {label} {filename}: {e} — not installed");
+        return Ok(());
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
+    println!("  installed {label} at {}", dest.display());
+    Ok(())
+}
+
+fn install_license(pkg: &Package, filename: &str) -> Result<()> {
+    let dest = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+        .join("licenses")
+        .join(&pkg.name)
+        .join("LICENSE");
+    fetch_verify_write(pkg, filename, &pkg.license_file_sha256, &dest, "license")
+}
+
+fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
+    let dest = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+        .join("applications")
+        .join(format!("{}.desktop", pkg.name));
+    fetch_verify_write(pkg, filename, &pkg.desktop_file_sha256, &dest, "desktop entry")
+}
+
+fn install_data_archive(pkg: &Package, filename: &str) -> Result<()> {
+    let data_dir = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+        .join(&pkg.name);
+    fetch_extract_archive(pkg, filename, &pkg.data_archive_sha256, &data_dir)
+}
+
+/// Downloads + verifies a `.tar.gz` artifact, then extracts it into
+/// `dest_dir`. Shells out to `tar` rather than adding an archive-extraction
+/// crate dependency — `tar` is universally present on Linux and this file
+/// already shells out to `systemctl` for the same "trust the base system
+/// has this" reason. Split from `install_data_archive` (which just supplies
+/// the real `~/.local/share/<name>` destination) so tests can extract into
+/// a tempdir instead.
+fn fetch_extract_archive(
+    pkg: &Package,
+    filename: &str,
+    sha256: &Option<String>,
+    dest_dir: &Path,
+) -> Result<()> {
+    let tmp_archive = std::env::temp_dir().join(format!("bakery-{}-{filename}", pkg.name));
+
+    fetch_verify_write(pkg, filename, sha256, &tmp_archive, "data archive")?;
+    if !tmp_archive.exists() {
+        // fetch_verify_write already warned (download/checksum failure).
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(dest_dir)?;
+    let status = Command::new("tar")
+        .args(["xzf", &tmp_archive.to_string_lossy(), "-C"])
+        .arg(dest_dir)
+        .status()
+        .with_context(|| format!("running tar to extract {filename}"))?;
+    let _ = std::fs::remove_file(&tmp_archive);
+
+    if status.success() {
+        println!("  extracted {filename} to {}", dest_dir.display());
+    } else {
+        eprintln!("  warning: tar exited with {status} extracting {filename}");
     }
     Ok(())
 }
@@ -343,8 +462,187 @@ fn warn_path_if_needed(bin_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::manifest::{Binary, Package};
+    use sha2::Digest;
     use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use tempfile::tempdir;
+
+    /// Serves `body` for exactly one HTTP/1.0 request on an ephemeral local
+    /// port, then stops. Real network I/O over loopback — exercises
+    /// `fetch_verify_write`'s actual `fetch_binary` call, not just its
+    /// surrounding logic, without any new test dependency.
+    fn serve_once(body: &'static [u8]) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let response = format!(
+                    "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.write_all(body);
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// Same as `serve_once` but for a runtime-owned body (e.g. a tar.gz
+    /// built into a tempdir during the test), which can't satisfy `'static`.
+    fn serve_once_owned(body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let response = format!(
+                    "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn test_package(binary_url: &str) -> Package {
+        Package {
+            name: "breadhelp".to_string(),
+            description: "test".to_string(),
+            version: "1.0.0".to_string(),
+            binaries: vec![Binary {
+                name: "breadhelp-x86_64".to_string(),
+                dl_url: format!("{binary_url}/breadhelp-x86_64"),
+                github_url: format!("{binary_url}/breadhelp-x86_64"),
+                sha256: String::new(),
+            }],
+            system_deps: vec![],
+            optional_system_deps: vec![],
+            bread_deps: vec![],
+            services: vec![],
+            config: None,
+            post_install: vec![],
+            license_file: None,
+            license_file_sha256: None,
+            desktop_file: None,
+            desktop_file_sha256: None,
+            data_archive: None,
+            data_archive_sha256: None,
+        }
+    }
+
+    #[test]
+    fn install_license_writes_verified_file() {
+        let license_bytes = b"MIT License\n";
+        let sha256 = sha2::Sha256::digest(license_bytes);
+        let sha256_hex = hex::encode(sha256);
+
+        let base_url = serve_once(license_bytes);
+        let mut pkg = test_package(&base_url);
+        pkg.license_file_sha256 = Some(sha256_hex);
+
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("LICENSE");
+        fetch_verify_write(&pkg, "LICENSE", &pkg.license_file_sha256.clone(), &dest, "license")
+            .unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), license_bytes);
+    }
+
+    #[test]
+    fn install_desktop_file_writes_verified_file() {
+        let desktop_bytes = b"[Desktop Entry]\nName=BreadHelp\n";
+        let sha256 = sha2::Sha256::digest(desktop_bytes);
+        let sha256_hex = hex::encode(sha256);
+
+        let base_url = serve_once(desktop_bytes);
+        let mut pkg = test_package(&base_url);
+        pkg.desktop_file_sha256 = Some(sha256_hex);
+
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("breadhelp.desktop");
+        fetch_verify_write(
+            &pkg,
+            "breadhelp.desktop",
+            &pkg.desktop_file_sha256.clone(),
+            &dest,
+            "desktop entry",
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), desktop_bytes);
+    }
+
+    #[test]
+    fn fetch_verify_write_refuses_checksum_mismatch() {
+        let bytes = b"tampered content";
+        let base_url = serve_once(bytes);
+        let mut pkg = test_package(&base_url);
+        pkg.license_file_sha256 = Some("0".repeat(64));
+
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("LICENSE");
+        fetch_verify_write(&pkg, "LICENSE", &pkg.license_file_sha256.clone(), &dest, "license")
+            .unwrap();
+
+        // Refused, not erred (matches scaffold_config's warn-and-continue
+        // posture) — the file must not have been written.
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn fetch_verify_write_refuses_missing_sha256() {
+        let bytes = b"some content";
+        let base_url = serve_once(bytes);
+        let pkg = test_package(&base_url);
+
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("LICENSE");
+        fetch_verify_write(&pkg, "LICENSE", &None, &dest, "license").unwrap();
+
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn fetch_extract_archive_extracts_tar_gz_contents() {
+        // Build a real tar.gz fixture via the actual `tar` binary — matches
+        // exactly what CI produces, rather than hand-rolling gzip framing.
+        let src = tempdir().unwrap();
+        fs::create_dir_all(src.path().join("content/tours")).unwrap();
+        fs::write(
+            src.path().join("content/tours/onboarding.toml"),
+            b"[[step]]\n",
+        )
+        .unwrap();
+        let archive_path = src.path().join("content.tar.gz");
+        let status = Command::new("tar")
+            .args(["czf"])
+            .arg(&archive_path)
+            .args(["-C"])
+            .arg(src.path())
+            .arg("content")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let archive_bytes = fs::read(&archive_path).unwrap();
+
+        let sha256_hex = hex::encode(sha2::Sha256::digest(&archive_bytes));
+        let base_url = serve_once_owned(archive_bytes);
+        let pkg = test_package(&base_url);
+
+        let dest_dir = tempdir().unwrap();
+        fetch_extract_archive(&pkg, "content.tar.gz", &Some(sha256_hex), dest_dir.path())
+            .unwrap();
+
+        let extracted = dest_dir.path().join("content/tours/onboarding.toml");
+        assert_eq!(fs::read(&extracted).unwrap(), b"[[step]]\n");
+    }
 
     #[test]
     fn strip_known_suffixes() {

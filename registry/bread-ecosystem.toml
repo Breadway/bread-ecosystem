@@ -71,3 +71,8 @@ description = "Screenshot utility for the bread ecosystem"
 name = "bos-settings"
 repo = "Breadway/bos-settings"
 description = "System settings app for Bread OS"
+
+[[products]]
+name = "breadhelp"
+repo = "Breadway/breadhelp"
+description = "Onboarding and help center for Bread OS"

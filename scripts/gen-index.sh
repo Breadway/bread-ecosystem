@@ -67,6 +67,41 @@ build_package_json() {
     local version
     version="$(basename "${version_dir}")"
 
+    # Locate bakery.toml. The release workflow copies it into the version dir
+    # alongside the binaries (${version_dir}/bakery.toml). Fall back to a
+    # sibling repo checkout for local dev use. Done before the binaries loop
+    # below so license_file/desktop_file (if declared) can be excluded from
+    # it by name — otherwise they'd get swept up as "binaries" with no
+    # checksum, the same gotcha this loop's other exclusions guard against.
+    local bakery_toml="${version_dir}/bakery.toml"
+    if [[ ! -f "${bakery_toml}" ]]; then
+        bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
+    fi
+    if [[ ! -f "${bakery_toml}" ]]; then
+        echo "ERROR: bakery.toml not found for ${name} — the release workflow must copy it to \${PKG_ROOT}/${name}/\${VERSION}/bakery.toml" >&2
+        return 1
+    fi
+
+    local license_file_name desktop_file_name data_archive_name
+    license_file_name="$(python3 -c "
+import tomllib
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+print(d.get('license_file', ''))
+" 2>/dev/null || true)"
+    desktop_file_name="$(python3 -c "
+import tomllib
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+print(d.get('desktop_file', ''))
+" 2>/dev/null || true)"
+    data_archive_name="$(python3 -c "
+import tomllib
+with open('${bakery_toml}', 'rb') as f:
+    d = tomllib.load(f)
+print(d.get('data_archive', ''))
+" 2>/dev/null || true)"
+
     # Collect all binaries in the version dir (executables only; skip metadata files).
     local binaries_json="[]"
     for bin_path in "${version_dir}"/*; do
@@ -76,6 +111,9 @@ build_package_json() {
         [[ "${bin_path}" == *.css ]]     && continue
         [[ "${bin_path}" == *.txt ]]     && continue
         [[ "${bin_path}" == *.minisig ]] && continue
+        [[ -n "${license_file_name}" && "${bin_path}" == "${version_dir}/${license_file_name}" ]] && continue
+        [[ -n "${desktop_file_name}" && "${bin_path}" == "${version_dir}/${desktop_file_name}" ]] && continue
+        [[ -n "${data_archive_name}" && "${bin_path}" == "${version_dir}/${data_archive_name}" ]] && continue
         [[ -f "${bin_path}" ]] || continue
         local bin_name
         bin_name="$(basename "${bin_path}")"
@@ -105,18 +143,6 @@ build_package_json() {
             '{name: $name, dl_url: $dl_url, github_url: $github_url, sha256: $sha256}')"
         binaries_json="$(jq -n --argjson arr "${binaries_json}" --argjson e "${entry}" '$arr + [$e]')"
     done
-
-    # Locate bakery.toml. The release workflow copies it into the version dir
-    # alongside the binaries (${version_dir}/bakery.toml). Fall back to a
-    # sibling repo checkout for local dev use.
-    local bakery_toml="${version_dir}/bakery.toml"
-    if [[ ! -f "${bakery_toml}" ]]; then
-        bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
-    fi
-    if [[ ! -f "${bakery_toml}" ]]; then
-        echo "ERROR: bakery.toml not found for ${name} — the release workflow must copy it to \${PKG_ROOT}/${name}/\${VERSION}/bakery.toml" >&2
-        return 1
-    fi
 
     local description system_deps optional_system_deps bread_deps services config post_install
 
@@ -213,6 +239,47 @@ with open('${bakery_toml}', 'rb') as f:
 print(json.dumps(d.get('install', {}).get('post_install', [])))
 " 2>/dev/null || echo "[]")"
 
+    # license_file / desktop_file: plain filename fields in bakery.toml
+    # (names already read above, before the binaries loop), same "artifact
+    # in the version dir, sha256 computed here" pattern as config.example.
+    # Empty string (not null) when unset, matching how the rest of this
+    # script signals "field absent" to jq below.
+    license_file="${license_file_name}"
+    license_file_sha256=""
+    if [[ -n "${license_file}" ]]; then
+        license_path="${version_dir}/${license_file}"
+        if [[ -f "${license_path}" ]]; then
+            license_file_sha256="$(sha256sum "${license_path}" | awk '{print $1}')"
+        else
+            echo "  warning: license_file '${license_file}' not found at ${license_path}" >&2
+            license_file=""
+        fi
+    fi
+
+    desktop_file="${desktop_file_name}"
+    desktop_file_sha256=""
+    if [[ -n "${desktop_file}" ]]; then
+        desktop_path="${version_dir}/${desktop_file}"
+        if [[ -f "${desktop_path}" ]]; then
+            desktop_file_sha256="$(sha256sum "${desktop_path}" | awk '{print $1}')"
+        else
+            echo "  warning: desktop_file '${desktop_file}' not found at ${desktop_path}" >&2
+            desktop_file=""
+        fi
+    fi
+
+    data_archive="${data_archive_name}"
+    data_archive_sha256=""
+    if [[ -n "${data_archive}" ]]; then
+        data_archive_path="${version_dir}/${data_archive}"
+        if [[ -f "${data_archive_path}" ]]; then
+            data_archive_sha256="$(sha256sum "${data_archive_path}" | awk '{print $1}')"
+        else
+            echo "  warning: data_archive '${data_archive}' not found at ${data_archive_path}" >&2
+            data_archive=""
+        fi
+    fi
+
     jq -n \
         --arg name "${name}" \
         --arg description "${description}" \
@@ -224,6 +291,12 @@ print(json.dumps(d.get('install', {}).get('post_install', [])))
         --argjson services "${services}" \
         --argjson config "${config}" \
         --argjson post_install "${post_install}" \
+        --arg license_file "${license_file}" \
+        --arg license_file_sha256 "${license_file_sha256}" \
+        --arg desktop_file "${desktop_file}" \
+        --arg desktop_file_sha256 "${desktop_file_sha256}" \
+        --arg data_archive "${data_archive}" \
+        --arg data_archive_sha256 "${data_archive_sha256}" \
         '{
             name: $name,
             description: $description,
@@ -234,7 +307,13 @@ print(json.dumps(d.get('install', {}).get('post_install', [])))
             bread_deps: $bread_deps,
             services: $services,
             config: $config,
-            post_install: $post_install
+            post_install: $post_install,
+            license_file: (if $license_file == "" then null else $license_file end),
+            license_file_sha256: (if $license_file_sha256 == "" then null else $license_file_sha256 end),
+            desktop_file: (if $desktop_file == "" then null else $desktop_file end),
+            desktop_file_sha256: (if $desktop_file_sha256 == "" then null else $desktop_file_sha256 end),
+            data_archive: (if $data_archive == "" then null else $data_archive end),
+            data_archive_sha256: (if $data_archive_sha256 == "" then null else $data_archive_sha256 end)
         }'
 }
 

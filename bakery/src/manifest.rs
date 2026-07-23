@@ -107,6 +107,30 @@ pub struct Package {
     pub config: Option<ConfigScaffold>,
     #[serde(default)]
     pub post_install: Vec<String>,
+    /// License artifact filename (e.g. "LICENSE"), installed to
+    /// `~/.local/share/licenses/<name>/LICENSE` — the bakery equivalent of
+    /// what a PKGBUILD's `package()` does with `/usr/share/licenses`.
+    #[serde(default)]
+    pub license_file: Option<String>,
+    #[serde(default)]
+    pub license_file_sha256: Option<String>,
+    /// Desktop entry artifact filename (e.g. "breadhelp.desktop"),
+    /// installed to `~/.local/share/applications/<name>.desktop` so the
+    /// app shows up in any XDG-compliant launcher without root.
+    #[serde(default)]
+    pub desktop_file: Option<String>,
+    #[serde(default)]
+    pub desktop_file_sha256: Option<String>,
+    /// Data archive artifact filename (e.g. "content.tar.gz") — a `.tar.gz`
+    /// in the release dir, extracted to `~/.local/share/<name>/` on
+    /// install. For arbitrary data a package needs at runtime beyond a
+    /// config example (e.g. breadhelp's guide content), where a single
+    /// downloadable file + `tar` extraction is simpler than teaching
+    /// bakery to mirror a whole directory tree file-by-file.
+    #[serde(default)]
+    pub data_archive: Option<String>,
+    #[serde(default)]
+    pub data_archive_sha256: Option<String>,
 }
 
 impl Package {
@@ -349,5 +373,42 @@ znmVfINB4jFDR2a4wuY8rOKlUBeSDOFjMkHYDXV3vxvAjK+r4V12ae9ZRQkfVtQ1YIEmFXbnJfbxywg+
     fn beta_and_dev_urls_are_track_prefixed() {
         assert_eq!(primary_url(Track::Beta), format!("{}/beta/index.json", base_url()));
         assert_eq!(primary_url(Track::Dev), format!("{}/dev/index.json", base_url()));
+    }
+
+    fn minimal_package_json() -> &'static str {
+        r#"{
+            "name": "breadhelp",
+            "description": "test",
+            "version": "1.0.0",
+            "binaries": [],
+            "config": null
+        }"#
+    }
+
+    #[test]
+    fn license_and_desktop_fields_default_to_none_on_old_shape_json() {
+        // Simulates an index.json produced before license_file/desktop_file
+        // existed — must not fail to parse.
+        let pkg: Package = serde_json::from_str(minimal_package_json()).unwrap();
+        assert!(pkg.license_file.is_none());
+        assert!(pkg.license_file_sha256.is_none());
+        assert!(pkg.desktop_file.is_none());
+        assert!(pkg.desktop_file_sha256.is_none());
+    }
+
+    #[test]
+    fn license_and_desktop_fields_roundtrip() {
+        let mut pkg: Package = serde_json::from_str(minimal_package_json()).unwrap();
+        pkg.license_file = Some("LICENSE".to_string());
+        pkg.license_file_sha256 = Some("abc123".to_string());
+        pkg.desktop_file = Some("breadhelp.desktop".to_string());
+        pkg.desktop_file_sha256 = Some("def456".to_string());
+
+        let json = serde_json::to_string(&pkg).unwrap();
+        let restored: Package = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.license_file.as_deref(), Some("LICENSE"));
+        assert_eq!(restored.license_file_sha256.as_deref(), Some("abc123"));
+        assert_eq!(restored.desktop_file.as_deref(), Some("breadhelp.desktop"));
+        assert_eq!(restored.desktop_file_sha256.as_deref(), Some("def456"));
     }
 }
