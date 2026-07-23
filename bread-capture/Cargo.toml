@@ -1,0 +1,18 @@
+[package]
+name = "bread-capture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Orchestrator for the bread ecosystem's UI screenshot tooling: drives each app's --screenshot mode and collects the resulting PNGs"
+repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
+keywords = ["screenshot", "ci", "tooling"]
+
+[[bin]]
+name = "bread-capture"
+path = "src/main.rs"
+
+[dependencies]
+bread-utils = { path = "../bread-utils" }
+clap = { workspace = true }
+anyhow = { workspace = true }

@@ -149,6 +149,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bread-capture"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "bread-utils",
+ "clap",
+]
+
+[[package]]
 name = "bread-onnx"
 version = "0.3.1"
 dependencies = [
@@ -161,6 +170,15 @@ dependencies = [
  "tokenizers",
  "tracing",
  "ureq",
+]
+
+[[package]]
+name = "bread-screenshots"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "bread-utils",
+ "tracing",
 ]
 
 [[package]]
