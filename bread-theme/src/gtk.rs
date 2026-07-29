@@ -114,6 +114,29 @@ pub fn apply_css(css: &str, provider: &RefCell<Option<CssProvider>>) {
     }
 }
 
+/// A filter/tag chip using the shared `.chip` stylesheet rule (an
+/// `@overlay`-filled pill, `@accent`-filled when the `active` CSS class is
+/// set) instead of a fresh literal color — this is the fix for the same
+/// component drifting to three different fills across breadclip (grey),
+/// breadpad, and breadman (both cream), none of which agreed with each
+/// other or with the shared token.
+pub fn chip(label: &str) -> gtk4::Button {
+    gtk4::Button::builder().label(label).css_classes(["chip"]).build()
+}
+
+/// Toggles a chip's (or any widget's) `active` CSS class — the `.chip.active`
+/// stylesheet rule fills it with the accent instead of the neutral overlay.
+/// Wiring *when* a chip becomes active (single-select filter, multi-select
+/// tags, etc.) is genuinely per-app, so that stays the caller's job; this is
+/// just the one-line visual toggle every case needs.
+pub fn set_chip_active(chip: &impl IsA<gtk4::Widget>, active: bool) {
+    if active {
+        chip.add_css_class("active");
+    } else {
+        chip.remove_css_class("active");
+    }
+}
+
 /// Apply a user CSS override file at USER priority. Clears the provider if the
 /// file is absent so stale overrides don't persist across SIGHUP reloads.
 pub fn apply_user_css(path: &Path, provider: &RefCell<Option<CssProvider>>) {
