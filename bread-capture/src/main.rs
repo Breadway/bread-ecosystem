@@ -7,7 +7,7 @@
 //! `screenshots/vX.Y.Z/latest` structure or manifest file yet, since those
 //! only earn their complexity once more apps are wired up.
 //!
-//! By default every capture runs inside a throwaway nested Hyprland instance
+//! By default every capture runs inside a throwaway headless Sway instance
 //! (see [`isolation`]) rather than the operator's live desktop, so another
 //! window (or their own differently-themed real bar) can't leak into a
 //! capture. `--no-isolate` skips that and captures directly against whatever
@@ -39,8 +39,8 @@ struct Cli {
     #[arg(long, default_value = "./screenshots")]
     out_dir: PathBuf,
 
-    /// Capture directly against the current session instead of a nested,
-    /// throwaway Hyprland instance. Off by default so captures can't pick up
+    /// Capture directly against the current session instead of a headless,
+    /// throwaway Sway instance. Off by default so captures can't pick up
     /// whatever else is on the operator's desktop.
     #[arg(long)]
     no_isolate: bool,
@@ -63,13 +63,21 @@ fn main() -> Result<()> {
         Some(isolation::Isolation::start(cli.isolate_width, cli.isolate_height)?)
     };
 
+    let width_str = cli.isolate_width.to_string();
+    let height_str = cli.isolate_height.to_string();
+
     let mut failed = false;
     for (view, filename) in BREADBAR_TARGETS {
         let out_path = cli.out_dir.join(filename);
         let out_str = out_path.to_string_lossy();
         let result = bread_utils::proc::run(
             &cli.app_path,
-            &["--screenshot", view, "--output", &out_str],
+            &[
+                "--screenshot", view,
+                "--output", &out_str,
+                "--width", &width_str,
+                "--height", &height_str,
+            ],
             CAPTURE_TIMEOUT,
         );
         if result.success {

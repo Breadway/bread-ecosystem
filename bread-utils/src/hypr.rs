@@ -152,79 +152,8 @@ pub struct Monitor {
     pub y: i32,
     pub width: i32,
     pub height: i32,
-    #[serde(default = "one")]
-    pub scale: f64,
-    #[serde(default)]
-    pub transform: i64,
     #[serde(default)]
     pub focused: bool,
-}
-
-fn one() -> f64 {
-    1.0
-}
-
-impl Monitor {
-    /// Logical (scaled, transform-aware) output size, matching what `grim -g`
-    /// expects — `width`/`height` above are physical pixels. A 90/270-degree
-    /// transform swaps the axes before the scale divide, same as breadshot's
-    /// `monitor_geometry`, which this mirrors.
-    pub fn logical_size(&self) -> (i32, i32) {
-        if self.transform % 2 == 0 {
-            (
-                (self.width as f64 / self.scale).round() as i32,
-                (self.height as f64 / self.scale).round() as i32,
-            )
-        } else {
-            (
-                (self.height as f64 / self.scale).round() as i32,
-                (self.width as f64 / self.scale).round() as i32,
-            )
-        }
-    }
-}
-
-/// One entry from `hyprctl layers -j` — a layer-shell surface (bar, launcher,
-/// lock screen, ...), keyed by the `namespace` its client registered.
-#[derive(Debug, Clone, Deserialize)]
-pub struct Layer {
-    pub namespace: String,
-    pub pid: u32,
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
-    pub h: i32,
-}
-
-/// Find a layer-shell surface by namespace *and* pid. Namespace alone isn't
-/// enough to identify "our own" surface — several bread apps (breadbar
-/// notably) are typically already running under the same namespace when a
-/// second instance starts up for some other purpose (e.g. screenshot mode),
-/// so callers pass their own `std::process::id()` to disambiguate.
-pub fn find_layer(namespace: &str, pid: u32) -> Option<Layer> {
-    find_layer_in(&request_json("j/layers")?, namespace, pid)
-}
-
-/// Parsing half of [`find_layer`], split out so it's testable without a live
-/// Hyprland socket.
-fn find_layer_in(root: &serde_json::Value, namespace: &str, pid: u32) -> Option<Layer> {
-    let monitors = root.as_object()?;
-    for monitor in monitors.values() {
-        let Some(levels) = monitor.get("levels").and_then(|v| v.as_object()) else {
-            continue;
-        };
-        for layers in levels.values() {
-            for layer in layers.as_array().into_iter().flatten() {
-                let Ok(l) = serde_json::from_value::<Layer>(layer.clone()) else {
-                    continue;
-                };
-                if l.namespace == namespace && l.pid == pid {
-                    return Some(l);
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Query the currently active (focused) window. Returns `None` if the
@@ -260,77 +189,6 @@ pub fn active_workspace_name() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn logical_size_divides_by_scale() {
-        let m = Monitor {
-            name: "eDP-1".into(),
-            x: 0,
-            y: 0,
-            width: 3840,
-            height: 2400,
-            scale: 2.0,
-            transform: 0,
-            focused: true,
-        };
-        assert_eq!(m.logical_size(), (1920, 1200));
-    }
-
-    #[test]
-    fn logical_size_swaps_axes_on_rotated_transform() {
-        let m = Monitor {
-            name: "eDP-1".into(),
-            x: 0,
-            y: 0,
-            width: 1920,
-            height: 1200,
-            scale: 1.0,
-            transform: 1,
-            focused: true,
-        };
-        assert_eq!(m.logical_size(), (1200, 1920));
-    }
-
-    // Real shape confirmed live via `hyprctl layers -j`: per-monitor map ->
-    // "levels" map (layer index "0".."3") -> array of layer objects.
-    const LAYERS_JSON: &str = r#"{
-        "eDP-1": {
-            "levels": {
-                "0": [
-                    {"address":"0x1","x":0,"y":0,"w":1920,"h":1200,"namespace":"awww-daemon","pid":2481}
-                ],
-                "1": [],
-                "2": [
-                    {"address":"0x2","x":0,"y":0,"w":1920,"h":32,"namespace":"breadbar","pid":1601316},
-                    {"address":"0x3","x":0,"y":0,"w":1920,"h":32,"namespace":"breadbar","pid":9999}
-                ],
-                "3": []
-            }
-        }
-    }"#;
-
-    #[test]
-    fn find_layer_in_matches_namespace_and_pid() {
-        let root: serde_json::Value = serde_json::from_str(LAYERS_JSON).unwrap();
-        let layer = find_layer_in(&root, "breadbar", 9999).unwrap();
-        assert_eq!(layer.pid, 9999);
-        assert_eq!(layer.w, 1920);
-        assert_eq!(layer.h, 32);
-    }
-
-    #[test]
-    fn find_layer_in_ignores_same_namespace_wrong_pid() {
-        let root: serde_json::Value = serde_json::from_str(LAYERS_JSON).unwrap();
-        // pid 1601316 is a real breadbar layer in the fixture, but not the one
-        // we're asking for — must not fall back to it.
-        assert!(find_layer_in(&root, "breadbar", 42).is_none());
-    }
-
-    #[test]
-    fn find_layer_in_returns_none_for_missing_namespace() {
-        let root: serde_json::Value = serde_json::from_str(LAYERS_JSON).unwrap();
-        assert!(find_layer_in(&root, "breadbox", 1601316).is_none());
-    }
 
     #[test]
     fn fullscreen_state_deserializes_from_bool() {
