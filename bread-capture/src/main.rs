@@ -2,10 +2,14 @@
 //!
 //! Drives each target app's `--screenshot <view> --output <path>` mode (see
 //! `bread-screenshots` for what that mode does inside the app) and reports
-//! pass/fail per view. One app per invocation, selected by `--app-name`
-//! (defaults to `--app-path`'s file stem, so `--app-path
-//! ./target/release/breadbox` needs no separate `--app-name`) — the view
-//! list for each app is looked up from [`TARGETS`] below. Flat output
+//! pass/fail per view/app. Plain `bread-capture` with no flags captures
+//! every known app's every view in one run — each app's binary is resolved
+//! by its own bare name via `$PATH`, same as running it directly by name
+//! would. `--app <name>` restricts to one app; `--app-path <path>`
+//! overrides where its binary is found (and, without `--app`, also selects
+//! which app by its file stem — so `--app-path ./target/release/breadbox`
+//! alone still works); `--view <name>` further restricts to one view. The
+//! view list for each app is looked up from [`TARGETS`] below. Flat output
 //! directory for now — no versioned `screenshots/vX.Y.Z/latest` structure
 //! or manifest file yet, since that's still not earning its complexity over
 //! a handful of apps.
@@ -32,34 +36,109 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
 const TARGETS: &[(&str, &[(&str, &str)])] = &[
     (
         "breadbar",
-        &[("bar", "breadbar-bar.png"), ("control-panel", "breadbar-control-panel.png")],
+        &[
+            ("bar", "breadbar-bar.png"),
+            ("control-panel", "breadbar-control-panel.png"),
+            ("connectivity-wifi", "breadbar-connectivity-wifi.png"),
+            ("connectivity-bluetooth", "breadbar-connectivity-bluetooth.png"),
+            ("media-popover", "breadbar-media-popover.png"),
+            ("notification", "breadbar-notification.png"),
+            ("notification-critical", "breadbar-notification-critical.png"),
+            ("osd-volume", "breadbar-osd-volume.png"),
+            ("osd-brightness", "breadbar-osd-brightness.png"),
+            ("wifi-add-dialog", "breadbar-wifi-add-dialog.png"),
+        ],
     ),
     ("breadbox", &[("launcher", "breadbox-launcher.png")]),
     ("breadclip", &[("history", "breadclip-history.png")]),
     ("breadsearch", &[("search", "breadsearch-search.png")]),
-    ("breadpad", &[("popup", "breadpad-popup.png")]),
+    (
+        "breadpad",
+        &[
+            ("popup", "breadpad-popup.png"),
+            ("reminder", "breadpad-reminder.png"),
+            ("reminder-snooze", "breadpad-reminder-snooze.png"),
+        ],
+    ),
     (
         "breadhelp",
         &[
             ("home", "breadhelp-home.png"),
             ("learn", "breadhelp-learn.png"),
             ("ask", "breadhelp-ask.png"),
+            ("troubleshoot-wizard", "breadhelp-troubleshoot-wizard.png"),
         ],
     ),
-    ("breadman", &[("all", "breadman-all.png")]),
-    ("bos-settings", &[("default", "bos-settings-default.png")]),
+    (
+        "breadman",
+        &[
+            ("all", "breadman-all.png"),
+            ("upcoming", "breadman-upcoming.png"),
+            ("todo", "breadman-todo.png"),
+            ("reminder", "breadman-reminder.png"),
+            ("idea", "breadman-idea.png"),
+            ("note", "breadman-note.png"),
+            ("question", "breadman-question.png"),
+            ("archive", "breadman-archive.png"),
+            ("settings", "breadman-settings.png"),
+            ("errors", "breadman-errors.png"),
+            ("editor", "breadman-editor.png"),
+            ("new-note", "breadman-new-note.png"),
+        ],
+    ),
+    (
+        "bos-settings",
+        &[
+            ("network", "bos-settings-network.png"),
+            ("breadcrumbs", "bos-settings-breadcrumbs.png"),
+            ("bluetooth", "bos-settings-bluetooth.png"),
+            ("firewall", "bos-settings-firewall.png"),
+            ("sound", "bos-settings-sound.png"),
+            ("power", "bos-settings-power.png"),
+            ("datetime", "bos-settings-datetime.png"),
+            ("hyprland", "bos-settings-hyprland.png"),
+            ("keybinds", "bos-settings-keybinds.png"),
+            ("autostart", "bos-settings-autostart.png"),
+            ("users", "bos-settings-users.png"),
+            ("appearance", "bos-settings-appearance.png"),
+            ("breadpaper", "bos-settings-breadpaper.png"),
+            ("breadbar", "bos-settings-breadbar.png"),
+            ("breadbox", "bos-settings-breadbox.png"),
+            ("breadclip", "bos-settings-breadclip.png"),
+            ("breadpad", "bos-settings-breadpad.png"),
+            ("breadsearch", "bos-settings-breadsearch.png"),
+            ("bread", "bos-settings-bread.png"),
+            ("packages", "bos-settings-packages.png"),
+            ("aur", "bos-settings-aur.png"),
+            ("firmware", "bos-settings-firmware.png"),
+            ("snapshots", "bos-settings-snapshots.png"),
+            ("about", "bos-settings-about.png"),
+        ],
+    ),
 ];
 
 #[derive(Parser)]
 struct Cli {
-    /// Path to the target app's binary (resolved via $PATH if not a path).
+    /// Restrict to one app (see `TARGETS` for known names). Omit to capture
+    /// every known app's every view in one run.
     #[arg(long)]
-    app_path: String,
+    app: Option<String>,
 
-    /// Which app's view list to use (see `TARGETS`). Defaults to
-    /// `--app-path`'s file stem, e.g. `./target/release/breadbox` -> `breadbox`.
+    /// Path to that app's binary (resolved via $PATH if not a path).
+    /// Without `--app`, this also selects *which* app by its file stem
+    /// (e.g. `./target/release/breadbox` -> `breadbox`) — so a single-app
+    /// run never needs both flags. Ignored (with a warning) if given
+    /// together with a multi-app run (no `--app`, and the path isn't
+    /// resolvable to exactly one app).
     #[arg(long)]
-    app_name: Option<String>,
+    app_path: Option<String>,
+
+    /// Restrict to one view within the selected app(s) (see each app's
+    /// entry in `TARGETS` for known view names). Apps that don't have a
+    /// view by this name are skipped, not treated as an error, since a
+    /// multi-app run's view names naturally don't all overlap.
+    #[arg(long)]
+    view: Option<String>,
 
     /// Directory to write captured PNGs into.
     #[arg(long, default_value = "./screenshots")]
@@ -80,21 +159,49 @@ struct Cli {
     isolate_height: u32,
 }
 
-fn main() -> Result<ExitCode> {
-    let cli = Cli::parse();
+fn known_app_names() -> String {
+    TARGETS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+}
 
-    let app_name = cli.app_name.clone().unwrap_or_else(|| {
-        PathBuf::from(&cli.app_path)
+/// (app_name, binary_path, views) per selected app.
+type SelectedTarget = (&'static str, String, &'static [(&'static str, &'static str)]);
+
+/// Resolves which `TARGETS` entries this run covers, and the binary path
+/// to use for each.
+fn selected_targets(cli: &Cli) -> Result<Vec<SelectedTarget>> {
+    if let Some(app) = &cli.app {
+        let Some((name, views)) = TARGETS.iter().find(|(n, _)| n == app) else {
+            bail!("no known view list for app '{app}' (known: {})", known_app_names());
+        };
+        let path = cli.app_path.clone().unwrap_or_else(|| name.to_string());
+        return Ok(vec![(name, path, views)]);
+    }
+
+    if let Some(path) = &cli.app_path {
+        let stem = PathBuf::from(path)
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| cli.app_path.clone())
-    });
-    let Some((_, views)) = TARGETS.iter().find(|(name, _)| *name == app_name) else {
-        bail!(
-            "no known view list for app '{app_name}' (known: {})",
-            TARGETS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
-        );
-    };
+            .unwrap_or_else(|| path.clone());
+        let Some((name, views)) = TARGETS.iter().find(|(n, _)| *n == stem) else {
+            bail!("no known view list for app '{stem}' (known: {})", known_app_names());
+        };
+        return Ok(vec![(name, path.clone(), views)]);
+    }
+
+    // No --app / --app-path at all: every known app, resolved by its own
+    // bare name via $PATH.
+    Ok(TARGETS.iter().map(|(name, views)| (*name, name.to_string(), *views)).collect())
+}
+
+fn main() -> Result<ExitCode> {
+    let cli = Cli::parse();
+    let targets = selected_targets(&cli)?;
+
+    if let Some(view) = &cli.view {
+        if !targets.iter().any(|(_, _, views)| views.iter().any(|(v, _)| v == view)) {
+            bail!("view '{view}' doesn't match any selected app's views");
+        }
+    }
 
     // Bound, not dropped-and-discarded: `_isolation`'s teardown (kill the
     // compositor, remove its socket/config) must run via Drop regardless of
@@ -111,24 +218,29 @@ fn main() -> Result<ExitCode> {
     let height_str = cli.isolate_height.to_string();
 
     let mut failed = false;
-    for (view, filename) in *views {
-        let out_path = cli.out_dir.join(filename);
-        let out_str = out_path.to_string_lossy();
-        let result = bread_utils::proc::run(
-            &cli.app_path,
-            &[
-                "--screenshot", view,
-                "--output", &out_str,
-                "--width", &width_str,
-                "--height", &height_str,
-            ],
-            CAPTURE_TIMEOUT,
-        );
-        if result.success {
-            println!("ok    {app_name}/{view} -> {}", out_path.display());
-        } else {
-            failed = true;
-            println!("FAIL  {app_name}/{view}: {}", result.stderr.trim());
+    for (app_name, app_path, views) in &targets {
+        for (view, filename) in *views {
+            if cli.view.as_deref().is_some_and(|v| v != *view) {
+                continue;
+            }
+            let out_path = cli.out_dir.join(filename);
+            let out_str = out_path.to_string_lossy();
+            let result = bread_utils::proc::run(
+                app_path,
+                &[
+                    "--screenshot", view,
+                    "--output", &out_str,
+                    "--width", &width_str,
+                    "--height", &height_str,
+                ],
+                CAPTURE_TIMEOUT,
+            );
+            if result.success {
+                println!("ok    {app_name}/{view} -> {}", out_path.display());
+            } else {
+                failed = true;
+                println!("FAIL  {app_name}/{view}: {}", result.stderr.trim());
+            }
         }
     }
 
