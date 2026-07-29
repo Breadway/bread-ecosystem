@@ -62,6 +62,7 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("home", "breadhelp-home.png"),
             ("learn", "breadhelp-learn.png"),
             ("ask", "breadhelp-ask.png"),
+            ("troubleshoot-wizard", "breadhelp-troubleshoot-wizard.png"),
         ],
     ),
     (
