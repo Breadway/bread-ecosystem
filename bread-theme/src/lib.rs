@@ -1,6 +1,8 @@
 pub mod palette;
 #[cfg(feature = "gtk")]
 pub mod gtk;
+#[cfg(feature = "adw")]
+pub mod adw;
 
 pub use palette::{load_palette, Palette};
 
@@ -187,6 +189,14 @@ pub fn stylesheet(p: &Palette) -> String {
          switch {{ background-color: @overlay; border-radius: {pill}px; }}\n\
          switch:checked {{ background-color: @accent; }}\n\
          switch slider {{ background-color: @on-surface; border-radius: {pill}px; }}\n\
+         /* GtkScale (sliders) render with GTK's own default accent (a fixed\
+            blue, independent of the app's theme) unless styled explicitly —\
+            every app with a volume/brightness slider was silently showing\
+            that default instead of the palette's accent until this rule\
+            existed. */\n\
+         scale trough {{ background-color: @overlay; border-radius: {pill}px; min-height: 6px; }}\n\
+         scale trough highlight {{ background-color: @accent; border-radius: {pill}px; min-height: 6px; }}\n\
+         scale slider {{ background-color: @on-bg; border-radius: {pill}px; }}\n\
          list, listbox {{ background-color: transparent; }}\n\
          row {{ border-radius: {r2}px; }}\n\
          row:selected, list row:selected {{ background-color: @accent; color: @on-accent; }}\n\

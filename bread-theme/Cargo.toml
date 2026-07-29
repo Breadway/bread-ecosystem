@@ -13,11 +13,24 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
 gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
+# Rust bindings for libadwaita (GNOME's widget library on top of GTK4) — the
+# actual source of the modern GNOME look (grouped preference rows, real
+# toggle/spin rows, view switchers), not just a CSS reskin of plain GTK4
+# widgets. `v1_7` for ToggleGroup (used for tab-row-style pickers); the
+# system library only needs to be >= that (this machine has 1.9.2).
+libadwaita = { version = "0.9", features = ["v1_7"], optional = true }
 
 [features]
 # Enable GTK4 CSS provider helpers (breadbar, breadbox, breadpad use this).
 # bread (daemon) and breadcrumbs (CLI) depend on this crate without the feature.
 gtk = ["dep:gtk4"]
+# Composite libadwaita-based widgets (bread_theme::adw) — separate from `gtk`
+# because libadwaita's own top-level window chrome (AdwApplicationWindow)
+# isn't compatible with gtk4-layer-shell surfaces, so the five layer-shell
+# apps (breadbar, breadbox, breadclip, breadsearch, breadpad) only want
+# plain CSS, not this. Apps with an ordinary top-level window (breadman,
+# breadhelp) want both.
+adw = ["gtk", "dep:libadwaita"]
 
 # The generator CLI. It only touches the gtk-free lib API (render + write), so
 # it builds without the gtk feature and stays light.
