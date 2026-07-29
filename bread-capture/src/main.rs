@@ -57,7 +57,23 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("ask", "breadhelp-ask.png"),
         ],
     ),
-    ("breadman", &[("all", "breadman-all.png")]),
+    (
+        "breadman",
+        &[
+            ("all", "breadman-all.png"),
+            ("upcoming", "breadman-upcoming.png"),
+            ("todo", "breadman-todo.png"),
+            ("reminder", "breadman-reminder.png"),
+            ("idea", "breadman-idea.png"),
+            ("note", "breadman-note.png"),
+            ("question", "breadman-question.png"),
+            ("archive", "breadman-archive.png"),
+            ("settings", "breadman-settings.png"),
+            ("errors", "breadman-errors.png"),
+            ("editor", "breadman-editor.png"),
+            ("new-note", "breadman-new-note.png"),
+        ],
+    ),
     ("bos-settings", &[("default", "bos-settings-default.png")]),
 ];
 
