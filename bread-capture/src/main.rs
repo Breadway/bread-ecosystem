@@ -32,7 +32,18 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
 const TARGETS: &[(&str, &[(&str, &str)])] = &[
     (
         "breadbar",
-        &[("bar", "breadbar-bar.png"), ("control-panel", "breadbar-control-panel.png")],
+        &[
+            ("bar", "breadbar-bar.png"),
+            ("control-panel", "breadbar-control-panel.png"),
+            ("connectivity-wifi", "breadbar-connectivity-wifi.png"),
+            ("connectivity-bluetooth", "breadbar-connectivity-bluetooth.png"),
+            ("media-popover", "breadbar-media-popover.png"),
+            ("notification", "breadbar-notification.png"),
+            ("notification-critical", "breadbar-notification-critical.png"),
+            ("osd-volume", "breadbar-osd-volume.png"),
+            ("osd-brightness", "breadbar-osd-brightness.png"),
+            ("wifi-add-dialog", "breadbar-wifi-add-dialog.png"),
+        ],
     ),
     ("breadbox", &[("launcher", "breadbox-launcher.png")]),
     ("breadclip", &[("history", "breadclip-history.png")]),
