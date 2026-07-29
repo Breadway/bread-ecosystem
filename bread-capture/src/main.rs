@@ -46,6 +46,7 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("ask", "breadhelp-ask.png"),
         ],
     ),
+    ("breadman", &[("all", "breadman-all.png")]),
 ];
 
 #[derive(Parser)]
