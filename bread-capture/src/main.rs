@@ -9,10 +9,11 @@
 //! overrides where its binary is found (and, without `--app`, also selects
 //! which app by its file stem — so `--app-path ./target/release/breadbox`
 //! alone still works); `--view <name>` further restricts to one view. The
-//! view list for each app is looked up from [`TARGETS`] below. Flat output
-//! directory for now — no versioned `screenshots/vX.Y.Z/latest` structure
-//! or manifest file yet, since that's still not earning its complexity over
-//! a handful of apps.
+//! view list for each app is looked up from [`TARGETS`] below. Each app
+//! gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<view>.png`)
+//! — no versioned `screenshots/vX.Y.Z/latest` structure or manifest file
+//! yet, since that's still not earning its complexity over a handful of
+//! apps.
 //!
 //! By default every capture runs inside a throwaway headless Sway instance
 //! (see [`isolation`]) rather than the operator's live desktop, so another
@@ -32,87 +33,89 @@ use std::time::Duration;
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Per-app (view name, output filename) lists. Keyed by the app's binary
-/// name — see `--app-name`.
+/// name — see `--app-name`. Filenames are plain (no app prefix): each app
+/// gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<file>`),
+/// so the prefix would just be redundant with the folder name.
 const TARGETS: &[(&str, &[(&str, &str)])] = &[
     (
         "breadbar",
         &[
-            ("bar", "breadbar-bar.png"),
-            ("control-panel", "breadbar-control-panel.png"),
-            ("connectivity-wifi", "breadbar-connectivity-wifi.png"),
-            ("connectivity-bluetooth", "breadbar-connectivity-bluetooth.png"),
-            ("media-popover", "breadbar-media-popover.png"),
-            ("notification", "breadbar-notification.png"),
-            ("notification-critical", "breadbar-notification-critical.png"),
-            ("osd-volume", "breadbar-osd-volume.png"),
-            ("osd-brightness", "breadbar-osd-brightness.png"),
-            ("wifi-add-dialog", "breadbar-wifi-add-dialog.png"),
+            ("bar", "bar.png"),
+            ("control-panel", "control-panel.png"),
+            ("connectivity-wifi", "connectivity-wifi.png"),
+            ("connectivity-bluetooth", "connectivity-bluetooth.png"),
+            ("media-popover", "media-popover.png"),
+            ("notification", "notification.png"),
+            ("notification-critical", "notification-critical.png"),
+            ("osd-volume", "osd-volume.png"),
+            ("osd-brightness", "osd-brightness.png"),
+            ("wifi-add-dialog", "wifi-add-dialog.png"),
         ],
     ),
-    ("breadbox", &[("launcher", "breadbox-launcher.png")]),
-    ("breadclip", &[("history", "breadclip-history.png")]),
-    ("breadsearch", &[("search", "breadsearch-search.png")]),
+    ("breadbox", &[("launcher", "launcher.png")]),
+    ("breadclip", &[("history", "history.png")]),
+    ("breadsearch", &[("search", "search.png")]),
     (
         "breadpad",
         &[
-            ("popup", "breadpad-popup.png"),
-            ("reminder", "breadpad-reminder.png"),
-            ("reminder-snooze", "breadpad-reminder-snooze.png"),
+            ("popup", "popup.png"),
+            ("reminder", "reminder.png"),
+            ("reminder-snooze", "reminder-snooze.png"),
         ],
     ),
     (
         "breadhelp",
         &[
-            ("home", "breadhelp-home.png"),
-            ("learn", "breadhelp-learn.png"),
-            ("ask", "breadhelp-ask.png"),
-            ("troubleshoot-wizard", "breadhelp-troubleshoot-wizard.png"),
+            ("home", "home.png"),
+            ("learn", "learn.png"),
+            ("ask", "ask.png"),
+            ("troubleshoot-wizard", "troubleshoot-wizard.png"),
         ],
     ),
     (
         "breadman",
         &[
-            ("all", "breadman-all.png"),
-            ("upcoming", "breadman-upcoming.png"),
-            ("todo", "breadman-todo.png"),
-            ("reminder", "breadman-reminder.png"),
-            ("idea", "breadman-idea.png"),
-            ("note", "breadman-note.png"),
-            ("question", "breadman-question.png"),
-            ("archive", "breadman-archive.png"),
-            ("settings", "breadman-settings.png"),
-            ("errors", "breadman-errors.png"),
-            ("editor", "breadman-editor.png"),
-            ("new-note", "breadman-new-note.png"),
+            ("all", "all.png"),
+            ("upcoming", "upcoming.png"),
+            ("todo", "todo.png"),
+            ("reminder", "reminder.png"),
+            ("idea", "idea.png"),
+            ("note", "note.png"),
+            ("question", "question.png"),
+            ("archive", "archive.png"),
+            ("settings", "settings.png"),
+            ("errors", "errors.png"),
+            ("editor", "editor.png"),
+            ("new-note", "new-note.png"),
         ],
     ),
     (
         "bos-settings",
         &[
-            ("network", "bos-settings-network.png"),
-            ("breadcrumbs", "bos-settings-breadcrumbs.png"),
-            ("bluetooth", "bos-settings-bluetooth.png"),
-            ("firewall", "bos-settings-firewall.png"),
-            ("sound", "bos-settings-sound.png"),
-            ("power", "bos-settings-power.png"),
-            ("datetime", "bos-settings-datetime.png"),
-            ("hyprland", "bos-settings-hyprland.png"),
-            ("keybinds", "bos-settings-keybinds.png"),
-            ("autostart", "bos-settings-autostart.png"),
-            ("users", "bos-settings-users.png"),
-            ("appearance", "bos-settings-appearance.png"),
-            ("breadpaper", "bos-settings-breadpaper.png"),
-            ("breadbar", "bos-settings-breadbar.png"),
-            ("breadbox", "bos-settings-breadbox.png"),
-            ("breadclip", "bos-settings-breadclip.png"),
-            ("breadpad", "bos-settings-breadpad.png"),
-            ("breadsearch", "bos-settings-breadsearch.png"),
-            ("bread", "bos-settings-bread.png"),
-            ("packages", "bos-settings-packages.png"),
-            ("aur", "bos-settings-aur.png"),
-            ("firmware", "bos-settings-firmware.png"),
-            ("snapshots", "bos-settings-snapshots.png"),
-            ("about", "bos-settings-about.png"),
+            ("network", "network.png"),
+            ("breadcrumbs", "breadcrumbs.png"),
+            ("bluetooth", "bluetooth.png"),
+            ("firewall", "firewall.png"),
+            ("sound", "sound.png"),
+            ("power", "power.png"),
+            ("datetime", "datetime.png"),
+            ("hyprland", "hyprland.png"),
+            ("keybinds", "keybinds.png"),
+            ("autostart", "autostart.png"),
+            ("users", "users.png"),
+            ("appearance", "appearance.png"),
+            ("breadpaper", "breadpaper.png"),
+            ("breadbar", "breadbar.png"),
+            ("breadbox", "breadbox.png"),
+            ("breadclip", "breadclip.png"),
+            ("breadpad", "breadpad.png"),
+            ("breadsearch", "breadsearch.png"),
+            ("bread", "bread.png"),
+            ("packages", "packages.png"),
+            ("aur", "aur.png"),
+            ("firmware", "firmware.png"),
+            ("snapshots", "snapshots.png"),
+            ("about", "about.png"),
         ],
     ),
 ];
@@ -223,7 +226,7 @@ fn main() -> Result<ExitCode> {
             if cli.view.as_deref().is_some_and(|v| v != *view) {
                 continue;
             }
-            let out_path = cli.out_dir.join(filename);
+            let out_path = cli.out_dir.join(app_name).join(filename);
             let out_str = out_path.to_string_lossy();
             let result = bread_utils::proc::run(
                 app_path,
