@@ -37,6 +37,7 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
     ("breadbox", &[("launcher", "breadbox-launcher.png")]),
     ("breadclip", &[("history", "breadclip-history.png")]),
     ("breadsearch", &[("search", "breadsearch-search.png")]),
+    ("breadpad", &[("popup", "breadpad-popup.png")]),
 ];
 
 #[derive(Parser)]
