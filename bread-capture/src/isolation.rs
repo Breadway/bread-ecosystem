@@ -39,6 +39,17 @@
 //! breadbar already has to tolerate a missing/dead Hyprland connection
 //! gracefully (it survives Hyprland restarting), so this just exercises that
 //! same fallback path instead of a real error case.
+//!
+//! The background is a generated rainbow gradient, not a flat colour —
+//! deliberately: a solid fill can't tell you whether a window that's
+//! *supposed* to be translucent (breadbox/breadclip/breadsearch's
+//! full-screen overlay windows, breadbar's notification/OSD surfaces) is
+//! actually compositing as translucent, since a flat colour showing through
+//! a flat colour still just looks flat. A continuously-varying gradient
+//! makes any real transparency immediately obvious (multiple hues bleed
+//! through) and any accidentally-opaque surface just as obvious (it blocks
+//! the gradient out entirely, a flat rectangle where there should be colour
+//! variation).
 
 use anyhow::{bail, Context, Result};
 use std::collections::HashSet;
@@ -48,15 +59,11 @@ use std::time::{Duration, Instant};
 
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Matches bread-theme's `FIXED_BACKGROUND` (`bread-theme/src/palette.rs`) —
-/// so the empty canvas behind a capture reads as "the app's own dark theme",
-/// not an arbitrary compositor default.
-const BACKGROUND_COLOR: &str = "#0c0c0c";
-
 pub struct Isolation {
     child: Child,
     pub wayland_display: String,
     config_path: PathBuf,
+    background_path: PathBuf,
     runtime_dir: PathBuf,
 }
 
@@ -70,7 +77,8 @@ impl Isolation {
         let runtime_dir = PathBuf::from(
             std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string()),
         );
-        let config_path = write_headless_config(width, height)?;
+        let background_path = write_rainbow_background(width, height)?;
+        let config_path = write_headless_config(width, height, &background_path)?;
         let before_sockets: HashSet<String> = dir_names(&runtime_dir)
             .into_iter()
             .filter(|n| is_wayland_socket_name(n))
@@ -91,6 +99,7 @@ impl Isolation {
             child,
             wayland_display: String::new(),
             config_path,
+            background_path,
             runtime_dir: runtime_dir.clone(),
         };
 
@@ -122,6 +131,7 @@ impl Drop for Isolation {
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.config_path);
+        let _ = std::fs::remove_file(&self.background_path);
         // Killing sway doesn't unlink the socket it bound — confirmed
         // empirically, a killed instance leaves both files behind — so
         // without this, every capture run permanently orphans a
@@ -133,14 +143,57 @@ impl Drop for Isolation {
     }
 }
 
-fn write_headless_config(width: u32, height: u32) -> Result<PathBuf> {
+fn write_headless_config(width: u32, height: u32, background_path: &Path) -> Result<PathBuf> {
     let path = std::env::temp_dir().join(format!("bread-capture-sway-{}.conf", std::process::id()));
+    let bg = background_path.display();
     let contents = format!(
         "output HEADLESS-1 resolution {width}x{height}\n\
-         output HEADLESS-1 bg {BACKGROUND_COLOR} solid_color\n"
+         output HEADLESS-1 bg {bg} stretch\n"
     );
     std::fs::write(&path, contents).with_context(|| format!("writing {}", path.display()))?;
     Ok(path)
+}
+
+/// Renders a diagonal rainbow (full hue sweep, both x and y contribute) to a
+/// PNG at exactly `width`x`height`, for use as the isolated canvas's
+/// background — see the module doc for why a gradient instead of a flat
+/// colour. Diagonal rather than a simple left-to-right sweep so a capture
+/// showing color variation isn't just luck-of-the-x-position: a purely
+/// horizontal gradient would still make a tall, narrow surface look like a
+/// near-flat single hue.
+fn write_rainbow_background(width: u32, height: u32) -> Result<PathBuf> {
+    let path = std::env::temp_dir().join(format!("bread-capture-bg-{}.png", std::process::id()));
+    let mut img = image::RgbImage::new(width.max(1), height.max(1));
+    let denom = (width + height).max(1) as f32;
+    for y in 0..img.height() {
+        for x in 0..img.width() {
+            let hue = ((x + y) as f32 / denom) * 360.0;
+            img.put_pixel(x, y, image::Rgb(hsv_to_rgb(hue, 0.85, 0.95)));
+        }
+    }
+    img.save(&path).with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
+/// Standard HSV -> RGB conversion. `h` in degrees [0, 360), `s`/`v` in [0, 1].
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
+    let c = v * s;
+    let h_prime = (h / 60.0) % 6.0;
+    let x = c * (1.0 - (h_prime % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r1, g1, b1) = match h_prime as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    [
+        ((r1 + m) * 255.0).round() as u8,
+        ((g1 + m) * 255.0).round() as u8,
+        ((b1 + m) * 255.0).round() as u8,
+    ]
 }
 
 fn dir_names(path: &Path) -> HashSet<String> {

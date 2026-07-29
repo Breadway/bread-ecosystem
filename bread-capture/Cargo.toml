@@ -16,3 +16,6 @@ path = "src/main.rs"
 bread-utils = { path = "../bread-utils" }
 clap = { workspace = true }
 anyhow = { workspace = true }
+# Generates the isolated capture canvas's rainbow-gradient background — see
+# isolation.rs. png-only: no decoding, no other format support needed.
+image = { version = "0.25", default-features = false, features = ["png"] }
