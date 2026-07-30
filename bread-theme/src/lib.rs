@@ -188,8 +188,15 @@ pub fn stylesheet(p: &Palette) -> String {
          button.flat {{ background-color: transparent; color: @on-bg; }}\n\
          button.suggested-action {{ background-color: @accent; color: @on-accent; }}\n\
          button.suggested-action:hover {{ background-color: alpha(@accent, 0.85); }}\n\
-         button.destructive-action {{ background-color: @red; color: @on-red; }}\n\
-         button.destructive-action:hover {{ background-color: alpha(@red, 0.85); }}\n\
+         /* Deliberately NOT @red: pywal can hand `red` any hue depending on\
+            the wallpaper (a blue-toned wallpaper's \"red\" slot can literally\
+            render blue), which would make a destructive action indistinguishable\
+            from a normal accent button - exactly backwards for a warning colour.\
+            GNOME's own destructive-action is a fixed red for the same reason;\
+            this is the one button style in the whole system that intentionally\
+            doesn't follow the palette. */\n\
+         button.destructive-action {{ background-color: #e01b24; color: #ffffff; }}\n\
+         button.destructive-action:hover {{ background-color: #c01c28; }}\n\
          entry, spinbutton {{ background-color: @surface; color: @on-surface;\
              border: 1px solid @overlay; border-radius: {r2}px;\
              padding: {xs}px {sm}px; caret-color: @on-surface; }}\n\
