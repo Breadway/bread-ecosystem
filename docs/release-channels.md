@@ -53,57 +53,70 @@ should never carry a `bakery.toml` or `PKGBUILD`.
 ## Build tracks (stable/beta/dev) — orthogonal to channels
 
 Within the **bakery channel only**, a repo can additionally publish up to
-three **tracks**: `stable` (the existing tag-triggered `v*` flow, unchanged),
-`beta` (a frozen stabilization branch), and `dev` (published automatically on
-every push to the `dev` branch). Don't confuse "track" with "channel" above —
-channel is *how* a binary reaches a user (bakery vs. pacman); track is *which
-build* of a bakery-channel package they get.
+three **tracks**: `stable`, `beta`, and `dev`. Don't confuse "track" with
+"channel" above — channel is *how* a binary reaches a user (bakery vs.
+pacman); track is *which build* of a bakery-channel package they get.
 
-Each track lives in its own subtree so they never collide:
+There is no per-track branch anymore — every bakery-channel repo has exactly
+one long-lived branch, `main`. Tracks are driven entirely by *what you push*,
+not *which branch you push to*:
 
 | Track  | Index URL | Artifact root | Trigger |
 |---|---|---|---|
-| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `v*` on `main` |
-| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push to branch `beta` |
-| dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `dev` |
+| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `vX.Y.Z` |
+| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `vX.Y.Z-rc.N` |
+| dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `main` |
 
 `scripts/gen-index.sh` takes a `TRACK` env var (default `stable`) to select
-which subtree it reads/writes — every existing stable release workflow needs
-zero changes. Dev/beta builds skip the GitHub Release upload step entirely
-(no release-per-commit spam, and beta doesn't need a GitHub mirror either) —
+which subtree it reads/writes — this didn't need to change. Dev/beta builds
+skip the GitHub Release upload step entirely (no release-per-commit spam) —
 `dl.breadway.dev` is their only distribution point.
 
-**The full branch lifecycle** (see also `CLAUDE.md`'s Branch model section):
-day-to-day work lands on `feature/<name>` or `fix/<issue>` branches, merged
-into `dev`. `dev` publishes a fresh dev-track build on every push — this is
-the "test for a while, fix forward with another push" loop. When `dev` has
-gone roughly a week without new issues, cut `beta` fresh from `dev`'s current
-tip (`git branch -f beta dev` from a clean checkout, then force-push) — this
-freezes it as the stabilization target. `beta` publishes on every push the
-same way `dev` does, but only `fix/<issue>` branches merged directly into
-`beta` should land there afterward; `dev` keeps moving independently for the
-next cycle. After roughly a month of `beta` going without new issues, merge
-`beta` into `main` and push a `vX.Y.Z` tag from `main` to cut the actual
-stable release (the merge itself triggers nothing — tag-push is what fires
-`release.yml`). Reset `beta` fresh from `dev` again to start the next cycle.
+**Why no beta/dev branches**: the old model had `dev`/`beta`/`main` as three
+separate branches, with `beta` cut from `dev` periodically and `main`
+supposed to move forward only via a `beta` merge. In practice `main` rotted
+silently in most repos — the "merge beta into main" step was a manual,
+easy-to-forget action across a dozen-plus repos with no team and no
+calendar enforcement, and it also collided with a real Forgejo Actions
+gotcha: tag-triggered workflows resolve *which version of the workflow
+YAML to run* from the repo's default branch, not the tagged commit's
+branch, so a stale `main` could silently run stale release logic even when
+the tag itself pointed at fresh code. Collapsing everything onto one
+branch removes the class of bug entirely — there's nothing left to fall
+out of sync.
 
-Auto-versioning: both `dev` and `beta` compute their build version from the
-latest published `vX.Y.Z` tag (via `git ls-remote --tags`, not `Cargo.toml` —
-`Cargo.toml` can drift stale relative to the actual last release) plus a
-`-dev.<timestamp>+<sha>` / `-beta.<timestamp>+<sha>` suffix. This is
-self-healing regardless of `Cargo.toml` drift and keeps `bakery`'s semver
-check (`is_newer`) meaningful — it will correctly refuse to "update" to a
-build that isn't actually newer than what's installed.
+**The full lifecycle** (see also `CONTRIBUTING.md`): day-to-day work lands
+on `feature/<name>` or `fix/<issue>` branches, merged into `main`. `main`
+publishes a fresh dev-track build on every push — this is the "test for a
+while, fix forward with another push" loop. When you want to stabilize
+before a real release, tag a release candidate directly off whatever
+commit on `main` you're happy with: `git tag vX.Y.Z-rc.1 && git push
+origin vX.Y.Z-rc.1` (both remotes). "Freezing" is just pausing pushes to
+`main` while the RC gets tested, not a branch operation — cut `-rc.2`,
+`-rc.3`, etc. for further fixes without needing to touch any branch. Once
+an RC has gone without issues, tag the real release the same way, dropping
+the `-rc.N` suffix (`vX.Y.Z`) — that's what fires `release.yml`.
 
-Adding beta/dev to a bakery-channel repo: copy `dev-bakery.yml` /
-`beta-bakery.yml` (or `bread`'s `dev-release.yml` / `beta-release.yml` if the
+Auto-versioning: `dev` computes its build version from the latest published
+*stable* `vX.Y.Z` tag (via `git ls-remote --tags`, filtered to exclude any
+tag containing a `-`, not `Cargo.toml` — `Cargo.toml` can drift stale
+relative to the actual last release) plus a `-dev.<timestamp>+<sha>`
+suffix. `beta` needs no computation at all — the RC tag itself
+(`X.Y.Z-rc.N`) is already valid semver and is used as the version verbatim.
+`bakery`'s semver check (`is_newer`), backed by the real `semver` crate,
+already orders these correctly with zero special-casing: a prerelease
+identifier sorts below the same version without one, and `dev` < `rc`
+alphabetically, giving `X.Y.Z-dev... < X.Y.Z-rc.N < X.Y.Z` for the same
+base version.
+
+Adding dev/beta to a bakery-channel repo: copy `dev-bakery.yml` /
+`rc-bakery.yml` (or `bread`'s `dev-release.yml` / `rc-release.yml` if the
 repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
 the repo/binary names the same way the checklist below describes for
-`release.yml`. Also create the repo's `dev` and `beta` branches if they don't
-exist yet (`git checkout -b dev main` / `git checkout -b beta dev`, push
-both). Not every bakery-channel repo needs beta/dev on day one —
-`gen-index.sh` silently skips any product with no release dir under a given
-track's tree, same as it already does for an unreleased product on stable.
+`release.yml`. No branch setup needed beyond the repo's single `main`. Not
+every bakery-channel repo needs beta/dev on day one — `gen-index.sh`
+silently skips any product with no release dir under a given track's tree,
+same as it already does for an unreleased product on stable.
 
 Client side: `bakery track show` / `bakery track set <stable|beta|dev>`
 remembers a global track preference (`~/.local/state/bakery/installed.json`)
@@ -127,10 +140,11 @@ missing it; that gap is intentional and about to be moot everywhere.
 
 - **Bakery**: write `bakery.toml`, add a `[[products]]` entry to
   `bread-ecosystem/registry/bread-ecosystem.toml`, copy a sibling's
-  `release.yml` (prefer one with the same shape: single binary vs. binary +
-  systemd service — compare against `bread/release.yml` if there's a
-  service to install, `breadmon/release.yml` if not) and swap the repo
-  name / binary name / `PKG_DIR`.
+  `dev-release.yml` / `rc-release.yml` / `release.yml` trio (prefer one with
+  the same shape: single binary vs. binary + systemd service — compare
+  against `bread`'s if there's a service to install, `breadmon`'s if not)
+  and swap the repo name / binary name / `PKG_DIR`. No branch setup beyond
+  the repo's single `main`.
 - **Pacman**: write `packaging/PKGBUILD` (or `packaging/arch/PKGBUILD`),
   copy a sibling's `package.yml` and swap the repo/package name and
   `system_deps`→`pacman -Syu` package list.
@@ -145,11 +159,18 @@ missing it; that gap is intentional and about to be moot everywhere.
 
 | Repo | bakery | pacman | tracks | notes |
 |---|---|---|---|---|
-| bread-ecosystem (bakery product) | yes | yes | stable, beta, dev | `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
-| bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | |
-| bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | yes | stable, beta, dev | complete on all three tracks |
-| breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | complete on all three tracks |
-| breadlock, breadhelp | no | yes | n/a | breadlock's `bakery.toml` was removed as orphaned; its README wrongly claimed it was a registry entry |
-| bos-settings | yes | yes | stable only | was missing both the registry entry and `release.yml`; both added |
-| bos | no | no | n/a | ISO-only via `release-iso.yml`; had an erroneous `bakery.toml` copy-pasted from bos-settings, removed |
+| bread-ecosystem (bakery product) | yes | yes | stable, beta, dev | single-trunk model; `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
+| bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | single-trunk model |
+| bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | no | stable, beta, dev | pacman packaging (PKGBUILD + `package.yml`) dropped — bakery-only, single-trunk model |
+| breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
+| breadhelp, bos-settings | yes | no | stable, beta, dev | both moved onto bakery this cycle (previously pacman-only or partially wired); single-trunk model |
+| breadlock | no | yes | n/a | deliberate, permanent exception — installs a root-owned `/etc/pam.d/breadlock` PAM service file with no per-user equivalent, so it can never move to bakery |
+| bos | no | no | n/a | ISO-only via `release-iso.yml`; ships via a manual local build (`build-local.sh`), not a CI track — see its own branch note below |
 | breadarr | no | no | n/a | had an orphaned `bakery.toml` with no registry entry and zero workflows; removed. Not yet assigned a channel — do that deliberately when it's ready to ship, don't infer it from a stray config file |
+
+`bos` doesn't follow the tracks table above (it has no `dev`/`beta`/`stable`
+publish cadence — ISO builds are deliberate and manual) but does share the
+single-`main`-branch model for the same rot-avoidance reason. It additionally
+carries a `stable` branch that CI fast-forwards to whatever commit the latest
+`vX.Y.Z` tag points at — a marker only, never merged into by hand, so it
+can't drift the way a manually-promoted branch did before.
