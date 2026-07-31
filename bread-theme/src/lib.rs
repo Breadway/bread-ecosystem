@@ -166,9 +166,20 @@ pub fn stylesheet(p: &Palette) -> String {
             would override a container's colour on its own child labels. */\n\
          window {{ background-color: @bg; color: @on-bg; }}\n\
          .dim-label, .dim {{ opacity: 0.6; font-size: {sec}px; }}\n\
-         .title {{ font-size: 1.4em; font-weight: bold; }}\n\
+         /* Named `.page-title`, not the more obvious `.title` - libadwaita's\
+            own row/window-title widgets (AdwActionRow, AdwWindowTitle, GtkHeaderBar)\
+            put a bare `title` CSS class on their internal label, so a generic\
+            `.title` rule here would inflate every libadwaita row's title text\
+            to 1.4em too (this is exactly what caused the settings screen's\
+            ~24px row-title bug). Scoping the name avoids the collision instead\
+            of trying to out-specificity a first-party GTK/libadwaita class. */\n\
+         .page-title {{ font-size: 1.4em; font-weight: bold; }}\n\
          .heading {{ font-weight: bold; opacity: 0.85; }}\n\
-         .subtitle {{ opacity: 0.7; font-size: {sec}px; }}\n\
+         /* Same libadwaita-collision reasoning as `.page-title` above - a bare\
+            `.subtitle` also matches libadwaita's internal row-subtitle labels.\
+            Unused by any app today, but scoped so a future caller doesn't\
+            reintroduce the fight. */\n\
+         .page-subtitle {{ opacity: 0.7; font-size: {sec}px; }}\n\
          button {{ background-color: @surface; color: @on-surface; border: none;\
              border-radius: {r1}px; padding: {sm}px {lg}px; }}\n\
          button:hover {{ background-color: alpha(@on-surface, 0.14); }}\n\
@@ -177,8 +188,15 @@ pub fn stylesheet(p: &Palette) -> String {
          button.flat {{ background-color: transparent; color: @on-bg; }}\n\
          button.suggested-action {{ background-color: @accent; color: @on-accent; }}\n\
          button.suggested-action:hover {{ background-color: alpha(@accent, 0.85); }}\n\
-         button.destructive-action {{ background-color: @red; color: @on-red; }}\n\
-         button.destructive-action:hover {{ background-color: alpha(@red, 0.85); }}\n\
+         /* Deliberately NOT @red: pywal can hand `red` any hue depending on\
+            the wallpaper (a blue-toned wallpaper's \"red\" slot can literally\
+            render blue), which would make a destructive action indistinguishable\
+            from a normal accent button - exactly backwards for a warning colour.\
+            GNOME's own destructive-action is a fixed red for the same reason;\
+            this is the one button style in the whole system that intentionally\
+            doesn't follow the palette. */\n\
+         button.destructive-action {{ background-color: #e01b24; color: #ffffff; }}\n\
+         button.destructive-action:hover {{ background-color: #c01c28; }}\n\
          entry, spinbutton {{ background-color: @surface; color: @on-surface;\
              border: 1px solid @overlay; border-radius: {r2}px;\
              padding: {xs}px {sm}px; caret-color: @on-surface; }}\n\
@@ -198,6 +216,14 @@ pub fn stylesheet(p: &Palette) -> String {
          scale trough highlight {{ background-color: @accent; border-radius: {pill}px; min-height: 6px; }}\n\
          scale slider {{ background-color: @on-bg; border-radius: {pill}px; }}\n\
          list, listbox {{ background-color: transparent; }}\n\
+         /* libadwaita's AdwPreferencesGroup wraps its rows in a GtkListBox\
+            carrying the `boxed-list` class, expecting a surface fill + radius\
+            to read as a card. The bare-type rule above (needed so plain\
+            GTK4 sidebars/lists stay transparent) was overriding that with\
+            equal specificity and no fill ever won, leaving preference groups\
+            as a bare bordered table instead of a card. This is scoped to the\
+            class only, so it doesn't touch any non-adw list. */\n\
+         list.boxed-list, listbox.boxed-list {{ background-color: @surface; border-radius: {r1}px; }}\n\
          row {{ border-radius: {r2}px; }}\n\
          row:selected, list row:selected {{ background-color: @accent; color: @on-accent; }}\n\
          .sidebar {{ background-color: @surface; color: @on-surface; }}\n\
@@ -321,7 +347,7 @@ mod tests {
             assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
         }
         // a representative spread of the shared component selectors
-        for sel in &["button", "entry", "switch:checked", ".card", ".sidebar", "scrollbar slider", ".title"] {
+        for sel in &["button", "entry", "switch:checked", ".card", ".sidebar", "scrollbar slider", ".page-title"] {
             assert!(css.contains(sel), "stylesheet missing selector: {sel}");
         }
         assert!(css.contains("Varela Round"));
