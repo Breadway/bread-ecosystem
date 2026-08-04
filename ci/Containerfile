@@ -1,0 +1,30 @@
+# Shared CI build environment for bread-ecosystem GTK4/libadwaita apps.
+#
+# Arch base: current gtk4/libadwaita/gtk4-layer-shell/graphene are all
+# available as prebuilt pacman packages, so no from-source library builds
+# are needed (unlike Fedora, where breadpad's CI used to rebuild libadwaita
+# from source on every single run and broke repeatedly on version drift).
+#
+# Base image pinned by digest, package set frozen at build time: this image
+# only changes when someone deliberately rebuilds it, not on every push.
+# Product repos that depend on this file should pin it to a commit sha
+# (see each product's ci/bread-ecosystem.rev), not track `main` — otherwise
+# an unrelated change here silently breaks every product's next release.
+#
+# EXTRA_PKGS lets a product layer on extra pacman packages (see that
+# product's ci/deps.txt) without forking this file.
+FROM archlinux@sha256:fae033b815a16f930325c2697e620362be4d2e5d739a301b10ad1fc9c8643a06
+
+ARG EXTRA_PKGS=""
+
+RUN pacman -Syu --noconfirm --needed \
+        base-devel \
+        git \
+        pkgconf \
+        rust \
+        gtk4 \
+        libadwaita \
+        gtk4-layer-shell \
+        graphene \
+        ${EXTRA_PKGS} \
+    && pacman -Scc --noconfirm
