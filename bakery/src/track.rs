@@ -9,18 +9,13 @@ use std::str::FromStr;
 /// pacman) documented in `docs/release-channels.md` — that's an orthogonal,
 /// pre-existing use of the word "channel", which is why this is called a
 /// "track" instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Track {
+    #[default]
     Stable,
     Beta,
     Dev,
-}
-
-impl Default for Track {
-    fn default() -> Self {
-        Track::Stable
-    }
 }
 
 impl Track {

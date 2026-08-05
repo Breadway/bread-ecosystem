@@ -212,8 +212,8 @@ pub fn load(force_refresh: bool, track: Track) -> Result<Index> {
 }
 
 fn read_and_verify_cache(
-    cache_path: &PathBuf,
-    sig_cache_path: &PathBuf,
+    cache_path: &Path,
+    sig_cache_path: &Path,
     track: Track,
 ) -> Result<Index> {
     let bytes = std::fs::read(cache_path).context("reading cached index")?;
@@ -225,14 +225,14 @@ fn read_and_verify_cache(
     serde_json::from_slice(&bytes).context("parsing cached index")
 }
 
-fn cache_is_fresh(path: &PathBuf) -> bool {
+fn cache_is_fresh(path: &Path) -> bool {
     std::fs::metadata(path)
         .and_then(|m| m.modified())
         .map(|t| SystemTime::now().duration_since(t).unwrap_or(CACHE_MAX_AGE) < CACHE_MAX_AGE)
         .unwrap_or(false)
 }
 
-fn fetch_and_cache(cache_path: &PathBuf, sig_cache_path: &PathBuf, track: Track) -> Result<Index> {
+fn fetch_and_cache(cache_path: &Path, sig_cache_path: &Path, track: Track) -> Result<Index> {
     let bytes = fetch_bytes(&primary_url(track)).with_context(|| {
         format!(
             "fetching {track} index — has a {track} build been published yet? \
@@ -297,8 +297,14 @@ pub fn fetch_binary(primary_url: &str, fallback_url: &str) -> Result<Vec<u8>> {
 /// gets buffered into memory before any trust check runs on it.
 const MAX_RESPONSE_BYTES: u64 = 256 * 1024 * 1024;
 
+/// How often (at most) the `\r`-overwritten progress line refreshes — a
+/// LAN-speed download can push way more than one chunk per 100ms, and
+/// printing on every chunk would flood the terminal instead of reassuring it.
+const PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
+const CHUNK_SIZE: usize = 64 * 1024;
+
 fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
-    use std::io::Read;
+    use std::io::{IsTerminal, Read};
     let resp = ureq::get(url)
         .call()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -306,15 +312,49 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     if status != 200 {
         bail!("HTTP {status} from {url}");
     }
+
+    // Progress feedback only when there's a Content-Length to show progress
+    // against and stderr is an actual terminal — a multi-MB binary with no
+    // feedback at all looks like a hang, but piped/CI output shouldn't get
+    // `\r` noise. A manual chunked read loop (instead of one `read_to_end`)
+    // is what makes printing partway through the download possible, without
+    // pulling in a progress-bar crate for what's meant to just be reassurance.
+    let content_length: Option<u64> = resp.header("Content-Length").and_then(|v| v.parse().ok());
+    let show_progress = content_length.is_some() && std::io::stderr().is_terminal();
+
     let mut buf = Vec::new();
-    resp.into_reader()
-        .take(MAX_RESPONSE_BYTES + 1)
-        .read_to_end(&mut buf)
-        .context("reading response")?;
-    if buf.len() as u64 > MAX_RESPONSE_BYTES {
-        bail!("response from {url} exceeds the {MAX_RESPONSE_BYTES}-byte limit");
+    let mut reader = resp.into_reader();
+    let mut chunk = [0u8; CHUNK_SIZE];
+    let mut last_print = std::time::Instant::now();
+    loop {
+        let n = reader.read(&mut chunk).context("reading response")?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if buf.len() as u64 > MAX_RESPONSE_BYTES {
+            bail!("response from {url} exceeds the {MAX_RESPONSE_BYTES}-byte limit");
+        }
+        if show_progress && last_print.elapsed() >= PROGRESS_THROTTLE {
+            print_progress(buf.len() as u64, content_length.unwrap());
+            last_print = std::time::Instant::now();
+        }
+    }
+    if show_progress {
+        print_progress(buf.len() as u64, content_length.unwrap());
+        eprintln!();
     }
     Ok(buf)
+}
+
+fn print_progress(downloaded: u64, total: u64) {
+    use std::io::Write;
+    eprint!(
+        "\r  ⇣ {:.1}/{:.1} MB",
+        downloaded as f64 / 1_048_576.0,
+        total as f64 / 1_048_576.0
+    );
+    let _ = std::io::stderr().flush();
 }
 
 #[cfg(test)]

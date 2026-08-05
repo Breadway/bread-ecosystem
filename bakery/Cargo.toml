@@ -16,6 +16,7 @@ ureq = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 clap = { workspace = true }
+clap_complete = "4"
 chrono = { workspace = true }
 minisign-verify = { workspace = true }
 semver = { workspace = true }

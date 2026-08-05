@@ -7,8 +7,11 @@ use crate::manifest::{fetch_binary, Binary};
 /// Download a binary, verify its SHA-256, then atomically write it into
 /// place (fsynced, temp-in-same-dir-with-unique-name then rename — see
 /// `bread_utils::atomic`). Bails before touching `dest` if the checksum
-/// fails.
-pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
+/// fails. Returns the verified hex sha256 so callers (`install::
+/// install_package`) can record it for `bakery verify` without hashing the
+/// bytes a second time — `verify_sha256` already confirmed `bytes` matches
+/// `binary.sha256`, so that's the value to return.
+pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
     println!("  downloading {}…", binary.name);
     let bytes = fetch_binary(&binary.dl_url, &binary.github_url)
         .with_context(|| format!("downloading {}", binary.name))?;
@@ -19,7 +22,7 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
     bread_utils::atomic::write_atomic_bytes(dest, &bytes, Some(0o755))
         .with_context(|| format!("placing binary at {}", dest.display()))?;
     println!("  installed {}", dest.display());
-    Ok(())
+    Ok(binary.sha256.clone())
 }
 
 /// Verify that `bytes` hashes to `expected_hex` under SHA-256.
