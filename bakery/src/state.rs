@@ -17,6 +17,20 @@ pub struct InstalledPackage {
     // convention as `State.track` above.
     #[serde(default)]
     pub track: Track,
+    /// The version this package was upgraded from, if any — `bakery
+    /// rollback` uses this to find the matching local backup dir. `None` on
+    /// a fresh first-time install. `#[serde(default)]` for the same
+    /// old-shape-json reason as `track` above.
+    #[serde(default)]
+    pub previous_version: Option<String>,
+    /// SHA-256 (hex) of each installed binary, captured at install time.
+    /// `bakery verify` recomputes these from disk and compares against this
+    /// recorded value rather than a fresh index lookup — the index only
+    /// carries the checksum for whatever the *current latest* release is,
+    /// which may not match what's actually installed. Empty on installs
+    /// that predate this field.
+    #[serde(default)]
+    pub binary_sha256: HashMap<String, String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -91,14 +105,28 @@ impl State {
     }
 }
 
+fn state_base_dir() -> PathBuf {
+    dirs::state_dir().unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("~"))
+            .join(".local/state")
+    })
+}
+
 fn state_path() -> PathBuf {
-    dirs::state_dir()
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("~"))
-                .join(".local/state")
-        })
-        .join("bakery/installed.json")
+    state_base_dir().join("bakery/installed.json")
+}
+
+/// Local backup dir for `pkg_name`'s `version` binaries, populated by
+/// `install::install_package` right before an update overwrites the
+/// previous binaries and consumed by `bakery rollback`. See
+/// `install::backup_current_binary`'s doc comment for why this is a local
+/// snapshot rather than a re-fetch of the old version from the server.
+pub fn backup_dir(pkg_name: &str, version: &str) -> PathBuf {
+    state_base_dir()
+        .join("bakery/backups")
+        .join(pkg_name)
+        .join(version)
 }
 
 #[cfg(test)]
@@ -113,6 +141,8 @@ mod tests {
             services: vec![],
             installed_at: "2026-01-01T00:00:00Z".to_string(),
             track: Track::Stable,
+            previous_version: None,
+            binary_sha256: HashMap::new(),
         }
     }
 
@@ -166,6 +196,8 @@ mod tests {
             services: vec!["bar.service".to_string()],
             installed_at: "2026-06-01T00:00:00Z".to_string(),
             track: Track::Beta,
+            previous_version: Some("1.0.0".to_string()),
+            binary_sha256: HashMap::from([("bar".to_string(), "abc123".to_string())]),
         });
         let json = serde_json::to_string(&state).unwrap();
         let restored: State = serde_json::from_str(&json).unwrap();
@@ -173,6 +205,8 @@ mod tests {
         assert_eq!(restored.packages["bar"].version, "2.0.0");
         assert_eq!(restored.packages["bar"].services, ["bar.service"]);
         assert_eq!(restored.packages["bar"].track, Track::Beta);
+        assert_eq!(restored.packages["bar"].previous_version.as_deref(), Some("1.0.0"));
+        assert_eq!(restored.packages["bar"].binary_sha256["bar"], "abc123");
     }
 
     #[test]
@@ -182,6 +216,26 @@ mod tests {
         let old_shape = r#"{"name":"foo","version":"1.0.0","binaries":[],"services":[],"installed_at":"2026-01-01T00:00:00Z"}"#;
         let installed: InstalledPackage = serde_json::from_str(old_shape).unwrap();
         assert_eq!(installed.track, Track::Stable);
+    }
+
+    #[test]
+    fn installed_package_previous_version_and_binary_sha256_default_on_old_shape_json() {
+        // Simulates an installed.json entry written before rollback/verify
+        // support existed.
+        let old_shape = r#"{"name":"foo","version":"1.0.0","binaries":[],"services":[],"installed_at":"2026-01-01T00:00:00Z","track":"stable"}"#;
+        let installed: InstalledPackage = serde_json::from_str(old_shape).unwrap();
+        assert!(installed.previous_version.is_none());
+        assert!(installed.binary_sha256.is_empty());
+    }
+
+    #[test]
+    fn backup_dir_is_distinct_per_package_and_version() {
+        let a = backup_dir("bakery", "0.3.1");
+        let b = backup_dir("bakery", "0.3.2");
+        let c = backup_dir("breadhelp", "0.3.1");
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert!(a.ends_with("bakery/backups/bakery/0.3.1"));
     }
 
     #[test]

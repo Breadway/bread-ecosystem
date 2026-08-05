@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -41,24 +42,39 @@ fn confirm(prompt: &str, assume_yes: bool) -> bool {
     matches!(buf.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
+/// Installs `pkg`. `previous` is the package's current `InstalledPackage`
+/// record when this is an update (looked up by the caller before starting,
+/// since it's already loaded elsewhere in the call chain) — `None` for a
+/// fresh first-time install. Threading it in rather than reloading `State`
+/// here avoids a second load, and lets step 1 tell "update" from "fresh
+/// install" for the pre-overwrite backup below.
 pub fn install_package(
     pkg: &Package,
     bin_dir: &Path,
     track: Track,
+    previous: Option<&InstalledPackage>,
     no_hooks: bool,
     assume_yes: bool,
 ) -> Result<()> {
     ensure_safe_component(&pkg.name, "package name")?;
     println!("installing {}@{}…", pkg.name, pkg.version);
 
-    // 1. Download and verify all binaries.
+    // 1. Download and verify all binaries. On an update (not a fresh
+    // install), back up the current binary first — best-effort, feeding
+    // `bakery rollback` — before it's overwritten below.
+    let backup_dir = previous.map(|prev| crate::state::backup_dir(&pkg.name, &prev.version));
     let mut binary_names = Vec::new();
+    let mut binary_sha256 = HashMap::new();
     for bin in &pkg.binaries {
         ensure_safe_component(&bin.name, "binary name")?;
         let install_name = strip_arch_suffix(&bin.name);
         let dest = bin_dir.join(install_name);
-        fetch_and_place(bin, &dest)?;
+        if let Some(dir) = &backup_dir {
+            backup_current_binary(dir, install_name, &dest);
+        }
+        let sha256 = fetch_and_place(bin, &dest)?;
         binary_names.push(install_name.to_string());
+        binary_sha256.insert(install_name.to_string(), sha256);
     }
 
     // 2. Scaffold config dir + download example file.
@@ -124,6 +140,8 @@ pub fn install_package(
             services: service_names,
             installed_at: chrono::Utc::now().to_rfc3339(),
             track,
+            previous_version: previous.map(|p| p.version.clone()),
+            binary_sha256,
         });
         Ok(())
     })?;
@@ -133,7 +151,33 @@ pub fn install_package(
     Ok(())
 }
 
-pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool) -> Result<()> {
+/// Best-effort copy of the on-disk binary into `backup_dir` before it's
+/// overwritten by an update — feeds `bakery rollback`. `backup_dir` is
+/// deliberately a local path (ultimately under `~/.local/state/bakery/
+/// backups/<pkg>/<old-version>/`, see `state::backup_dir`) rather than
+/// `bakery rollback` re-fetching the old version from `dl.breadway.dev`:
+/// `index.json`'s minisign signature only covers the *current* published
+/// version's checksums, so verifying an old version pulled fresh from the
+/// server would only be checkable against its unsigned per-version
+/// `.sha256` sidecar — a materially weaker guarantee than bakery's normal
+/// trust model. A local pre-update snapshot sidesteps that gap entirely.
+fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Path) {
+    if !current_path.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(backup_dir) {
+        eprintln!(
+            "  warning: could not create backup dir {} ({e}) — rollback won't be available for this update",
+            backup_dir.display()
+        );
+        return;
+    }
+    if let Err(e) = std::fs::copy(current_path, backup_dir.join(binary_name)) {
+        eprintln!("  warning: could not back up {binary_name} before update ({e}) — rollback won't be available for this update");
+    }
+}
+
+pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: bool) -> Result<()> {
     let installed = State::with_lock(|state| Ok(state.remove(pkg_name)))?;
     let installed = match installed {
         Some(p) => p,
@@ -179,29 +223,67 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool) -> Resul
         }
     }
 
-    // Never touch config or data dirs.
+    // Config is never touched, even with --purge: unlike the license/desktop
+    // /data paths below (all bakery-downloaded or -extracted content,
+    // reproducible from source), the config dir holds user-authored/edited
+    // content bakery never wrote — silently destroying it would be a bad
+    // surprise no flag should cause.
     if let Some(cfg_dir) = guess_config_dir(pkg_name) {
         if cfg_dir.exists() {
             println!("  config preserved at {}", cfg_dir.display());
         }
     }
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-        .join(pkg_name);
-    if data_dir.exists() {
+
+    let share_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("~/.local/share"));
+    let data_dir = share_dir.join(pkg_name);
+
+    if purge {
+        let license_dir = share_dir.join("licenses").join(pkg_name);
+        remove_purged_path(&license_dir, "license dir", true, assume_yes, &mut failures);
+
+        let desktop_file = share_dir.join("applications").join(format!("{pkg_name}.desktop"));
+        remove_purged_path(&desktop_file, "desktop entry", false, assume_yes, &mut failures);
+
+        remove_purged_path(&data_dir, "data dir", true, assume_yes, &mut failures);
+    } else if data_dir.exists() {
         println!("  data preserved at {}", data_dir.display());
     }
 
     if !failures.is_empty() {
-        eprintln!("  failed to remove {} binary/binaries:", failures.len());
+        eprintln!("  failed to remove {} item(s):", failures.len());
         for f in &failures {
             eprintln!("    {f}");
         }
-        bail!("{pkg_name} removed from state, but some binaries could not be deleted");
+        bail!("{pkg_name} removed from state, but some files could not be deleted");
     }
 
     println!("  {pkg_name} removed");
     Ok(())
+}
+
+/// Confirms (via `confirm`, so `--yes` and non-tty stdin behave the same as
+/// every other destructive prompt in this file) and removes `path` — a
+/// directory when `recursive`, otherwise a single file. Declining leaves it
+/// in place and prints the same "preserved at" wording the non-purge path
+/// already uses. Shared by `remove_package`'s three `--purge` targets
+/// (license dir, desktop entry, data dir).
+fn remove_purged_path(path: &Path, label: &str, recursive: bool, assume_yes: bool, failures: &mut Vec<String>) {
+    if !path.exists() {
+        return;
+    }
+    if !confirm(&format!("  remove {label} at {}?", path.display()), assume_yes) {
+        println!("  {label} preserved at {}", path.display());
+        return;
+    }
+    let result = if recursive {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    match result {
+        Ok(()) => println!("  removed {}", path.display()),
+        Err(e) => failures.push(format!("{}: {e}", path.display())),
+    }
 }
 
 fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Result<()> {
@@ -521,7 +603,7 @@ fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
         .lines()
         .map(|line| {
             if line.trim_start().starts_with("ExecStart=") {
-                let rest = line.splitn(2, '=').nth(1).unwrap_or("");
+                let rest = line.split_once('=').map(|(_, v)| v).unwrap_or("");
                 let argv: Vec<&str> = rest.split_whitespace().collect();
                 if let Some(bin_name) = argv.first().and_then(|p| Path::new(p).file_name()) {
                     let new_path = bin_dir.join(bin_name);
@@ -874,7 +956,7 @@ mod tests {
         let mut pkg = test_package(&base_url);
         pkg.name = "../evil".to_string();
         let dir = tempdir().unwrap();
-        let err = install_package(&pkg, dir.path(), Track::Stable, true, true).unwrap_err();
+        let err = install_package(&pkg, dir.path(), Track::Stable, None, true, true).unwrap_err();
         assert!(err.to_string().contains("not a safe filename"));
     }
 
@@ -933,5 +1015,71 @@ mod tests {
         let out = fs::read_to_string(&path).unwrap();
         assert!(out.contains("Description=foo"));
         assert!(out.contains("ExecStart=/usr/bin/foo"));
+    }
+
+    #[test]
+    fn backup_current_binary_copies_existing_file() {
+        let dir = tempdir().unwrap();
+        let current = dir.path().join("mypkg");
+        fs::write(&current, b"old version bytes").unwrap();
+        let backup_dir = dir.path().join("backups/mypkg/1.0.0");
+
+        backup_current_binary(&backup_dir, "mypkg", &current);
+
+        assert_eq!(fs::read(backup_dir.join("mypkg")).unwrap(), b"old version bytes");
+    }
+
+    #[test]
+    fn backup_current_binary_skips_missing_source_without_erroring() {
+        // The "fresh install, nothing to back up yet" case — must not create
+        // an empty backup dir or panic.
+        let dir = tempdir().unwrap();
+        let current = dir.path().join("does-not-exist");
+        let backup_dir = dir.path().join("backups/mypkg/1.0.0");
+
+        backup_current_binary(&backup_dir, "mypkg", &current);
+
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn remove_purged_path_removes_directory_when_confirmed() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("licenses/mypkg");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("LICENSE"), b"MIT").unwrap();
+        let mut failures = Vec::new();
+
+        remove_purged_path(&target, "license dir", true, true, &mut failures);
+
+        assert!(!target.exists());
+        assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn remove_purged_path_preserves_when_declined() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("mypkg.desktop");
+        fs::write(&target, b"[Desktop Entry]").unwrap();
+        let mut failures = Vec::new();
+
+        // assume_yes=false and a non-tty stdin (the test harness) means
+        // `confirm` answers "no" — same as `confirm_returns_false_when_not_
+        // assume_yes_and_stdin_not_a_tty` above.
+        remove_purged_path(&target, "desktop entry", false, false, &mut failures);
+
+        assert!(target.exists());
+        assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn remove_purged_path_missing_target_is_a_no_op() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("nope");
+        let mut failures = Vec::new();
+
+        remove_purged_path(&target, "data dir", true, true, &mut failures);
+
+        assert!(failures.is_empty());
     }
 }

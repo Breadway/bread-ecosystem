@@ -44,6 +44,16 @@ pub fn fail(s: &str) -> String {
     style(&format!("✗ {s}"), RED)
 }
 
+/// Neutral "nothing to do" glyph, dim rather than green — for steady-state
+/// noise like "already at latest" in `bakery update --all`, where most
+/// packages hit this every run. Reusing GREEN there drowns out the
+/// packages that actually changed, and meaning shouldn't depend on color
+/// alone (an unusual terminal palette can make BOLD/GREEN/DIM look similar),
+/// so this also carries its own glyph the way `ok`/`fail` do.
+pub fn unchanged(s: &str) -> String {
+    style(&format!("· {s}"), DIM)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,5 +66,15 @@ mod tests {
     #[test]
     fn dev_badge_is_nonempty() {
         assert!(!track_badge(Track::Dev).is_empty());
+    }
+
+    #[test]
+    fn unchanged_carries_a_distinct_glyph_from_ok_and_fail() {
+        // Meaning must survive even with colors stripped (NO_COLOR, or a
+        // terminal palette that makes ANSI codes look alike) — so the glyph
+        // itself has to differ, not just the color.
+        assert!(unchanged("foo").contains('·'));
+        assert!(!ok("foo").contains('·'));
+        assert!(!fail("foo").contains('·'));
     }
 }
