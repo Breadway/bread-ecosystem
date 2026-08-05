@@ -14,9 +14,20 @@
 #
 #   scripts/doctor-channels.sh ~/Projects
 #
+# Also checks every registry product's Forgejo repo for the
+# BAKERY_MINISIGN_SEC_KEY_PATH Actions secret (via the Forgejo API) — a
+# split-out product repo silently missing this secret is exactly the gotcha
+# that bit breadcast's onboarding: its release workflows would either fail
+# the hard-fail guard (dev/rc-style workflows) or, worse, publish unsigned
+# (older release.yml-style workflows without that guard). Skipped with a
+# warning (not a failure) if ~/.config/forgejo/token doesn't exist, so this
+# still runs for anyone without API access — set SKIP_SECRETS_CHECK=1 to
+# skip it deliberately (e.g. offline).
+#
 # Exits 0 if no drift found, 1 if any repo has drift (so it's CI-friendly).
 #
-# Requires: python3 (tomllib, stdlib since 3.11)
+# Requires: python3 (tomllib, stdlib since 3.11); curl + a Forgejo token at
+# ~/.config/forgejo/token for the secrets check (soft-skipped without one).
 
 set -euo pipefail
 
@@ -72,7 +83,10 @@ for dir in "${BASE_DIR}"/*/; do
     # Skip bread-ecosystem itself — it's a multi-product repo the registry
     # membership check above doesn't map 1:1, and it's already reviewed by
     # hand above (bakery + bread-theme products).
-    [[ "${name}" == "bread-ecosystem" ]] && continue
+    # Prefix match, not exact: bread-ecosystem-breadcast, bread-ecosystem-onboard,
+    # etc. are all worktree checkouts of this same multi-product repo, not
+    # separate products the registry-membership check below applies to.
+    [[ "${name}" == bread-ecosystem* ]] && continue
 
     checked=$((checked + 1))
     has_bakery_toml=0
@@ -125,6 +139,55 @@ done
 
 echo
 echo "checked ${checked} repos under ${BASE_DIR}"
+
+# --- Secrets check ---------------------------------------------------------
+TOKEN_FILE="${HOME}/.config/forgejo/token"
+if [[ -n "${SKIP_SECRETS_CHECK:-}" ]]; then
+    echo "skipping secrets check (SKIP_SECRETS_CHECK set)"
+elif [[ ! -f "${TOKEN_FILE}" ]]; then
+    echo "skipping secrets check (no token at ${TOKEN_FILE})"
+else
+    TOKEN="$(cat "${TOKEN_FILE}")"
+    FORGEJO_API="https://git.breadway.dev/api/v1"
+
+    # Full "owner/repo" slugs, deduplicated (bakery + bread-theme both point
+    # at Breadway/bread-ecosystem, checking it twice is wasted API calls).
+    mapfile -t registry_slugs < <(python3 -c "
+import tomllib
+with open('${REGISTRY}', 'rb') as f:
+    d = tomllib.load(f)
+seen = set()
+for p in d['products']:
+    if p['repo'] not in seen:
+        seen.add(p['repo'])
+        print(p['repo'])
+")
+
+    secrets_missing=0
+    for slug in "${registry_slugs[@]}"; do
+        has_key="$(curl -s -H "Authorization: token ${TOKEN}" \
+            "${FORGEJO_API}/repos/${slug}/actions/secrets" \
+            | python3 -c "
+import json, sys
+try:
+    secrets = json.load(sys.stdin)
+except json.JSONDecodeError:
+    secrets = []
+print(1 if any(s.get('name') == 'BAKERY_MINISIGN_SEC_KEY_PATH' for s in secrets) else 0)
+" 2>/dev/null || echo 0)"
+        if [[ "${has_key}" != 1 ]]; then
+            echo "${slug}: missing BAKERY_MINISIGN_SEC_KEY_PATH Actions secret — release CI will fail closed (or worse, publish unsigned on an older workflow shape) until it's set"
+            secrets_missing=1
+        fi
+    done
+
+    if [[ "${secrets_missing}" == 0 ]]; then
+        echo "no missing signing secrets found across ${#registry_slugs[@]} registry repos"
+    else
+        drift=1
+    fi
+fi
+
 if [[ "${drift}" == 0 ]]; then
     echo "no channel drift found"
 else
