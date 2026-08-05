@@ -76,3 +76,8 @@ description = "System settings app for Bread OS"
 name = "breadhelp"
 repo = "Breadway/breadhelp"
 description = "Onboarding and help center for Bread OS"
+
+[[products]]
+name = "breadcast"
+repo = "Breadway/breadcast"
+description = "Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup"
