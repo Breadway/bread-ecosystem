@@ -4,8 +4,10 @@ use std::path::Path;
 
 use crate::manifest::{fetch_binary, Binary};
 
-/// Download a binary to a temp path, verify its SHA-256, then atomically move
-/// it into place. Bails before touching `dest` if the checksum fails.
+/// Download a binary, verify its SHA-256, then atomically write it into
+/// place (fsynced, temp-in-same-dir-with-unique-name then rename — see
+/// `bread_utils::atomic`). Bails before touching `dest` if the checksum
+/// fails.
 pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
     println!("  downloading {}…", binary.name);
     let bytes = fetch_binary(&binary.dl_url, &binary.github_url)
@@ -14,20 +16,8 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
     verify_sha256(&bytes, &binary.sha256)
         .with_context(|| format!("checksum mismatch for {}", binary.name))?;
 
-    if let Some(dir) = dest.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-
-    let tmp = dest.with_extension("tmp");
-    std::fs::write(&tmp, &bytes).context("writing binary to tmp")?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
-    }
-
-    std::fs::rename(&tmp, dest).context("placing binary")?;
+    bread_utils::atomic::write_atomic_bytes(dest, &bytes, Some(0o755))
+        .with_context(|| format!("placing binary at {}", dest.display()))?;
     println!("  installed {}", dest.display());
     Ok(())
 }
@@ -38,6 +28,9 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<()> {
 /// [`fetch_and_place`]), and config-example / systemd-unit downloads in
 /// `install.rs` — so all downloaded artifacts get the same integrity check.
 pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
+    if expected_hex.is_empty() {
+        bail!("index entry has no sha256 recorded — refusing to trust an unverifiable download");
+    }
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let actual = hex::encode(hasher.finalize());
@@ -79,5 +72,15 @@ mod tests {
         let bytes = b"";
         let hash = sha256_hex(bytes);
         assert!(verify_sha256(bytes, &hash).is_ok());
+    }
+
+    #[test]
+    fn verify_missing_sha256_gives_a_clear_error() {
+        // gen-index.sh emits an empty sha256 string when a .sha256 sidecar
+        // is missing — must not fall through to the generic mismatch
+        // message ("expected: \n actual: <hex>"), which is confusing about
+        // what actually went wrong.
+        let err = verify_sha256(b"anything", "").unwrap_err();
+        assert!(err.to_string().contains("no sha256 recorded"));
     }
 }

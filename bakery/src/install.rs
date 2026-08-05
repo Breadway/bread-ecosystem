@@ -1,19 +1,62 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::download::{fetch_and_place, verify_sha256};
 use crate::manifest::{fetch_binary, Package, Service};
 use crate::state::{InstalledPackage, State};
+use crate::track::Track;
 
-pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
+/// Rejects a filename that isn't a safe single path component — no `/`,
+/// `\`, empty, `.`, or `..`. `bin.name`/`svc.unit`/`cfg.example`/`pkg.name`/
+/// `license_file`/`desktop_file`/`data_archive` all come from the
+/// minisign-verified index, so this is defense in depth (not exploitable
+/// without a compromised signing key) rather than the primary guard — but
+/// closing the path-traversal class is cheap enough to do anyway before any
+/// of these are joined onto a fixed base directory.
+fn ensure_safe_component(name: &str, what: &str) -> Result<()> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') {
+        bail!("refusing to install: {what} '{name}' is not a safe filename");
+    }
+    Ok(())
+}
+
+/// Prompts `prompt [y/N] ` and returns the answer. `assume_yes` (the global
+/// `--yes` flag) skips the prompt entirely; otherwise, a non-tty stdin
+/// (CI, piped input) answers "no" rather than blocking on a read that will
+/// never resolve.
+fn confirm(prompt: &str, assume_yes: bool) -> bool {
+    if assume_yes {
+        return true;
+    }
+    if !std::io::stdin().is_terminal() {
+        return false;
+    }
+    use std::io::Write;
+    print!("{prompt} [y/N] ");
+    std::io::stdout().flush().ok();
+    let mut buf = String::new();
+    std::io::stdin().read_line(&mut buf).ok();
+    matches!(buf.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+pub fn install_package(
+    pkg: &Package,
+    bin_dir: &Path,
+    track: Track,
+    no_hooks: bool,
+    assume_yes: bool,
+) -> Result<()> {
+    ensure_safe_component(&pkg.name, "package name")?;
     println!("installing {}@{}…", pkg.name, pkg.version);
 
     // 1. Download and verify all binaries.
     let mut binary_names = Vec::new();
     for bin in &pkg.binaries {
+        ensure_safe_component(&bin.name, "binary name")?;
         let install_name = strip_arch_suffix(&bin.name);
-        let dest = bin_dir.join(&install_name);
+        let dest = bin_dir.join(install_name);
         fetch_and_place(bin, &dest)?;
         binary_names.push(install_name.to_string());
     }
@@ -45,46 +88,74 @@ pub fn install_package(pkg: &Package, bin_dir: &Path) -> Result<()> {
         service_names.push(svc.unit.clone());
     }
 
-    // 7. Run post_install hooks.
-    for cmd in &pkg.post_install {
-        run_hook(cmd, &pkg.name)?;
+    // 7. Run post_install hooks — arbitrary `sh -c` on index-controlled
+    // strings, so this is gated behind --no-hooks and an interactive
+    // confirmation rather than running unconditionally.
+    if !pkg.post_install.is_empty() {
+        if no_hooks {
+            println!(
+                "  note: skipped {} post_install hook(s) for {} (--no-hooks)",
+                pkg.post_install.len(),
+                pkg.name
+            );
+        } else if confirm(
+            &format!(
+                "  run {} post_install hook(s) for {}?",
+                pkg.post_install.len(),
+                pkg.name
+            ),
+            assume_yes,
+        ) {
+            for cmd in &pkg.post_install {
+                run_hook(cmd, &pkg.name)?;
+            }
+        } else {
+            println!("  skipped post_install hooks for {} (declined)", pkg.name);
+        }
     }
 
-    // 8. Record in state.
-    let mut state = State::load()?;
-    state.record(InstalledPackage {
-        name: pkg.name.clone(),
-        version: pkg.version.clone(),
-        binaries: binary_names,
-        services: service_names,
-        installed_at: chrono::Utc::now().to_rfc3339(),
-    });
-    state.save()?;
+    // 8. Record in state, under an exclusive lock so a concurrent `bakery`
+    // invocation can't clobber this install's record with its own.
+    State::with_lock(|state| {
+        state.record(InstalledPackage {
+            name: pkg.name.clone(),
+            version: pkg.version.clone(),
+            binaries: binary_names,
+            services: service_names,
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            track,
+        });
+        Ok(())
+    })?;
 
     println!("  {} installed successfully", pkg.name);
     warn_path_if_needed(bin_dir);
     Ok(())
 }
 
-pub fn remove_package(pkg_name: &str, bin_dir: &Path) -> Result<()> {
-    let mut state = State::load()?;
-    let installed = match state.remove(pkg_name) {
+pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool) -> Result<()> {
+    let installed = State::with_lock(|state| Ok(state.remove(pkg_name)))?;
+    let installed = match installed {
         Some(p) => p,
         None => {
             eprintln!("{pkg_name} is not installed");
             return Ok(());
         }
     };
-    // Commit removal immediately — file cleanup below is best-effort.
-    state.save()?;
+    // State is already committed by with_lock above — everything from here
+    // is best-effort file cleanup, and must all run even if part of it fails.
 
-    // Remove binaries.
+    // Remove binaries. Collect failures instead of aborting on the first one
+    // so a stuck/permission-denied binary doesn't skip service removal and
+    // the config/data-preserved messages below.
+    let mut failures = Vec::new();
     for bin in &installed.binaries {
         let path = bin_dir.join(bin);
         if path.exists() {
-            std::fs::remove_file(&path)
-                .with_context(|| format!("removing {}", path.display()))?;
-            println!("  removed {}", path.display());
+            match std::fs::remove_file(&path) {
+                Ok(()) => println!("  removed {}", path.display()),
+                Err(e) => failures.push(format!("{}: {e}", path.display())),
+            }
         }
     }
 
@@ -93,7 +164,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path) -> Result<()> {
         let service_dir = systemd_user_dir();
         for unit in &installed.services {
             let unit_path = service_dir.join(unit);
-            if confirm_remove_unit(unit) {
+            if confirm_remove_unit(unit, assume_yes) {
                 let _ = Command::new("systemctl")
                     .args(["--user", "disable", "--now", unit])
                     .status();
@@ -121,6 +192,14 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path) -> Result<()> {
         println!("  data preserved at {}", data_dir.display());
     }
 
+    if !failures.is_empty() {
+        eprintln!("  failed to remove {} binary/binaries:", failures.len());
+        for f in &failures {
+            eprintln!("    {f}");
+        }
+        bail!("{pkg_name} removed from state, but some binaries could not be deleted");
+    }
+
     println!("  {pkg_name} removed");
     Ok(())
 }
@@ -130,6 +209,7 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
     std::fs::create_dir_all(&dir)?;
 
     if let Some(example) = &cfg.example {
+        ensure_safe_component(example, "config.example")?;
         let dest = dir.join(example);
         if !dest.exists() {
             if let Some((primary, fallback)) = pkg.artifact_urls(example) {
@@ -217,6 +297,7 @@ fn fetch_verify_write(
 }
 
 fn install_license(pkg: &Package, filename: &str) -> Result<()> {
+    ensure_safe_component(filename, "license_file")?;
     let dest = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("~/.local/share"))
         .join("licenses")
@@ -226,6 +307,7 @@ fn install_license(pkg: &Package, filename: &str) -> Result<()> {
 }
 
 fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
+    ensure_safe_component(filename, "desktop_file")?;
     let dest = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("~/.local/share"))
         .join("applications")
@@ -234,6 +316,7 @@ fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
 }
 
 fn install_data_archive(pkg: &Package, filename: &str) -> Result<()> {
+    ensure_safe_component(filename, "data_archive")?;
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("~/.local/share"))
         .join(&pkg.name);
@@ -253,7 +336,15 @@ fn fetch_extract_archive(
     sha256: &Option<String>,
     dest_dir: &Path,
 ) -> Result<()> {
-    let tmp_archive = std::env::temp_dir().join(format!("bakery-{}-{filename}", pkg.name));
+    // A securely-named, process-unique temp file — the old
+    // `std::env::temp_dir().join(format!("bakery-{name}-{filename}"))` was a
+    // predictable path on a shared /tmp, so another local user could
+    // pre-plant a symlink there for `fetch_verify_write`'s write to follow.
+    let tmp_archive = tempfile::Builder::new()
+        .prefix(&format!("bakery-{}-", pkg.name))
+        .tempfile()
+        .context("creating temp file for archive download")?
+        .into_temp_path();
 
     fetch_verify_write(pkg, filename, sha256, &tmp_archive, "data archive")?;
     if !tmp_archive.exists() {
@@ -261,13 +352,21 @@ fn fetch_extract_archive(
         return Ok(());
     }
 
+    verify_archive_paths(&tmp_archive)?;
+
     std::fs::create_dir_all(dest_dir)?;
     let status = Command::new("tar")
-        .args(["xzf", &tmp_archive.to_string_lossy(), "-C"])
+        .args([
+            "xzf",
+            &tmp_archive.to_string_lossy(),
+            "--no-same-owner",
+            "--no-same-permissions",
+            "-C",
+        ])
         .arg(dest_dir)
         .status()
         .with_context(|| format!("running tar to extract {filename}"))?;
-    let _ = std::fs::remove_file(&tmp_archive);
+    // `tmp_archive` (a `TempPath` guard) deletes the file when it drops here.
 
     if status.success() {
         println!("  extracted {filename} to {}", dest_dir.display());
@@ -277,44 +376,99 @@ fn fetch_extract_archive(
     Ok(())
 }
 
+/// Lists `archive_path`'s contents via `tar tvf` and rejects the archive
+/// outright (no extraction) if any entry is a symlink or has an unsafe path
+/// (`..` component, or absolute). `--no-same-owner --no-same-permissions` on
+/// the actual extraction covers ownership/permission escalation, but not a
+/// symlink or `../` entry walking the extraction outside `dest_dir` — this
+/// closes that gap before `tar` ever touches disk.
+fn verify_archive_paths(archive_path: &Path) -> Result<()> {
+    let output = Command::new("tar")
+        .arg("tvf")
+        .arg(archive_path)
+        .output()
+        .context("listing archive contents")?;
+    if !output.status.success() {
+        bail!(
+            "tar tvf exited with {} listing archive contents — refusing to extract",
+            output.status
+        );
+    }
+
+    let listing = String::from_utf8_lossy(&output.stdout);
+    for line in listing.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        // tar -tvf: `<perms> <owner>/<group> <size> <date> <time> <path>`,
+        // with symlinks rendered as `<path> -> <target>`.
+        let perms = line.split_whitespace().next().unwrap_or("");
+        let is_symlink = perms.starts_with('l');
+
+        let mut rest = line;
+        for _ in 0..5 {
+            let trimmed = rest.trim_start();
+            let idx = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+            rest = &trimmed[idx..];
+        }
+        let path_field = rest.trim_start();
+        let path = path_field.split(" -> ").next().unwrap_or(path_field).trim();
+
+        if is_symlink {
+            bail!("refusing to extract archive: entry '{path}' is a symlink");
+        }
+        if path.starts_with('/') || path.split('/').any(|c| c == "..") {
+            bail!("refusing to extract archive: entry '{path}' has an unsafe path");
+        }
+    }
+    Ok(())
+}
+
+/// Downloads and checksum-verifies `svc.unit`'s artifact.
+fn fetch_and_verify_unit(pkg: &Package, svc: &Service) -> Result<Vec<u8>> {
+    let (primary, fallback) = pkg
+        .artifact_urls(&svc.unit)
+        .ok_or_else(|| anyhow::anyhow!("no artifact URL to download {}", svc.unit))?;
+    let bytes = fetch_binary(&primary, &fallback)?;
+    verify_sha256(&bytes, &svc.sha256)?;
+    Ok(bytes)
+}
+
 fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
+    ensure_safe_component(&svc.unit, "service unit")?;
+
     let service_dir = systemd_user_dir();
     std::fs::create_dir_all(&service_dir)?;
 
     let unit_path = service_dir.join(&svc.unit);
+    let had_existing = unit_path.exists();
 
-    // Download the unit file if not already present.
-    if !unit_path.exists() {
-        if let Some((primary, fallback)) = pkg.artifact_urls(&svc.unit) {
-            match fetch_binary(&primary, &fallback) {
-                Ok(bytes) => match verify_sha256(&bytes, &svc.sha256) {
-                    Ok(()) => {
-                        std::fs::write(&unit_path, &bytes)
-                            .with_context(|| format!("writing {}", unit_path.display()))?;
-                        println!("  downloaded unit {}", unit_path.display());
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "  warning: checksum mismatch for unit {}: {e} — not installed",
-                            svc.unit
-                        );
-                    }
-                },
-                Err(e) => {
-                    eprintln!("  warning: could not download {}: {e}", svc.unit);
-                }
-            }
-        } else {
-            eprintln!("  warning: no artifact URL to download {}", svc.unit);
+    // Always re-fetch and overwrite — the old `if !unit_path.exists()` gate
+    // meant `Environment=`/`Restart=`/etc changes in a new release never
+    // applied after the first install, unlike binaries (which always
+    // re-fetch via `fetch_and_place` on every install/update). If the fetch
+    // or checksum fails, fall back to whatever's already on disk rather than
+    // regressing offline/flaky-network reliability.
+    match fetch_and_verify_unit(pkg, svc) {
+        Ok(bytes) => {
+            std::fs::write(&unit_path, &bytes)
+                .with_context(|| format!("writing {}", unit_path.display()))?;
+            println!("  downloaded unit {}", unit_path.display());
         }
-    }
-
-    if !unit_path.exists() {
-        eprintln!(
-            "  warning: unit file {} not found — skipping service setup",
-            svc.unit
-        );
-        return Ok(());
+        Err(e) => {
+            if had_existing {
+                eprintln!(
+                    "  warning: could not refresh unit {} ({e}) — keeping existing copy",
+                    svc.unit
+                );
+            } else {
+                eprintln!(
+                    "  warning: unit file {} not found ({e}) — skipping service setup",
+                    svc.unit
+                );
+                return Ok(());
+            }
+        }
     }
 
     patch_exec_start(&unit_path, bin_dir)?;
@@ -408,13 +562,8 @@ fn run_hook(cmd: &str, pkg_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn confirm_remove_unit(unit: &str) -> bool {
-    use std::io::{self, Write};
-    print!("  remove systemd unit {unit}? [y/N] ");
-    io::stdout().flush().ok();
-    let mut buf = String::new();
-    io::stdin().read_line(&mut buf).ok();
-    matches!(buf.trim().to_lowercase().as_str(), "y" | "yes")
+fn confirm_remove_unit(unit: &str, assume_yes: bool) -> bool {
+    confirm(&format!("  remove systemd unit {unit}?"), assume_yes)
 }
 
 fn systemd_user_dir() -> PathBuf {
@@ -642,6 +791,105 @@ mod tests {
 
         let extracted = dest_dir.path().join("content/tours/onboarding.toml");
         assert_eq!(fs::read(&extracted).unwrap(), b"[[step]]\n");
+    }
+
+    #[test]
+    fn fetch_extract_archive_rejects_symlink_entries() {
+        let src = tempdir().unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", src.path().join("evil")).unwrap();
+        let archive_path = src.path().join("evil.tar.gz");
+        let status = Command::new("tar")
+            .args(["czf"])
+            .arg(&archive_path)
+            .args(["-C"])
+            .arg(src.path())
+            .arg("evil")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let archive_bytes = fs::read(&archive_path).unwrap();
+
+        let sha256_hex = hex::encode(sha2::Sha256::digest(&archive_bytes));
+        let base_url = serve_once_owned(archive_bytes);
+        let pkg = test_package(&base_url);
+
+        let dest_dir = tempdir().unwrap();
+        let err = fetch_extract_archive(&pkg, "evil.tar.gz", &Some(sha256_hex), dest_dir.path())
+            .unwrap_err();
+        assert!(err.to_string().contains("symlink"));
+        assert!(!dest_dir.path().join("evil").exists());
+    }
+
+    #[test]
+    fn fetch_extract_archive_rejects_parent_traversal_entries() {
+        // tar happily stores a `../`-prefixed member name if asked with -P
+        // (disable the security checks that would otherwise strip it) —
+        // this is the shape of archive our own pre-extraction check has to
+        // catch, since `--no-same-owner`/`--no-same-permissions` alone don't.
+        let src = tempdir().unwrap();
+        fs::create_dir_all(src.path().join("payload")).unwrap();
+        fs::write(src.path().join("payload/../escape.txt"), b"pwned").unwrap();
+        let archive_path = src.path().join("evil.tar.gz");
+        let status = Command::new("tar")
+            .args(["czf"])
+            .arg(&archive_path)
+            .args(["-C"])
+            .arg(src.path())
+            .arg("-P")
+            .arg("payload/../escape.txt")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let archive_bytes = fs::read(&archive_path).unwrap();
+
+        let sha256_hex = hex::encode(sha2::Sha256::digest(&archive_bytes));
+        let base_url = serve_once_owned(archive_bytes);
+        let pkg = test_package(&base_url);
+
+        let dest_dir = tempdir().unwrap();
+        let err = fetch_extract_archive(&pkg, "evil.tar.gz", &Some(sha256_hex), dest_dir.path())
+            .unwrap_err();
+        assert!(err.to_string().contains("unsafe path"));
+    }
+
+    #[test]
+    fn ensure_safe_component_accepts_plain_names() {
+        assert!(ensure_safe_component("breadhelp", "x").is_ok());
+        assert!(ensure_safe_component("LICENSE", "x").is_ok());
+    }
+
+    #[test]
+    fn ensure_safe_component_rejects_traversal_and_separators() {
+        assert!(ensure_safe_component("", "x").is_err());
+        assert!(ensure_safe_component(".", "x").is_err());
+        assert!(ensure_safe_component("..", "x").is_err());
+        assert!(ensure_safe_component("a/b", "x").is_err());
+        assert!(ensure_safe_component("a\\b", "x").is_err());
+        assert!(ensure_safe_component("../../etc/passwd", "x").is_err());
+    }
+
+    #[test]
+    fn install_package_rejects_unsafe_package_name() {
+        let base_url = serve_once(b"unused");
+        let mut pkg = test_package(&base_url);
+        pkg.name = "../evil".to_string();
+        let dir = tempdir().unwrap();
+        let err = install_package(&pkg, dir.path(), Track::Stable, true, true).unwrap_err();
+        assert!(err.to_string().contains("not a safe filename"));
+    }
+
+    #[test]
+    fn confirm_returns_true_when_assume_yes() {
+        assert!(confirm("anything", true));
+    }
+
+    #[test]
+    fn confirm_returns_false_when_not_assume_yes_and_stdin_not_a_tty() {
+        // The test harness's stdin is never an interactive terminal, so this
+        // must answer "no" rather than block on a read that never resolves
+        // (the CI-hang bug `confirm` replaces `confirm_remove_unit`'s old
+        // unconditional stdin read to fix).
+        assert!(!confirm("anything", false));
     }
 
     #[test]

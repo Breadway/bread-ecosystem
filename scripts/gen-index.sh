@@ -333,7 +333,8 @@ jq -n \
     --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson packages "${packages_json}" \
     '{version: $version, generated_at: $generated_at, packages: $packages}' \
-    > "${OUT}"
+    > "${OUT}.tmp"
+mv -f "${OUT}.tmp" "${OUT}"
 
 echo "wrote ${OUT}"
 
@@ -360,7 +361,7 @@ if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
         echo "ERROR: MINISIGN_SEC_KEY is set but the 'minisign' binary is not installed" >&2
         exit 1
     fi
-    sign_args=(-S -s "${MINISIGN_SEC_KEY}" -m "${OUT}" -x "${OUT}.minisig")
+    sign_args=(-S -s "${MINISIGN_SEC_KEY}" -m "${OUT}" -x "${OUT}.minisig.tmp")
     if [[ -n "${MINISIGN_SEC_KEY_PASSWORD:-}" ]]; then
         MINISIGN_PASSWORD="${MINISIGN_SEC_KEY_PASSWORD}" minisign "${sign_args[@]}" </dev/null
     else
@@ -368,6 +369,7 @@ if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
         # normally generated, since there's no human to type a passphrase).
         minisign -W "${sign_args[@]}" </dev/null
     fi
+    mv -f "${OUT}.minisig.tmp" "${OUT}.minisig"
     echo "signed ${OUT} -> ${OUT}.minisig"
 else
     echo "WARNING: MINISIGN_SEC_KEY not set — index.json was NOT signed." >&2

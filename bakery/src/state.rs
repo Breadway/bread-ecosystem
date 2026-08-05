@@ -1,5 +1,6 @@
 use crate::track::Track;
 use anyhow::{Context, Result};
+use fs4::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -11,6 +12,11 @@ pub struct InstalledPackage {
     pub binaries: Vec<String>,
     pub services: Vec<String>,
     pub installed_at: String,
+    // `#[serde(default)]` so an installed.json written before per-package
+    // track tracking existed still deserializes — defaults to Stable, same
+    // convention as `State.track` above.
+    #[serde(default)]
+    pub track: Track,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -35,16 +41,37 @@ impl State {
 
     pub fn save(&self) -> Result<()> {
         let path = state_path();
-        if let Some(dir) = path.parent() {
+        let text = serde_json::to_string_pretty(self)?;
+        bread_utils::atomic::write_atomic(&path, &text, None)
+            .context("writing installed.json")
+    }
+
+    /// Runs `f` against a freshly-loaded `State` while holding an exclusive
+    /// lock on a sibling `installed.json.lock` file, saving the result if `f`
+    /// succeeds. Without this, two concurrent `bakery` invocations each
+    /// load-mutate-save `installed.json` independently and the second save
+    /// silently drops the first's change — the lock serializes the whole
+    /// read-modify-write instead of just the final write.
+    pub fn with_lock<T>(f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
+        let lock_path = PathBuf::from(format!("{}.lock", state_path().display()));
+        if let Some(dir) = lock_path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let text = serde_json::to_string_pretty(self)?;
-        // Write to a temp file then rename for atomicity — avoids a torn write
-        // if the process is killed mid-save.
-        let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, &text).context("writing installed.json.tmp")?;
-        std::fs::rename(&tmp, &path).context("atomically replacing installed.json")?;
-        Ok(())
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path)
+            .context("opening installed.json.lock")?;
+        lock_file
+            .lock_exclusive()
+            .context("locking installed.json.lock")?;
+
+        let mut state = Self::load()?;
+        let result = f(&mut state)?;
+        state.save()?;
+        // Lock releases when `lock_file` drops at end of scope.
+        Ok(result)
     }
 
     pub fn is_installed(&self, name: &str) -> bool {
@@ -85,6 +112,7 @@ mod tests {
             binaries: vec![],
             services: vec![],
             installed_at: "2026-01-01T00:00:00Z".to_string(),
+            track: Track::Stable,
         }
     }
 
@@ -137,11 +165,41 @@ mod tests {
             binaries: vec!["bar".to_string()],
             services: vec!["bar.service".to_string()],
             installed_at: "2026-06-01T00:00:00Z".to_string(),
+            track: Track::Beta,
         });
         let json = serde_json::to_string(&state).unwrap();
         let restored: State = serde_json::from_str(&json).unwrap();
         assert!(restored.is_installed("bar"));
         assert_eq!(restored.packages["bar"].version, "2.0.0");
         assert_eq!(restored.packages["bar"].services, ["bar.service"]);
+        assert_eq!(restored.packages["bar"].track, Track::Beta);
+    }
+
+    #[test]
+    fn installed_package_track_defaults_to_stable_on_old_shape_json() {
+        // Simulates an installed.json entry written before per-package track
+        // tracking existed.
+        let old_shape = r#"{"name":"foo","version":"1.0.0","binaries":[],"services":[],"installed_at":"2026-01-01T00:00:00Z"}"#;
+        let installed: InstalledPackage = serde_json::from_str(old_shape).unwrap();
+        assert_eq!(installed.track, Track::Stable);
+    }
+
+    #[test]
+    fn with_lock_persists_mutation_across_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY (test-only): temporarily redirects the state dir env var so
+        // this test doesn't touch the real ~/.local/state/bakery/installed.json.
+        std::env::set_var("XDG_STATE_HOME", dir.path());
+
+        State::with_lock(|state| {
+            state.record(pkg("foo", "1.0.0"));
+            Ok(())
+        })
+        .unwrap();
+
+        let reloaded = State::load().unwrap();
+        assert!(reloaded.is_installed("foo"));
+
+        std::env::remove_var("XDG_STATE_HOME");
     }
 }

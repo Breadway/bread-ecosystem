@@ -190,7 +190,25 @@ pub fn load(force_refresh: bool, track: Track) -> Result<Index> {
         }
     }
 
-    fetch_and_cache(&cache_path, &sig_cache_path, track)
+    match fetch_and_cache(&cache_path, &sig_cache_path, track) {
+        Ok(index) => Ok(index),
+        Err(fetch_err) => {
+            // A network error shouldn't be a hard failure when a valid
+            // signed cache is sitting right there on disk, even if it's
+            // stale (or freshness was never checked because force_refresh
+            // was set) — fall back to it rather than bricking the CLI.
+            match read_and_verify_cache(&cache_path, &sig_cache_path, track) {
+                Ok(index) => {
+                    eprintln!(
+                        "  warning: could not refresh {track} index ({fetch_err}) — \
+                         using possibly-stale cached index"
+                    );
+                    Ok(index)
+                }
+                Err(_) => Err(fetch_err),
+            }
+        }
+    }
 }
 
 fn read_and_verify_cache(
@@ -227,11 +245,10 @@ fn fetch_and_cache(cache_path: &PathBuf, sig_cache_path: &PathBuf, track: Track)
     verify_index_signature(&bytes, &sig_text)
         .with_context(|| format!("freshly fetched {track} index failed signature verification"))?;
 
-    if let Some(dir) = cache_path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    std::fs::write(cache_path, &bytes)?;
-    std::fs::write(sig_cache_path, &sig_text)?;
+    bread_utils::atomic::write_atomic_bytes(cache_path, &bytes, None)
+        .with_context(|| format!("writing cached {track} index"))?;
+    bread_utils::atomic::write_atomic_bytes(sig_cache_path, sig_text.as_bytes(), None)
+        .with_context(|| format!("writing cached {track} index signature"))?;
     serde_json::from_slice(&bytes).context("parsing index.json")
 }
 
@@ -242,11 +259,8 @@ fn sig_cache_path(cache_path: &Path) -> PathBuf {
 }
 
 fn fetch_text(url: &str) -> Result<String> {
-    ureq::get(url)
-        .call()
-        .map_err(|e| anyhow::anyhow!("{e}"))?
-        .into_string()
-        .context("reading response body")
+    let bytes = fetch_bytes(url)?;
+    String::from_utf8(bytes).context("response is not valid UTF-8")
 }
 
 /// Cache filename for `track`. `Stable` keeps the pre-track filename
@@ -279,6 +293,10 @@ pub fn fetch_binary(primary_url: &str, fallback_url: &str) -> Result<Vec<u8>> {
     }
 }
 
+/// Comfortably above any real bakery artifact — caps how much of a response
+/// gets buffered into memory before any trust check runs on it.
+const MAX_RESPONSE_BYTES: u64 = 256 * 1024 * 1024;
+
 fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     use std::io::Read;
     let resp = ureq::get(url)
@@ -290,8 +308,12 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     }
     let mut buf = Vec::new();
     resp.into_reader()
+        .take(MAX_RESPONSE_BYTES + 1)
         .read_to_end(&mut buf)
         .context("reading response")?;
+    if buf.len() as u64 > MAX_RESPONSE_BYTES {
+        bail!("response from {url} exceeds the {MAX_RESPONSE_BYTES}-byte limit");
+    }
     Ok(buf)
 }
 

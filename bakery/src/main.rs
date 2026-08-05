@@ -20,6 +20,12 @@ struct Cli {
     /// Override the directory where binaries are installed
     #[arg(long, env = "BAKERY_BIN_DIR", global = true)]
     bin_dir: Option<PathBuf>,
+    /// Skip post_install hooks entirely
+    #[arg(long, global = true)]
+    no_hooks: bool,
+    /// Assume yes to interactive prompts
+    #[arg(short = 'y', long = "yes", global = true)]
+    yes: bool,
 }
 
 #[derive(Subcommand)]
@@ -82,27 +88,31 @@ fn default_bin_dir() -> PathBuf {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let bin_dir = cli.bin_dir.unwrap_or_else(default_bin_dir);
+    let no_hooks = cli.no_hooks;
+    let assume_yes = cli.yes;
     let track = state::State::load()?.track;
 
     match cli.command {
         Cmd::Install { packages } => {
             let index = manifest::load(true, track)?;
             for pkg in &packages {
-                cmd_install(&index, pkg, &bin_dir)?;
+                cmd_install(&index, pkg, &bin_dir, track, no_hooks, assume_yes)?;
             }
             Ok(())
         }
-        Cmd::Remove { package } => cmd_remove(&package, &bin_dir),
-        Cmd::Update { package, all } => cmd_update(package.as_deref(), all, &bin_dir, track),
+        Cmd::Remove { package } => cmd_remove(&package, &bin_dir, assume_yes),
+        Cmd::Update { package, all } => {
+            cmd_update(package.as_deref(), all, &bin_dir, track, no_hooks, assume_yes)
+        }
         Cmd::List { installed } => cmd_list(installed, track),
         Cmd::Info { package } => cmd_info(&package, track),
-        Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track),
+        Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track, &bin_dir),
         Cmd::Track { action } => cmd_track(action),
     }
 }
 
 fn cmd_track(action: TrackCmd) -> Result<()> {
-    let mut state = state::State::load()?;
+    let state = state::State::load()?;
     match action {
         TrackCmd::Show => {
             println!("current track: {}", ui::style(state.track.as_str(), ui::CYAN));
@@ -116,8 +126,10 @@ fn cmd_track(action: TrackCmd) -> Result<()> {
             // recording a preference bakery can't actually serve.
             manifest::load(true, track)
                 .with_context(|| format!("could not validate {track} track, not switching"))?;
-            state.set_track(track);
-            state.save()?;
+            state::State::with_lock(|state| {
+                state.set_track(track);
+                Ok(())
+            })?;
             println!(
                 "switched to {} — run 'bakery update --all' to install {} builds",
                 ui::style(track.as_str(), ui::CYAN),
@@ -128,17 +140,29 @@ fn cmd_track(action: TrackCmd) -> Result<()> {
     Ok(())
 }
 
-fn cmd_install(index: &manifest::Index, name: &str, bin_dir: &std::path::Path) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+fn cmd_install(
+    index: &manifest::Index,
+    name: &str,
+    bin_dir: &std::path::Path,
+    track: Track,
+    no_hooks: bool,
+    assume_yes: bool,
+) -> Result<()> {
     let mut visited = HashSet::new();
-    install_with_deps(index, name, bin_dir, &mut visited)
+    install_with_deps(index, name, bin_dir, track, no_hooks, assume_yes, &mut visited)
 }
 
 /// Recursively installs `name` and any bread_deps, skipping already-installed
 /// packages. The `visited` set prevents cycles.
+#[allow(clippy::too_many_arguments)]
 fn install_with_deps(
     index: &manifest::Index,
     name: &str,
     bin_dir: &std::path::Path,
+    track: Track,
+    no_hooks: bool,
+    assume_yes: bool,
     visited: &mut HashSet<String>,
 ) -> Result<()> {
     if !visited.insert(name.to_string()) {
@@ -154,7 +178,21 @@ fn install_with_deps(
     for dep in pkg.bread_deps.clone() {
         if !state.is_installed(&dep) {
             println!("installing bread dependency: {dep}");
-            install_with_deps(index, &dep, bin_dir, visited)?;
+            install_with_deps(index, &dep, bin_dir, track, no_hooks, assume_yes, visited)?;
+        }
+    }
+
+    // Already installed and not older than the index — nothing to do. This
+    // doubles as the implicit upgrade path when the index has something
+    // newer, so `bakery install <pkg>` is safe to run repeatedly instead of
+    // silently reinstalling (and potentially downgrading) every time.
+    if let Some(installed) = state.packages.get(name) {
+        if !is_newer(&installed.version, &pkg.version) {
+            println!(
+                "{name} already installed at {} (index has {})",
+                installed.version, pkg.version
+            );
+            return Ok(());
         }
     }
 
@@ -169,14 +207,22 @@ fn install_with_deps(
         bail!("system deps not satisfied");
     }
 
-    install::install_package(pkg, bin_dir)
+    install::install_package(pkg, bin_dir, track, no_hooks, assume_yes)
 }
 
-fn cmd_remove(name: &str, bin_dir: &std::path::Path) -> Result<()> {
-    install::remove_package(name, bin_dir)
+fn cmd_remove(name: &str, bin_dir: &std::path::Path, assume_yes: bool) -> Result<()> {
+    install::remove_package(name, bin_dir, assume_yes)
 }
 
-fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: Track) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+fn cmd_update(
+    name: Option<&str>,
+    all: bool,
+    bin_dir: &std::path::Path,
+    track: Track,
+    no_hooks: bool,
+    assume_yes: bool,
+) -> Result<()> {
     let index = manifest::load(true, track)?;
     let state = state::State::load()?;
 
@@ -197,6 +243,7 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: T
             Some(p) => p,
             None => {
                 eprintln!("{pkg_name} is not installed, skipping");
+                any_failed = true;
                 continue;
             }
         };
@@ -204,21 +251,38 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: T
             Some(p) => p,
             None => {
                 eprintln!("{pkg_name} not found in index, skipping");
+                any_failed = true;
                 continue;
             }
         };
 
-        if !is_newer(&installed.version, &latest.version) {
+        // A track switch is an explicit user action ("bakery track set beta
+        // && bakery update --all") and must always take effect, even if the
+        // new track's current build happens to be same-or-lower by strict
+        // semver than what's installed (e.g. switching stable -> dev, or a
+        // beta RC that shares a base version with the installed stable).
+        let track_switch = installed.track != track;
+        if !should_update(&installed.version, installed.track, track, &latest.version) {
             println!("{}", ui::style(&format!("{pkg_name} is already at {}", installed.version), ui::GREEN));
             continue;
         }
 
-        println!(
-            "updating {pkg_name} {} {} {}",
-            ui::style(&installed.version, ui::DIM),
-            ui::style("→", ui::CYAN),
-            ui::style(&latest.version, ui::BOLD)
-        );
+        if track_switch {
+            println!(
+                "{pkg_name} switching track {} {} {}, installing {}",
+                ui::style(installed.track.as_str(), ui::DIM),
+                ui::style("→", ui::CYAN),
+                ui::style(track.as_str(), ui::BOLD),
+                ui::style(&latest.version, ui::BOLD)
+            );
+        } else {
+            println!(
+                "updating {pkg_name} {} {} {}",
+                ui::style(&installed.version, ui::DIM),
+                ui::style("→", ui::CYAN),
+                ui::style(&latest.version, ui::BOLD)
+            );
+        }
 
         let rep = match doctor::check_deps(&latest.system_deps, &latest.optional_system_deps) {
             Ok(r) => r,
@@ -240,7 +304,7 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: T
             continue;
         }
 
-        if let Err(e) = install::install_package(latest, bin_dir) {
+        if let Err(e) = install::install_package(latest, bin_dir, track, no_hooks, assume_yes) {
             eprintln!("  failed to update {pkg_name}: {e}");
             any_failed = true;
         }
@@ -250,6 +314,16 @@ fn cmd_update(name: Option<&str>, all: bool, bin_dir: &std::path::Path, track: T
         bail!("one or more packages could not be updated");
     }
     Ok(())
+}
+
+/// Whether `pkg_name` should be updated: always true on a track switch
+/// (an explicit user action that must take effect regardless of version
+/// ordering), otherwise a real semver comparison via [`is_newer`].
+fn should_update(installed_version: &str, installed_track: Track, active_track: Track, latest_version: &str) -> bool {
+    if installed_track != active_track {
+        return true;
+    }
+    is_newer(installed_version, latest_version)
 }
 
 /// Is `latest` newer than `installed`? Real semver comparison — the
@@ -264,8 +338,8 @@ fn is_newer(installed: &str, latest: &str) -> bool {
         _ => {
             if installed != latest {
                 eprintln!(
-                    "  warning: '{installed}' or '{latest}' is not valid semver, \
-                     falling back to a plain inequality check"
+                    "  warning: cannot determine if '{latest}' is newer than '{installed}' \
+                     (not valid semver) — proceeding on inequality alone, this could be a downgrade"
                 );
             }
             installed != latest
@@ -351,7 +425,7 @@ fn cmd_info(name: &str, track: Track) -> Result<()> {
     Ok(())
 }
 
-fn cmd_doctor(name: Option<&str>, track: Track) -> Result<()> {
+fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Result<()> {
     let index = manifest::load(false, track)?;
     let state = state::State::load()?;
 
@@ -379,6 +453,27 @@ fn cmd_doctor(name: Option<&str>, track: Track) -> Result<()> {
         } else {
             eprintln!("  {pkg_name}: not found in index (removed from registry?)");
             all_ok = false;
+        }
+
+        // System-deps checks alone can't catch a partially-broken install
+        // (e.g. a binary manually deleted after install) — also confirm
+        // every binary this package recorded is still on disk. Existence
+        // only, not a checksum re-verification — that's the scope of a
+        // future `bakery verify` command.
+        if let Some(installed) = state.packages.get(pkg_name) {
+            for bin in &installed.binaries {
+                let path = bin_dir.join(bin);
+                if !path.exists() {
+                    eprintln!(
+                        "  {}",
+                        ui::fail(&format!(
+                            "{pkg_name}: recorded binary '{bin}' is missing at {}",
+                            path.display()
+                        ))
+                    );
+                    all_ok = false;
+                }
+            }
         }
     }
 
@@ -419,5 +514,23 @@ mod tests {
         // Pre-semver version strings should never hard-fail an update check.
         assert!(is_newer("weird-version-1", "weird-version-2"));
         assert!(!is_newer("weird-version-1", "weird-version-1"));
+    }
+
+    #[test]
+    fn should_update_true_on_track_switch_even_if_not_newer_by_semver() {
+        // "bakery track set stable && bakery update --all" from beta must
+        // always take effect, even though 0.3.0 < 0.4.0-beta by strict semver.
+        assert!(should_update("0.4.0-beta", Track::Beta, Track::Stable, "0.3.0"));
+    }
+
+    #[test]
+    fn should_update_false_when_same_track_and_not_newer() {
+        assert!(!should_update("0.3.1", Track::Stable, Track::Stable, "0.3.1"));
+        assert!(!should_update("0.3.2", Track::Dev, Track::Dev, "0.3.1"));
+    }
+
+    #[test]
+    fn should_update_true_when_same_track_and_newer() {
+        assert!(should_update("0.3.1", Track::Stable, Track::Stable, "0.3.2"));
     }
 }
