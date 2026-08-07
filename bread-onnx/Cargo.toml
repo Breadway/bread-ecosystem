@@ -32,3 +32,12 @@ anyhow = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# Dev-dependency features unify into this crate's own test/bench builds
+# only, never into downstream consumers (they aren't part of the dependency
+# graph a consuming app resolves) — so this doesn't compromise the
+# consumer-chooses-the-backend policy above. Without it, `cargo test` here
+# fails at link time (undefined OrtGetApiBase) because nothing in this
+# workspace supplies a backend; none of bread-onnx's own unit tests open a
+# real ONNX session, so `load-dynamic` (dlopen at runtime, no static link)
+# is enough to satisfy the linker.
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "tracing", "load-dynamic", "api-24"] }
