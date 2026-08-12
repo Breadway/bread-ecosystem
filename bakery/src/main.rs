@@ -251,7 +251,7 @@ fn install_with_deps(
     }
     if !rep.missing.is_empty() {
         eprintln!("missing system deps for {name}: {}", rep.missing.join(", "));
-        eprintln!("install with: sudo pacman -S {}", rep.missing.join(" "));
+        eprintln!("install with: {}", doctor::install_hint(&rep.missing));
         bail!("system deps not satisfied");
     }
 

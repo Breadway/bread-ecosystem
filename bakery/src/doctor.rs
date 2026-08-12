@@ -16,13 +16,35 @@ pub fn check_deps(required: &[String], optional: &[String]) -> Result<DepReport>
     })
 }
 
+/// Arch package name -> Debian/Ubuntu package name, for the few cases where
+/// they differ *and* the Debian package's own binaries don't share a name
+/// with either package (so `path_has` can't bridge the gap the way it
+/// already does for e.g. `ffmpeg`/`openssl`, whose package name matches
+/// their own binary name on both distros). `system_deps` in `bakery.toml`
+/// is always written as the Arch name — this is what makes that same
+/// declaration also resolve correctly on a Debian-family bakery host like
+/// hestia.
+const ARCH_TO_DEBIAN_PKG: &[(&str, &str)] = &[("mkvtoolnix-cli", "mkvtoolnix")];
+
+fn debian_name(pkg: &str) -> &str {
+    ARCH_TO_DEBIAN_PKG
+        .iter()
+        .find(|(arch, _)| *arch == pkg)
+        .map(|(_, debian)| *debian)
+        .unwrap_or(pkg)
+}
+
 fn dep_present(pkg: &str) -> bool {
     // Primary: `pacman -Q` uses the exact Arch package name — no name mapping needed.
     if pacman_installed(pkg) {
         return true;
     }
     // Fallback for environments without pacman: native PATH search then pkg-config.
-    path_has(pkg) || pkg_config_exists(pkg)
+    if path_has(pkg) || pkg_config_exists(pkg) {
+        return true;
+    }
+    // Further fallback for Debian/Ubuntu hosts: dpkg, via the name map above.
+    dpkg_installed(debian_name(pkg))
 }
 
 fn pacman_installed(pkg: &str) -> bool {
@@ -30,6 +52,17 @@ fn pacman_installed(pkg: &str) -> bool {
         .args(["-Q", pkg])
         .output()
         .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn dpkg_installed(pkg: &str) -> bool {
+    Command::new("dpkg-query")
+        .args(["-W", "-f=${Status}", pkg])
+        .output()
+        .map(|o| {
+            o.status.success()
+                && String::from_utf8_lossy(&o.stdout).contains("install ok installed")
+        })
         .unwrap_or(false)
 }
 
@@ -47,6 +80,21 @@ fn pkg_config_exists(lib: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Builds the "install with: ..." hint for a list of missing Arch package
+/// names, picking the command for whichever package manager is actually on
+/// this host — `sudo pacman -S ...` is meaningless advice on a Debian-family
+/// bakery host like hestia, which has neither `pacman` nor the Arch names.
+pub fn install_hint(missing: &[String]) -> String {
+    if path_has("pacman") {
+        format!("sudo pacman -S {}", missing.join(" "))
+    } else if path_has("apt") {
+        let names: Vec<&str> = missing.iter().map(|p| debian_name(p)).collect();
+        format!("sudo apt install {}", names.join(" "))
+    } else {
+        format!("install: {}", missing.join(", "))
+    }
 }
 
 /// Print a formatted doctor report for a package's system deps.
@@ -85,7 +133,7 @@ pub fn report(package_name: &str, required: &[String], optional: &[String]) -> b
                         rep.missing.join(", ")
                     ))
                 );
-                eprintln!("  install with: sudo pacman -S {}", rep.missing.join(" "));
+                eprintln!("  install with: {}", install_hint(&rep.missing));
                 false
             }
         }
@@ -113,6 +161,28 @@ mod tests {
     #[test]
     fn path_has_finds_sh() {
         assert!(path_has("sh"));
+    }
+
+    #[test]
+    fn debian_name_maps_known_alias() {
+        assert_eq!(debian_name("mkvtoolnix-cli"), "mkvtoolnix");
+    }
+
+    #[test]
+    fn debian_name_passes_through_unmapped() {
+        assert_eq!(debian_name("ffmpeg"), "ffmpeg");
+    }
+
+    // This test only runs on systems with dpkg (Debian/Ubuntu).
+    #[test]
+    #[ignore]
+    fn dpkg_finds_dpkg_itself() {
+        assert!(dpkg_installed("dpkg"));
+    }
+
+    #[test]
+    fn dpkg_missing_package_not_present() {
+        assert!(!dpkg_installed("this-package-does-not-exist-xyzzy42"));
     }
 
     #[test]
