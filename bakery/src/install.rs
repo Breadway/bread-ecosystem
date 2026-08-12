@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
+#[cfg(not(test))]
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,6 +24,22 @@ fn ensure_safe_component(name: &str, what: &str) -> Result<()> {
     Ok(())
 }
 
+/// Whether stdin should be treated as an interactive terminal. Always
+/// `false` in test builds regardless of the real process stdin — running
+/// `cargo test` from an actual interactive shell (not CI, not piped) gives
+/// the test binary a real tty, which previously made `confirm` block on a
+/// `read_line` nobody was there to answer.
+fn stdin_is_terminal() -> bool {
+    #[cfg(test)]
+    {
+        false
+    }
+    #[cfg(not(test))]
+    {
+        std::io::stdin().is_terminal()
+    }
+}
+
 /// Prompts `prompt [y/N] ` and returns the answer. `assume_yes` (the global
 /// `--yes` flag) skips the prompt entirely; otherwise, a non-tty stdin
 /// (CI, piped input) answers "no" rather than blocking on a read that will
@@ -31,7 +48,7 @@ fn confirm(prompt: &str, assume_yes: bool) -> bool {
     if assume_yes {
         return true;
     }
-    if !std::io::stdin().is_terminal() {
+    if !stdin_is_terminal() {
         return false;
     }
     use std::io::Write;
