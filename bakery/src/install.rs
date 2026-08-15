@@ -9,6 +9,7 @@ use crate::download::{fetch_and_place, verify_sha256};
 use crate::manifest::{fetch_binary, Package, Service};
 use crate::state::{InstalledPackage, State};
 use crate::track::Track;
+use crate::ui;
 
 /// Rejects a filename that isn't a safe single path component — no `/`,
 /// `\`, empty, `.`, or `..`. `bin.name`/`svc.unit`/`cfg.example`/`pkg.name`/
@@ -52,7 +53,7 @@ fn confirm(prompt: &str, assume_yes: bool) -> bool {
         return false;
     }
     use std::io::Write;
-    print!("{prompt} [y/N] ");
+    print!("{prompt} {} ", ui::dim("[y/N]"));
     std::io::stdout().flush().ok();
     let mut buf = String::new();
     std::io::stdin().read_line(&mut buf).ok();
@@ -74,7 +75,6 @@ pub fn install_package(
     assume_yes: bool,
 ) -> Result<()> {
     ensure_safe_component(&pkg.name, "package name")?;
-    println!("installing {}@{}…", pkg.name, pkg.version);
 
     // 1. Download and verify all binaries. On an update (not a fresh
     // install), back up the current binary first — best-effort, feeding
@@ -126,10 +126,13 @@ pub fn install_package(
     // confirmation rather than running unconditionally.
     if !pkg.post_install.is_empty() {
         if no_hooks {
-            println!(
-                "  note: skipped {} post_install hook(s) for {} (--no-hooks)",
-                pkg.post_install.len(),
-                pkg.name
+            eprintln!(
+                "  {}",
+                ui::note(&format!(
+                    "skipped {} post_install hook(s) for {} (--no-hooks)",
+                    pkg.post_install.len(),
+                    pkg.name
+                ))
             );
         } else if confirm(
             &format!(
@@ -143,7 +146,13 @@ pub fn install_package(
                 run_hook(cmd, &pkg.name)?;
             }
         } else {
-            println!("  skipped post_install hooks for {} (declined)", pkg.name);
+            eprintln!(
+                "  {}",
+                ui::note(&format!(
+                    "skipped post_install hooks for {} (declined)",
+                    pkg.name
+                ))
+            );
         }
     }
 
@@ -163,7 +172,7 @@ pub fn install_package(
         Ok(())
     })?;
 
-    println!("  {} installed successfully", pkg.name);
+    println!("  {}", ui::ok(&format!("{} installed", pkg.name)));
     warn_path_if_needed(bin_dir);
     Ok(())
 }
@@ -184,13 +193,21 @@ fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Pa
     }
     if let Err(e) = std::fs::create_dir_all(backup_dir) {
         eprintln!(
-            "  warning: could not create backup dir {} ({e}) — rollback won't be available for this update",
-            backup_dir.display()
+            "  {}",
+            ui::warn(&format!(
+                "could not create backup dir {} ({e}) — rollback won't be available for this update",
+                backup_dir.display()
+            ))
         );
         return;
     }
     if let Err(e) = std::fs::copy(current_path, backup_dir.join(binary_name)) {
-        eprintln!("  warning: could not back up {binary_name} before update ({e}) — rollback won't be available for this update");
+        eprintln!(
+            "  {}",
+            ui::warn(&format!(
+                "could not back up {binary_name} before update ({e}) — rollback won't be available for this update"
+            ))
+        );
     }
 }
 
@@ -199,10 +216,11 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
     let installed = match installed {
         Some(p) => p,
         None => {
-            eprintln!("{pkg_name} is not installed");
+            eprintln!("  {}", ui::fail(&format!("{pkg_name} is not installed")));
             return Ok(());
         }
     };
+    ui::action("Removing", pkg_name, Some(&installed.version));
     // State is already committed by with_lock above — everything from here
     // is best-effort file cleanup, and must all run even if part of it fails.
 
@@ -214,7 +232,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
         let path = bin_dir.join(bin);
         if path.exists() {
             match std::fs::remove_file(&path) {
-                Ok(()) => println!("  removed {}", path.display()),
+                Ok(()) => ui::step("removed", &path.display().to_string()),
                 Err(e) => failures.push(format!("{}: {e}", path.display())),
             }
         }
@@ -235,7 +253,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
                 let _ = Command::new("systemctl")
                     .args(["--user", "daemon-reload"])
                     .status();
-                println!("  removed unit {unit}");
+                ui::step("removed", &format!("unit {unit}"));
             }
         }
     }
@@ -247,7 +265,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
     // surprise no flag should cause.
     if let Some(cfg_dir) = guess_config_dir(pkg_name) {
         if cfg_dir.exists() {
-            println!("  config preserved at {}", cfg_dir.display());
+            ui::step("preserved", &format!("config  {}", cfg_dir.display()));
         }
     }
 
@@ -258,23 +276,34 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
         let license_dir = share_dir.join("licenses").join(pkg_name);
         remove_purged_path(&license_dir, "license dir", true, assume_yes, &mut failures);
 
-        let desktop_file = share_dir.join("applications").join(format!("{pkg_name}.desktop"));
-        remove_purged_path(&desktop_file, "desktop entry", false, assume_yes, &mut failures);
+        let desktop_file = share_dir
+            .join("applications")
+            .join(format!("{pkg_name}.desktop"));
+        remove_purged_path(
+            &desktop_file,
+            "desktop entry",
+            false,
+            assume_yes,
+            &mut failures,
+        );
 
         remove_purged_path(&data_dir, "data dir", true, assume_yes, &mut failures);
     } else if data_dir.exists() {
-        println!("  data preserved at {}", data_dir.display());
+        ui::step("preserved", &format!("data  {}", data_dir.display()));
     }
 
     if !failures.is_empty() {
-        eprintln!("  failed to remove {} item(s):", failures.len());
+        eprintln!(
+            "  {}",
+            ui::fail(&format!("failed to remove {} item(s):", failures.len()))
+        );
         for f in &failures {
             eprintln!("    {f}");
         }
         bail!("{pkg_name} removed from state, but some files could not be deleted");
     }
 
-    println!("  {pkg_name} removed");
+    println!("  {}", ui::ok(&format!("{pkg_name} removed")));
     Ok(())
 }
 
@@ -284,12 +313,21 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
 /// in place and prints the same "preserved at" wording the non-purge path
 /// already uses. Shared by `remove_package`'s three `--purge` targets
 /// (license dir, desktop entry, data dir).
-fn remove_purged_path(path: &Path, label: &str, recursive: bool, assume_yes: bool, failures: &mut Vec<String>) {
+fn remove_purged_path(
+    path: &Path,
+    label: &str,
+    recursive: bool,
+    assume_yes: bool,
+    failures: &mut Vec<String>,
+) {
     if !path.exists() {
         return;
     }
-    if !confirm(&format!("  remove {label} at {}?", path.display()), assume_yes) {
-        println!("  {label} preserved at {}", path.display());
+    if !confirm(
+        &format!("  remove {label} at {}?", path.display()),
+        assume_yes,
+    ) {
+        ui::step("preserved", &format!("{label}  {}", path.display()));
         return;
     }
     let result = if recursive {
@@ -298,7 +336,7 @@ fn remove_purged_path(path: &Path, label: &str, recursive: bool, assume_yes: boo
         std::fs::remove_file(path)
     };
     match result {
-        Ok(()) => println!("  removed {}", path.display()),
+        Ok(()) => ui::step("removed", &path.display().to_string()),
         Err(e) => failures.push(format!("{}: {e}", path.display())),
     }
 }
@@ -318,36 +356,48 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
                             Ok(()) => {
                                 std::fs::write(&dest, &bytes)
                                     .with_context(|| format!("writing {}", dest.display()))?;
-                                println!("  installed example config at {}", dest.display());
+                                ui::step("config", &dest.display().to_string());
                             }
                             Err(e) => {
                                 eprintln!(
-                                    "  warning: checksum mismatch for example config {example}: {e} — not installed"
+                                    "  {}",
+                                    ui::warn(&format!(
+                                        "checksum mismatch for example config {example}: {e} — not installed"
+                                    ))
                                 );
-                                println!("  config dir created at {}", dir.display());
+                                ui::step("config", &dir.display().to_string());
                             }
                         },
                         None => {
                             eprintln!(
-                                "  warning: index.json has no sha256 for example config \
-                                 {example} — refusing to install an unverified download"
+                                "  {}",
+                                ui::warn(&format!(
+                                    "index.json has no sha256 for example config \
+                                     {example} — refusing to install an unverified download"
+                                ))
                             );
-                            println!("  config dir created at {}", dir.display());
+                            ui::step("config", &dir.display().to_string());
                         }
                     },
                     Err(e) => {
-                        eprintln!("  warning: could not download example config {example}: {e}");
-                        println!("  config dir created at {}", dir.display());
+                        eprintln!(
+                            "  {}",
+                            ui::warn(&format!("could not download example config {example}: {e}"))
+                        );
+                        ui::step("config", &dir.display().to_string());
                     }
                 }
             } else {
-                println!("  config dir created at {}", dir.display());
+                ui::step("config", &dir.display().to_string());
             }
         } else {
-            println!("  config at {} already exists, skipping", dest.display());
+            ui::step(
+                "config",
+                &format!("{} already exists, skipping", dest.display()),
+            );
         }
     } else {
-        println!("  config dir created at {}", dir.display());
+        ui::step("config", &dir.display().to_string());
     }
     Ok(())
 }
@@ -366,32 +416,46 @@ fn fetch_verify_write(
     label: &str,
 ) -> Result<()> {
     let Some((primary, fallback)) = pkg.artifact_urls(filename) else {
-        eprintln!("  warning: no artifact URL to download {label} ({filename})");
+        eprintln!(
+            "  {}",
+            ui::warn(&format!("no artifact URL to download {label} ({filename})"))
+        );
         return Ok(());
     };
     let bytes = match fetch_binary(&primary, &fallback) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("  warning: could not download {label} {filename}: {e}");
+            eprintln!(
+                "  {}",
+                ui::warn(&format!("could not download {label} {filename}: {e}"))
+            );
             return Ok(());
         }
     };
     let Some(expected) = sha256 else {
         eprintln!(
-            "  warning: index.json has no sha256 for {label} {filename} — \
-             refusing to install an unverified download"
+            "  {}",
+            ui::warn(&format!(
+                "index.json has no sha256 for {label} {filename} — \
+                 refusing to install an unverified download"
+            ))
         );
         return Ok(());
     };
     if let Err(e) = verify_sha256(&bytes, expected) {
-        eprintln!("  warning: checksum mismatch for {label} {filename}: {e} — not installed");
+        eprintln!(
+            "  {}",
+            ui::warn(&format!(
+                "checksum mismatch for {label} {filename}: {e} — not installed"
+            ))
+        );
         return Ok(());
     }
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
-    println!("  installed {label} at {}", dest.display());
+    ui::step("installed", &format!("{label}  {}", dest.display()));
     Ok(())
 }
 
@@ -411,7 +475,13 @@ fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("~/.local/share"))
         .join("applications")
         .join(format!("{}.desktop", pkg.name));
-    fetch_verify_write(pkg, filename, &pkg.desktop_file_sha256, &dest, "desktop entry")
+    fetch_verify_write(
+        pkg,
+        filename,
+        &pkg.desktop_file_sha256,
+        &dest,
+        "desktop entry",
+    )
 }
 
 fn install_data_archive(pkg: &Package, filename: &str) -> Result<()> {
@@ -468,9 +538,15 @@ fn fetch_extract_archive(
     // `tmp_archive` (a `TempPath` guard) deletes the file when it drops here.
 
     if status.success() {
-        println!("  extracted {filename} to {}", dest_dir.display());
+        ui::step(
+            "extracted",
+            &format!("{filename}  →  {}", dest_dir.display()),
+        );
     } else {
-        eprintln!("  warning: tar exited with {status} extracting {filename}");
+        eprintln!(
+            "  {}",
+            ui::warn(&format!("tar exited with {status} extracting {filename}"))
+        );
     }
     Ok(())
 }
@@ -552,18 +628,24 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
         Ok(bytes) => {
             std::fs::write(&unit_path, &bytes)
                 .with_context(|| format!("writing {}", unit_path.display()))?;
-            println!("  downloaded unit {}", unit_path.display());
+            ui::step("unit", &unit_path.display().to_string());
         }
         Err(e) => {
             if had_existing {
                 eprintln!(
-                    "  warning: could not refresh unit {} ({e}) — keeping existing copy",
-                    svc.unit
+                    "  {}",
+                    ui::warn(&format!(
+                        "could not refresh unit {} ({e}) — keeping existing copy",
+                        svc.unit
+                    ))
                 );
             } else {
                 eprintln!(
-                    "  warning: unit file {} not found ({e}) — skipping service setup",
-                    svc.unit
+                    "  {}",
+                    ui::warn(&format!(
+                        "unit file {} not found ({e}) — skipping service setup",
+                        svc.unit
+                    ))
                 );
                 return Ok(());
             }
@@ -578,7 +660,7 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
         .map(|s| s.success())
         .unwrap_or(false)
     {
-        eprintln!("  warning: systemctl daemon-reload failed");
+        eprintln!("  {}", ui::warn("systemctl daemon-reload failed"));
     }
 
     if svc.enable {
@@ -595,9 +677,9 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
                 .map(|s| s.success())
                 .unwrap_or(false)
             {
-                println!("  {} restarted", svc.unit);
+                ui::step("restarted", &svc.unit);
             } else {
-                eprintln!("  warning: failed to restart {}", svc.unit);
+                eprintln!("  {}", ui::warn(&format!("failed to restart {}", svc.unit)));
             }
         } else if Command::new("systemctl")
             .args(["--user", "enable", "--now", &svc.unit])
@@ -605,9 +687,9 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
             .map(|s| s.success())
             .unwrap_or(false)
         {
-            println!("  {} enabled and started", svc.unit);
+            ui::step("enabled", &svc.unit);
         } else {
-            eprintln!("  warning: failed to enable {}", svc.unit);
+            eprintln!("  {}", ui::warn(&format!("failed to enable {}", svc.unit)));
         }
     }
 
@@ -650,13 +732,13 @@ fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
 }
 
 fn run_hook(cmd: &str, pkg_name: &str) -> Result<()> {
-    println!("  running post_install hook: {cmd}");
+    ui::step("hook", cmd);
     let status = Command::new("sh")
         .args(["-c", cmd])
         .status()
         .with_context(|| format!("running post_install hook for {pkg_name}"))?;
     if !status.success() {
-        eprintln!("  warning: hook exited with {status}");
+        eprintln!("  {}", ui::warn(&format!("hook exited with {status}")));
     }
     Ok(())
 }
@@ -699,11 +781,14 @@ fn warn_path_if_needed(bin_dir: &Path) {
     let path_var = std::env::var("PATH").unwrap_or_default();
     let bin_str = bin_dir.to_string_lossy();
     if !path_var.split(':').any(|p| p == bin_str) {
-        println!(
-            "\n  note: {} is not in PATH — add to your shell profile:",
-            bin_str
+        eprintln!();
+        eprintln!(
+            "  {}",
+            ui::note(&format!(
+                "{bin_str} is not in PATH — add to your shell profile:"
+            ))
         );
-        println!("    export PATH=\"{}:$PATH\"", bin_str);
+        println!("    export PATH=\"{bin_str}:$PATH\"");
     }
 }
 
@@ -728,10 +813,7 @@ mod tests {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 1024];
                 let _ = stream.read(&mut buf);
-                let response = format!(
-                    "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n",
-                    body.len()
-                );
+                let response = format!("HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
                 let _ = stream.write_all(response.as_bytes());
                 let _ = stream.write_all(body);
             }
@@ -748,10 +830,7 @@ mod tests {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 1024];
                 let _ = stream.read(&mut buf);
-                let response = format!(
-                    "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n",
-                    body.len()
-                );
+                let response = format!("HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
                 let _ = stream.write_all(response.as_bytes());
                 let _ = stream.write_all(&body);
             }
@@ -797,8 +876,14 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let dest = dir.path().join("LICENSE");
-        fetch_verify_write(&pkg, "LICENSE", &pkg.license_file_sha256.clone(), &dest, "license")
-            .unwrap();
+        fetch_verify_write(
+            &pkg,
+            "LICENSE",
+            &pkg.license_file_sha256.clone(),
+            &dest,
+            "license",
+        )
+        .unwrap();
 
         assert_eq!(fs::read(&dest).unwrap(), license_bytes);
     }
@@ -836,8 +921,14 @@ mod tests {
 
         let dir = tempdir().unwrap();
         let dest = dir.path().join("LICENSE");
-        fetch_verify_write(&pkg, "LICENSE", &pkg.license_file_sha256.clone(), &dest, "license")
-            .unwrap();
+        fetch_verify_write(
+            &pkg,
+            "LICENSE",
+            &pkg.license_file_sha256.clone(),
+            &dest,
+            "license",
+        )
+        .unwrap();
 
         // Refused, not erred (matches scaffold_config's warn-and-continue
         // posture) — the file must not have been written.
@@ -885,8 +976,7 @@ mod tests {
         let pkg = test_package(&base_url);
 
         let dest_dir = tempdir().unwrap();
-        fetch_extract_archive(&pkg, "content.tar.gz", &Some(sha256_hex), dest_dir.path())
-            .unwrap();
+        fetch_extract_archive(&pkg, "content.tar.gz", &Some(sha256_hex), dest_dir.path()).unwrap();
 
         let extracted = dest_dir.path().join("content/tours/onboarding.toml");
         assert_eq!(fs::read(&extracted).unwrap(), b"[[step]]\n");
@@ -1043,7 +1133,10 @@ mod tests {
 
         backup_current_binary(&backup_dir, "mypkg", &current);
 
-        assert_eq!(fs::read(backup_dir.join("mypkg")).unwrap(), b"old version bytes");
+        assert_eq!(
+            fs::read(backup_dir.join("mypkg")).unwrap(),
+            b"old version bytes"
+        );
     }
 
     #[test]

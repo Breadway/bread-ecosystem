@@ -11,8 +11,16 @@ pub struct DepReport {
 
 pub fn check_deps(required: &[String], optional: &[String]) -> Result<DepReport> {
     Ok(DepReport {
-        missing: required.iter().filter(|d| !dep_present(d)).cloned().collect(),
-        warnings: optional.iter().filter(|d| !dep_present(d)).cloned().collect(),
+        missing: required
+            .iter()
+            .filter(|d| !dep_present(d))
+            .cloned()
+            .collect(),
+        warnings: optional
+            .iter()
+            .filter(|d| !dep_present(d))
+            .cloned()
+            .collect(),
     })
 }
 
@@ -99,14 +107,24 @@ pub fn install_hint(missing: &[String]) -> String {
 
 /// Print a formatted doctor report for a package's system deps.
 /// Returns true if all *required* deps are satisfied.
-pub fn report(package_name: &str, required: &[String], optional: &[String]) -> bool {
+pub fn report(
+    package_name: &str,
+    required: &[String],
+    optional: &[String],
+    name_width: usize,
+) -> bool {
     if required.is_empty() && optional.is_empty() {
-        println!("  {}", ui::ok(&format!("{package_name}: no system deps required")));
+        ui::check_row(true, package_name, name_width, "no system deps required");
         return true;
     }
     match check_deps(required, optional) {
         Err(e) => {
-            eprintln!("  {}", ui::fail(&format!("error running doctor for {package_name}: {e}")));
+            ui::check_row(
+                false,
+                package_name,
+                name_width,
+                &format!("error running doctor: {e}"),
+            );
             false
         }
         Ok(rep) => {
@@ -123,17 +141,24 @@ pub fn report(package_name: &str, required: &[String], optional: &[String]) -> b
                 );
             }
             if rep.missing.is_empty() {
-                println!("  {}", ui::ok(&format!("{package_name}: all required system deps satisfied")));
+                ui::check_row(
+                    true,
+                    package_name,
+                    name_width,
+                    "all required system deps satisfied",
+                );
                 true
             } else {
+                ui::check_row(
+                    false,
+                    package_name,
+                    name_width,
+                    &format!("missing: {}", rep.missing.join(", ")),
+                );
                 eprintln!(
                     "  {}",
-                    ui::fail(&format!(
-                        "{package_name}: missing system deps: {}",
-                        rep.missing.join(", ")
-                    ))
+                    ui::dim(&format!("install with: {}", install_hint(&rep.missing)))
                 );
-                eprintln!("  install with: {}", install_hint(&rep.missing));
                 false
             }
         }
@@ -187,22 +212,14 @@ mod tests {
 
     #[test]
     fn missing_required_dep_detected() {
-        let rep = check_deps(
-            &["this-package-does-not-exist-xyzzy42".to_string()],
-            &[],
-        )
-        .unwrap();
+        let rep = check_deps(&["this-package-does-not-exist-xyzzy42".to_string()], &[]).unwrap();
         assert_eq!(rep.missing.len(), 1);
         assert!(rep.warnings.is_empty());
     }
 
     #[test]
     fn missing_optional_dep_becomes_warning_not_error() {
-        let rep = check_deps(
-            &[],
-            &["this-package-does-not-exist-xyzzy42".to_string()],
-        )
-        .unwrap();
+        let rep = check_deps(&[], &["this-package-does-not-exist-xyzzy42".to_string()]).unwrap();
         assert!(rep.missing.is_empty());
         assert_eq!(rep.warnings.len(), 1);
     }
