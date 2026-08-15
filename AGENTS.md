@@ -19,3 +19,6 @@ Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for any git, branch, or release work
 
 ## Don't
 - Don't embed credentials in remote URLs — SSH or a credential helper only.
+- Don't flip bakery's default install prefix. System prefix (`/usr/local` via
+  `/etc/bakery/config.toml` or `BAKERY_PREFIX`) is for BOS; hermes and
+  `get.sh` stay on `~/.local`. See [`bakery/README.md`](bakery/README.md).

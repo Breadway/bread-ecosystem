@@ -107,21 +107,21 @@ pub struct Package {
     #[serde(default)]
     pub post_install: Vec<String>,
     /// License artifact filename (e.g. "LICENSE"), installed to
-    /// `~/.local/share/licenses/<name>/LICENSE` — the bakery equivalent of
-    /// what a PKGBUILD's `package()` does with `/usr/share/licenses`.
+    /// `$prefix/share/licenses/<name>/LICENSE` (`~/.local/share/...` by
+    /// default) — the bakery equivalent of a PKGBUILD's `package()` step.
     #[serde(default)]
     pub license_file: Option<String>,
     #[serde(default)]
     pub license_file_sha256: Option<String>,
     /// Desktop entry artifact filename (e.g. "breadhelp.desktop"),
-    /// installed to `~/.local/share/applications/<name>.desktop` so the
-    /// app shows up in any XDG-compliant launcher without root.
+    /// installed to `$prefix/share/applications/<name>.desktop` so the
+    /// app shows up in any XDG-compliant launcher.
     #[serde(default)]
     pub desktop_file: Option<String>,
     #[serde(default)]
     pub desktop_file_sha256: Option<String>,
     /// Data archive artifact filename (e.g. "content.tar.gz") — a `.tar.gz`
-    /// in the release dir, extracted to `~/.local/share/<name>/` on
+    /// in the release dir, extracted to `$prefix/share/<name>/` on
     /// install. For arbitrary data a package needs at runtime beyond a
     /// config example (e.g. breadhelp's guide content), where a single
     /// downloadable file + `tar` extraction is simpler than teaching

@@ -56,8 +56,7 @@ impl State {
     pub fn save(&self) -> Result<()> {
         let path = state_path();
         let text = serde_json::to_string_pretty(self)?;
-        bread_utils::atomic::write_atomic(&path, &text, None)
-            .context("writing installed.json")
+        bread_utils::atomic::write_atomic(&path, &text, None).context("writing installed.json")
     }
 
     /// Runs `f` against a freshly-loaded `State` while holding an exclusive
@@ -114,7 +113,13 @@ fn state_base_dir() -> PathBuf {
 }
 
 fn state_path() -> PathBuf {
-    state_base_dir().join("bakery/installed.json")
+    bakery_state_dir().join("installed.json")
+}
+
+/// Per-user bakery state dir (`~/.local/state/bakery`). Independent of the
+/// install prefix — system-prefix installs still record what this user asked for.
+pub fn bakery_state_dir() -> PathBuf {
+    state_base_dir().join("bakery")
 }
 
 /// Local backup dir for `pkg_name`'s `version` binaries, populated by
@@ -205,7 +210,10 @@ mod tests {
         assert_eq!(restored.packages["bar"].version, "2.0.0");
         assert_eq!(restored.packages["bar"].services, ["bar.service"]);
         assert_eq!(restored.packages["bar"].track, Track::Beta);
-        assert_eq!(restored.packages["bar"].previous_version.as_deref(), Some("1.0.0"));
+        assert_eq!(
+            restored.packages["bar"].previous_version.as_deref(),
+            Some("1.0.0")
+        );
         assert_eq!(restored.packages["bar"].binary_sha256["bar"], "abc123");
     }
 
@@ -226,6 +234,14 @@ mod tests {
         let installed: InstalledPackage = serde_json::from_str(old_shape).unwrap();
         assert!(installed.previous_version.is_none());
         assert!(installed.binary_sha256.is_empty());
+    }
+
+    #[test]
+    fn bakery_state_dir_is_under_state_home_and_independent_of_prefix() {
+        let dir = bakery_state_dir();
+        assert!(dir.ends_with("bakery"));
+        // Must not follow BAKERY_PREFIX — state is always per-user.
+        assert!(!dir.starts_with("/usr/local"));
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::process::Command;
 
 use crate::download::{fetch_and_place, verify_sha256};
 use crate::manifest::{fetch_binary, Package, Service};
+use crate::prefix::{self, Layout};
 use crate::state::{InstalledPackage, State};
 use crate::track::Track;
 use crate::ui;
@@ -68,7 +69,7 @@ fn confirm(prompt: &str, assume_yes: bool) -> bool {
 /// install" for the pre-overwrite backup below.
 pub fn install_package(
     pkg: &Package,
-    bin_dir: &Path,
+    layout: &Layout,
     track: Track,
     previous: Option<&InstalledPackage>,
     no_hooks: bool,
@@ -78,14 +79,17 @@ pub fn install_package(
 
     // 1. Download and verify all binaries. On an update (not a fresh
     // install), back up the current binary first — best-effort, feeding
-    // `bakery rollback` — before it's overwritten below.
+    // `bakery rollback` — before it's overwritten below. Backups stay
+    // per-user under ~/.local/state even when the live binary is in
+    // /usr/local/bin, so a snapper snapshot of `@` plus this local copy
+    // is enough to roll back; no second snapshot system.
     let backup_dir = previous.map(|prev| crate::state::backup_dir(&pkg.name, &prev.version));
     let mut binary_names = Vec::new();
     let mut binary_sha256 = HashMap::new();
     for bin in &pkg.binaries {
         ensure_safe_component(&bin.name, "binary name")?;
         let install_name = strip_arch_suffix(&bin.name);
-        let dest = bin_dir.join(install_name);
+        let dest = layout.bin_dir.join(install_name);
         if let Some(dir) = &backup_dir {
             backup_current_binary(dir, install_name, &dest);
         }
@@ -94,30 +98,32 @@ pub fn install_package(
         binary_sha256.insert(install_name.to_string(), sha256);
     }
 
-    // 2. Scaffold config dir + download example file.
+    // 2. Scaffold config dir + download example file. Config stays
+    // per-user (~/.config) regardless of prefix — it's authored content,
+    // not bakery-placed bits.
     if let Some(cfg) = &pkg.config {
         scaffold_config(cfg, pkg)?;
     }
 
     // 3. Install license file, if declared.
     if let Some(license) = &pkg.license_file {
-        install_license(pkg, license)?;
+        install_license(pkg, license, layout)?;
     }
 
     // 4. Install desktop entry, if declared.
     if let Some(desktop) = &pkg.desktop_file {
-        install_desktop_file(pkg, desktop)?;
+        install_desktop_file(pkg, desktop, layout)?;
     }
 
     // 5. Download + extract data archive, if declared.
     if let Some(archive) = &pkg.data_archive {
-        install_data_archive(pkg, archive)?;
+        install_data_archive(pkg, archive, layout)?;
     }
 
     // 6. Install systemd user units.
     let mut service_names = Vec::new();
     for svc in &pkg.services {
-        install_service(svc, bin_dir, pkg)?;
+        install_service(svc, layout, pkg)?;
         service_names.push(svc.unit.clone());
     }
 
@@ -173,7 +179,7 @@ pub fn install_package(
     })?;
 
     println!("  {}", ui::ok(&format!("{} installed", pkg.name)));
-    warn_path_if_needed(bin_dir);
+    warn_path_if_needed(&layout.bin_dir);
     Ok(())
 }
 
@@ -211,7 +217,12 @@ fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Pa
     }
 }
 
-pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: bool) -> Result<()> {
+pub fn remove_package(
+    pkg_name: &str,
+    layout: &Layout,
+    assume_yes: bool,
+    purge: bool,
+) -> Result<()> {
     let installed = State::with_lock(|state| Ok(state.remove(pkg_name)))?;
     let installed = match installed {
         Some(p) => p,
@@ -229,9 +240,9 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
     // the config/data-preserved messages below.
     let mut failures = Vec::new();
     for bin in &installed.binaries {
-        let path = bin_dir.join(bin);
+        let path = layout.bin_dir.join(bin);
         if path.exists() {
-            match std::fs::remove_file(&path) {
+            match prefix::remove_file(&path) {
                 Ok(()) => ui::step("removed", &path.display().to_string()),
                 Err(e) => failures.push(format!("{}: {e}", path.display())),
             }
@@ -240,7 +251,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
 
     // Prompt for unit removal.
     if !installed.services.is_empty() {
-        let service_dir = systemd_user_dir();
+        let service_dir = &layout.systemd_user_dir;
         for unit in &installed.services {
             let unit_path = service_dir.join(unit);
             if confirm_remove_unit(unit, assume_yes) {
@@ -248,7 +259,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
                     .args(["--user", "disable", "--now", unit])
                     .status();
                 if unit_path.exists() {
-                    std::fs::remove_file(&unit_path).ok();
+                    let _ = prefix::remove_file(&unit_path);
                 }
                 let _ = Command::new("systemctl")
                     .args(["--user", "daemon-reload"])
@@ -269,7 +280,7 @@ pub fn remove_package(pkg_name: &str, bin_dir: &Path, assume_yes: bool, purge: b
         }
     }
 
-    let share_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("~/.local/share"));
+    let share_dir = &layout.share_dir;
     let data_dir = share_dir.join(pkg_name);
 
     if purge {
@@ -331,9 +342,9 @@ fn remove_purged_path(
         return;
     }
     let result = if recursive {
-        std::fs::remove_dir_all(path)
+        prefix::remove_dir_all(path)
     } else {
-        std::fs::remove_file(path)
+        prefix::remove_file(path)
     };
     match result {
         Ok(()) => ui::step("removed", &path.display().to_string()),
@@ -451,28 +462,26 @@ fn fetch_verify_write(
         );
         return Ok(());
     }
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(dest, &bytes).with_context(|| format!("writing {}", dest.display()))?;
+    prefix::write_bytes(dest, &bytes, 0o644)
+        .with_context(|| format!("writing {}", dest.display()))?;
     ui::step("installed", &format!("{label}  {}", dest.display()));
     Ok(())
 }
 
-fn install_license(pkg: &Package, filename: &str) -> Result<()> {
+fn install_license(pkg: &Package, filename: &str, layout: &Layout) -> Result<()> {
     ensure_safe_component(filename, "license_file")?;
-    let dest = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+    let dest = layout
+        .share_dir
         .join("licenses")
         .join(&pkg.name)
         .join("LICENSE");
     fetch_verify_write(pkg, filename, &pkg.license_file_sha256, &dest, "license")
 }
 
-fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
+fn install_desktop_file(pkg: &Package, filename: &str, layout: &Layout) -> Result<()> {
     ensure_safe_component(filename, "desktop_file")?;
-    let dest = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+    let dest = layout
+        .share_dir
         .join("applications")
         .join(format!("{}.desktop", pkg.name));
     fetch_verify_write(
@@ -484,11 +493,9 @@ fn install_desktop_file(pkg: &Package, filename: &str) -> Result<()> {
     )
 }
 
-fn install_data_archive(pkg: &Package, filename: &str) -> Result<()> {
+fn install_data_archive(pkg: &Package, filename: &str, layout: &Layout) -> Result<()> {
     ensure_safe_component(filename, "data_archive")?;
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-        .join(&pkg.name);
+    let data_dir = layout.share_dir.join(&pkg.name);
     fetch_extract_archive(pkg, filename, &pkg.data_archive_sha256, &data_dir)
 }
 
@@ -497,7 +504,7 @@ fn install_data_archive(pkg: &Package, filename: &str) -> Result<()> {
 /// crate dependency — `tar` is universally present on Linux and this file
 /// already shells out to `systemctl` for the same "trust the base system
 /// has this" reason. Split from `install_data_archive` (which just supplies
-/// the real `~/.local/share/<name>` destination) so tests can extract into
+/// the real `$prefix/share/<name>` destination) so tests can extract into
 /// a tempdir instead.
 fn fetch_extract_archive(
     pkg: &Package,
@@ -523,31 +530,19 @@ fn fetch_extract_archive(
 
     verify_archive_paths(&tmp_archive)?;
 
-    std::fs::create_dir_all(dest_dir)?;
-    let status = Command::new("tar")
-        .args([
-            "xzf",
-            &tmp_archive.to_string_lossy(),
-            "--no-same-owner",
-            "--no-same-permissions",
-            "-C",
-        ])
-        .arg(dest_dir)
-        .status()
-        .with_context(|| format!("running tar to extract {filename}"))?;
-    // `tmp_archive` (a `TempPath` guard) deletes the file when it drops here.
-
-    if status.success() {
-        ui::step(
+    match prefix::extract_tar_gz(&tmp_archive, dest_dir) {
+        Ok(()) => ui::step(
             "extracted",
             &format!("{filename}  →  {}", dest_dir.display()),
-        );
-    } else {
-        eprintln!(
-            "  {}",
-            ui::warn(&format!("tar exited with {status} extracting {filename}"))
-        );
+        ),
+        Err(e) => {
+            eprintln!(
+                "  {}",
+                ui::warn(&format!("could not extract {filename}: {e}"))
+            );
+        }
     }
+    // `tmp_archive` (a `TempPath` guard) deletes the file when it drops here.
     Ok(())
 }
 
@@ -609,11 +604,11 @@ fn fetch_and_verify_unit(pkg: &Package, svc: &Service) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
+fn install_service(svc: &Service, layout: &Layout, pkg: &Package) -> Result<()> {
     ensure_safe_component(&svc.unit, "service unit")?;
 
-    let service_dir = systemd_user_dir();
-    std::fs::create_dir_all(&service_dir)?;
+    let service_dir = &layout.systemd_user_dir;
+    prefix::create_dir_all(service_dir)?;
 
     let unit_path = service_dir.join(&svc.unit);
     let had_existing = unit_path.exists();
@@ -623,10 +618,14 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
     // applied after the first install, unlike binaries (which always
     // re-fetch via `fetch_and_place` on every install/update). If the fetch
     // or checksum fails, fall back to whatever's already on disk rather than
-    // regressing offline/flaky-network reliability.
+    // regressing offline/flaky-network reliability. Patch ExecStart in
+    // memory before the write so a system-prefix install only needs one
+    // privileged write, not write-then-rewrite.
     match fetch_and_verify_unit(pkg, svc) {
         Ok(bytes) => {
-            std::fs::write(&unit_path, &bytes)
+            let text = String::from_utf8_lossy(&bytes);
+            let patched = patch_exec_start_text(&text, &layout.bin_dir);
+            prefix::write_bytes(&unit_path, patched.as_bytes(), 0o644)
                 .with_context(|| format!("writing {}", unit_path.display()))?;
             ui::step("unit", &unit_path.display().to_string());
         }
@@ -639,6 +638,7 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
                         svc.unit
                     ))
                 );
+                patch_exec_start(&unit_path, &layout.bin_dir)?;
             } else {
                 eprintln!(
                     "  {}",
@@ -651,8 +651,6 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
             }
         }
     }
-
-    patch_exec_start(&unit_path, bin_dir)?;
 
     if !Command::new("systemctl")
         .args(["--user", "daemon-reload"])
@@ -698,6 +696,12 @@ fn install_service(svc: &Service, bin_dir: &Path, pkg: &Package) -> Result<()> {
 
 fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
     let text = std::fs::read_to_string(unit_path)?;
+    let output = patch_exec_start_text(&text, bin_dir);
+    prefix::write_bytes(unit_path, output.as_bytes(), 0o644)?;
+    Ok(())
+}
+
+fn patch_exec_start_text(text: &str, bin_dir: &Path) -> String {
     let patched: String = text
         .lines()
         .map(|line| {
@@ -721,14 +725,11 @@ fn patch_exec_start(unit_path: &Path, bin_dir: &Path) -> Result<()> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    // Preserve trailing newline if the original had one.
-    let output = if text.ends_with('\n') {
+    if text.ends_with('\n') {
         format!("{patched}\n")
     } else {
         patched
-    };
-    std::fs::write(unit_path, output)?;
-    Ok(())
+    }
 }
 
 fn run_hook(cmd: &str, pkg_name: &str) -> Result<()> {
@@ -745,12 +746,6 @@ fn run_hook(cmd: &str, pkg_name: &str) -> Result<()> {
 
 fn confirm_remove_unit(unit: &str, assume_yes: bool) -> bool {
     confirm(&format!("  remove systemd unit {unit}?"), assume_yes)
-}
-
-fn systemd_user_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
-        .join("systemd/user")
 }
 
 fn guess_config_dir(pkg_name: &str) -> Option<PathBuf> {
@@ -1063,7 +1058,8 @@ mod tests {
         let mut pkg = test_package(&base_url);
         pkg.name = "../evil".to_string();
         let dir = tempdir().unwrap();
-        let err = install_package(&pkg, dir.path(), Track::Stable, None, true, true).unwrap_err();
+        let layout = Layout::from_prefix(dir.path(), None);
+        let err = install_package(&pkg, &layout, Track::Stable, None, true, true).unwrap_err();
         assert!(err.to_string().contains("not a safe filename"));
     }
 

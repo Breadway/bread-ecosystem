@@ -106,6 +106,26 @@ bakery remove <pkg>            # remove a package (data files are never deleted)
 
 `bakery install` runs `doctor` first and bails with a clear message if any system dependency is missing. Binaries land in `~/.local/bin` (override with `BAKERY_BIN_DIR`).
 
+## System prefix (BOS)
+
+Default install root is `~/.local`. BOS sets a system prefix so bakery-managed
+desktop apps live on the `@` root subvolume and ride along with
+snapper/grub-btrfs snapshots:
+
+```toml
+# /etc/bakery/config.toml
+prefix = "/usr/local"
+```
+
+`BAKERY_PREFIX` overrides the config file. A non-home prefix installs bins to
+`$prefix/bin`, share/data/desktop/licenses to `$prefix/share/...`, and systemd
+user units to `/usr/lib/systemd/user`. Per-user state (`installed.json`,
+update backups) stays in `~/.local/state/bakery`. Writes that need root use
+`sudo -n`, then `pkexec`. `bakery doctor` prints the active prefix.
+
+Hermes and `get.sh` are unchanged — they keep the user-local default. See
+[`bakery/README.md`](bakery/README.md).
+
 ## System dependencies by product
 
 `bakery doctor` checks these automatically before any install. Required deps block installation; optional deps generate a warning but never block.

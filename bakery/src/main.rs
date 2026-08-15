@@ -2,6 +2,7 @@ mod doctor;
 mod download;
 mod install;
 mod manifest;
+mod prefix;
 mod state;
 mod track;
 mod ui;
@@ -48,7 +49,7 @@ enum Cmd {
     Remove {
         package: String,
         /// Also remove the license file, desktop entry, and data dir
-        /// (~/.local/share/<pkg>/) — config is still preserved
+        /// ($prefix/share/<pkg>/) — config is still preserved
         #[arg(long)]
         purge: bool,
     },
@@ -104,15 +105,9 @@ enum TrackCmd {
     Set { track: Track },
 }
 
-fn default_bin_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("~"))
-        .join(".local/bin")
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let bin_dir = cli.bin_dir.unwrap_or_else(default_bin_dir);
+    let layout = prefix::resolve(cli.bin_dir);
     let no_hooks = cli.no_hooks;
     let assume_yes = cli.yes;
     let dry_run = cli.dry_run;
@@ -122,15 +117,15 @@ fn main() -> Result<()> {
         Cmd::Install { packages } => {
             let index = manifest::load(true, track)?;
             for pkg in &packages {
-                cmd_install(&index, pkg, &bin_dir, track, no_hooks, assume_yes, dry_run)?;
+                cmd_install(&index, pkg, &layout, track, no_hooks, assume_yes, dry_run)?;
             }
             Ok(())
         }
-        Cmd::Remove { package, purge } => cmd_remove(&package, &bin_dir, assume_yes, purge),
+        Cmd::Remove { package, purge } => cmd_remove(&package, &layout, assume_yes, purge),
         Cmd::Update { package, all } => cmd_update(
             package.as_deref(),
             all,
-            &bin_dir,
+            &layout,
             track,
             no_hooks,
             assume_yes,
@@ -139,9 +134,9 @@ fn main() -> Result<()> {
         Cmd::List { installed } => cmd_list(installed, track),
         Cmd::Info { package } => cmd_info(&package, track),
         Cmd::Search { query } => cmd_search(&query, track),
-        Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track, &bin_dir),
-        Cmd::Verify { package } => cmd_verify(package.as_deref(), &bin_dir),
-        Cmd::Rollback { package } => cmd_rollback(&package, &bin_dir),
+        Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track, &layout),
+        Cmd::Verify { package } => cmd_verify(package.as_deref(), &layout.bin_dir),
+        Cmd::Rollback { package } => cmd_rollback(&package, &layout.bin_dir),
         // Same update logic as `bakery update bakery` — this is just a
         // documented, discoverable entry point for it, since overwriting
         // bakery's own running binary via a normal update already works
@@ -150,7 +145,7 @@ fn main() -> Result<()> {
         Cmd::SelfUpdate => cmd_update(
             Some("bakery"),
             false,
-            &bin_dir,
+            &layout,
             track,
             no_hooks,
             assume_yes,
@@ -199,7 +194,7 @@ fn cmd_track(action: TrackCmd) -> Result<()> {
 fn cmd_install(
     index: &manifest::Index,
     name: &str,
-    bin_dir: &std::path::Path,
+    layout: &prefix::Layout,
     track: Track,
     no_hooks: bool,
     assume_yes: bool,
@@ -209,7 +204,7 @@ fn cmd_install(
     install_with_deps(
         index,
         name,
-        bin_dir,
+        layout,
         track,
         no_hooks,
         assume_yes,
@@ -224,7 +219,7 @@ fn cmd_install(
 fn install_with_deps(
     index: &manifest::Index,
     name: &str,
-    bin_dir: &std::path::Path,
+    layout: &prefix::Layout,
     track: Track,
     no_hooks: bool,
     assume_yes: bool,
@@ -245,7 +240,7 @@ fn install_with_deps(
         if !state.is_installed(&dep) {
             ui::step(if dry_run { "would need" } else { "dependency" }, &dep);
             install_with_deps(
-                index, &dep, bin_dir, track, no_hooks, assume_yes, dry_run, visited,
+                index, &dep, layout, track, no_hooks, assume_yes, dry_run, visited,
             )?;
         }
     }
@@ -315,7 +310,7 @@ fn install_with_deps(
         return Ok(());
     }
 
-    install::install_package(pkg, bin_dir, track, previous, no_hooks, assume_yes)
+    install::install_package(pkg, layout, track, previous, no_hooks, assume_yes)
 }
 
 /// Prints what `install_with_deps`/`cmd_update` would do for `pkg` under
@@ -344,15 +339,15 @@ fn print_dry_run_plan(pkg: &manifest::Package) {
     }
 }
 
-fn cmd_remove(name: &str, bin_dir: &std::path::Path, assume_yes: bool, purge: bool) -> Result<()> {
-    install::remove_package(name, bin_dir, assume_yes, purge)
+fn cmd_remove(name: &str, layout: &prefix::Layout, assume_yes: bool, purge: bool) -> Result<()> {
+    install::remove_package(name, layout, assume_yes, purge)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn cmd_update(
     name: Option<&str>,
     all: bool,
-    bin_dir: &std::path::Path,
+    layout: &prefix::Layout,
     track: Track,
     no_hooks: bool,
     assume_yes: bool,
@@ -486,14 +481,9 @@ fn cmd_update(
             continue;
         }
 
-        if let Err(e) = install::install_package(
-            latest,
-            bin_dir,
-            track,
-            Some(installed),
-            no_hooks,
-            assume_yes,
-        ) {
+        if let Err(e) =
+            install::install_package(latest, layout, track, Some(installed), no_hooks, assume_yes)
+        {
             eprintln!(
                 "  {}",
                 ui::fail(&format!("failed to update {pkg_name}: {e}"))
@@ -705,7 +695,18 @@ fn cmd_info(name: &str, track: Track) -> Result<()> {
     Ok(())
 }
 
-fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Result<()> {
+fn report_layout(layout: &prefix::Layout) {
+    ui::kv(
+        "prefix",
+        &format!("{} ({})", layout.prefix.display(), layout.kind_label()),
+    );
+    ui::kv("bins", &layout.bin_dir.display().to_string());
+    ui::kv("share", &layout.share_dir.display().to_string());
+    ui::kv("units", &layout.systemd_user_dir.display().to_string());
+    ui::kv("state", &state::bakery_state_dir().display().to_string());
+}
+
+fn cmd_doctor(name: Option<&str>, track: Track, layout: &prefix::Layout) -> Result<()> {
     let index = manifest::load(false, track)?;
     let state = state::State::load()?;
 
@@ -720,6 +721,9 @@ fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Re
     };
 
     if targets.is_empty() {
+        ui::heading("Doctor", &["no packages"]);
+        report_layout(layout);
+        println!();
         println!("{}", ui::dim("no packages installed — nothing to check"));
         return Ok(());
     }
@@ -727,6 +731,8 @@ fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Re
     let mut targets = targets;
     targets.sort();
     ui::heading("Doctor", &[&format!("{} packages", targets.len())]);
+    report_layout(layout);
+    println!();
     let name_w = ui::name_width(&targets);
 
     let mut all_ok = true;
@@ -756,7 +762,7 @@ fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Re
         // only, not a checksum re-verification — see `bakery verify` for that.
         if let Some(installed) = state.packages.get(pkg_name) {
             for bin in &installed.binaries {
-                let path = bin_dir.join(bin);
+                let path = layout.bin_dir.join(bin);
                 if !path.exists() {
                     eprintln!(
                         "  {}",
@@ -906,7 +912,7 @@ fn restore_binaries(
             .with_context(|| format!("reading backup {}", backup_path.display()))?;
         let hash = hex::encode(Sha256::digest(&bytes));
         let dest = bin_dir.join(bin);
-        bread_utils::atomic::write_atomic_bytes(&dest, &bytes, Some(0o755))
+        prefix::write_bytes(&dest, &bytes, 0o755)
             .with_context(|| format!("restoring {}", dest.display()))?;
         sha256.insert(bin.clone(), hash);
     }
@@ -1095,11 +1101,12 @@ mod tests {
         };
 
         let bin_dir = tempdir().unwrap();
+        let layout = prefix::Layout::from_prefix(bin_dir.path(), None);
         let mut visited = HashSet::new();
         install_with_deps(
             &index,
             name,
-            bin_dir.path(),
+            &layout,
             Track::Stable,
             true,
             true,

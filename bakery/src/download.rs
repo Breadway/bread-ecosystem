@@ -20,7 +20,7 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
     verify_sha256(&bytes, &binary.sha256)
         .with_context(|| format!("checksum mismatch for {}", binary.name))?;
 
-    bread_utils::atomic::write_atomic_bytes(dest, &bytes, Some(0o755))
+    crate::prefix::write_bytes(dest, &bytes, 0o755)
         .with_context(|| format!("placing binary at {}", dest.display()))?;
     ui::step("placed", &dest.display().to_string());
     Ok(binary.sha256.clone())
