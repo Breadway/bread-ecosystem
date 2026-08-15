@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use crate::manifest::{fetch_binary, Binary};
+use crate::ui;
 
 /// Download a binary, verify its SHA-256, then atomically write it into
 /// place (fsynced, temp-in-same-dir-with-unique-name then rename — see
@@ -12,7 +13,7 @@ use crate::manifest::{fetch_binary, Binary};
 /// bytes a second time — `verify_sha256` already confirmed `bytes` matches
 /// `binary.sha256`, so that's the value to return.
 pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
-    println!("  downloading {}…", binary.name);
+    ui::step("downloading", &binary.name);
     let bytes = fetch_binary(&binary.dl_url, &binary.github_url)
         .with_context(|| format!("downloading {}", binary.name))?;
 
@@ -21,7 +22,7 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
 
     bread_utils::atomic::write_atomic_bytes(dest, &bytes, Some(0o755))
         .with_context(|| format!("placing binary at {}", dest.display()))?;
-    println!("  installed {}", dest.display());
+    ui::step("placed", &dest.display().to_string());
     Ok(binary.sha256.clone())
 }
 

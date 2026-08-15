@@ -14,7 +14,12 @@ use std::path::{Path, PathBuf};
 use track::Track;
 
 #[derive(Parser)]
-#[command(name = "bakery", about = "Package manager for the bread ecosystem", version)]
+#[command(
+    name = "bakery",
+    about = "Package manager for the bread ecosystem",
+    version,
+    styles = ui::CLAP_STYLES
+)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -63,13 +68,9 @@ enum Cmd {
         installed: bool,
     },
     /// Show details for a package
-    Info {
-        package: String,
-    },
+    Info { package: String },
     /// Search package names and descriptions
-    Search {
-        query: String,
-    },
+    Search { query: String },
     /// Check system dependencies for installed or requested packages
     Doctor {
         /// Package to check; omit to check all installed packages
@@ -82,15 +83,11 @@ enum Cmd {
     },
     /// Roll back a package to its previously installed version, from a
     /// local pre-update backup (not a re-download)
-    Rollback {
-        package: String,
-    },
+    Rollback { package: String },
     /// Update bakery itself
     SelfUpdate,
     /// Generate a shell completion script
-    Completions {
-        shell: clap_complete::Shell,
-    },
+    Completions { shell: clap_complete::Shell },
     /// View or switch which build track bakery follows (stable/beta/dev)
     Track {
         #[command(subcommand)]
@@ -130,9 +127,15 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Remove { package, purge } => cmd_remove(&package, &bin_dir, assume_yes, purge),
-        Cmd::Update { package, all } => {
-            cmd_update(package.as_deref(), all, &bin_dir, track, no_hooks, assume_yes, dry_run)
-        }
+        Cmd::Update { package, all } => cmd_update(
+            package.as_deref(),
+            all,
+            &bin_dir,
+            track,
+            no_hooks,
+            assume_yes,
+            dry_run,
+        ),
         Cmd::List { installed } => cmd_list(installed, track),
         Cmd::Info { package } => cmd_info(&package, track),
         Cmd::Search { query } => cmd_search(&query, track),
@@ -144,7 +147,15 @@ fn main() -> Result<()> {
         // bakery's own running binary via a normal update already works
         // (rename-over-running-binary is safe on Linux) but wasn't a real
         // first-class command.
-        Cmd::SelfUpdate => cmd_update(Some("bakery"), false, &bin_dir, track, no_hooks, assume_yes, dry_run),
+        Cmd::SelfUpdate => cmd_update(
+            Some("bakery"),
+            false,
+            &bin_dir,
+            track,
+            no_hooks,
+            assume_yes,
+            dry_run,
+        ),
         Cmd::Completions { shell } => cmd_completions(shell),
         Cmd::Track { action } => cmd_track(action),
     }
@@ -159,11 +170,11 @@ fn cmd_track(action: TrackCmd) -> Result<()> {
     let state = state::State::load()?;
     match action {
         TrackCmd::Show => {
-            println!("current track: {}", ui::style(state.track.as_str(), ui::CYAN));
+            ui::heading("Track", &[&ui::style(state.track.as_str(), ui::CYAN)]);
         }
         TrackCmd::Set { track } => {
             if state.track == track {
-                println!("already on track {track}");
+                println!("{}", ui::unchanged(&format!("already on track {track}")));
                 return Ok(());
             }
             // Fail fast on a bad/unreachable track rather than silently
@@ -174,10 +185,10 @@ fn cmd_track(action: TrackCmd) -> Result<()> {
                 state.set_track(track);
                 Ok(())
             })?;
-            println!(
-                "switched to {} — run 'bakery update --all' to install {} builds",
-                ui::style(track.as_str(), ui::CYAN),
-                track
+            ui::action("Switched", track.as_str(), None);
+            ui::step(
+                "next",
+                &format!("bakery update --all  to install {track} builds"),
             );
         }
     }
@@ -195,7 +206,16 @@ fn cmd_install(
     dry_run: bool,
 ) -> Result<()> {
     let mut visited = HashSet::new();
-    install_with_deps(index, name, bin_dir, track, no_hooks, assume_yes, dry_run, &mut visited)
+    install_with_deps(
+        index,
+        name,
+        bin_dir,
+        track,
+        no_hooks,
+        assume_yes,
+        dry_run,
+        &mut visited,
+    )
 }
 
 /// Recursively installs `name` and any bread_deps, skipping already-installed
@@ -223,8 +243,10 @@ fn install_with_deps(
     let state = state::State::load()?;
     for dep in pkg.bread_deps.clone() {
         if !state.is_installed(&dep) {
-            println!("{} bread dependency: {dep}", if dry_run { "would install" } else { "installing" });
-            install_with_deps(index, &dep, bin_dir, track, no_hooks, assume_yes, dry_run, visited)?;
+            ui::step(if dry_run { "would need" } else { "dependency" }, &dep);
+            install_with_deps(
+                index, &dep, bin_dir, track, no_hooks, assume_yes, dry_run, visited,
+            )?;
         }
     }
 
@@ -237,26 +259,59 @@ fn install_with_deps(
     if let Some(installed) = previous {
         if !is_newer(&installed.version, &pkg.version) {
             println!(
-                "{name} already installed at {} (index has {})",
-                installed.version, pkg.version
+                "  {}",
+                ui::unchanged(&format!(
+                    "{name} already at {}  (index has {})",
+                    installed.version, pkg.version
+                ))
             );
             return Ok(());
         }
     }
 
-    println!("checking system dependencies for {name}…");
+    ui::action(
+        if dry_run {
+            if previous.is_some() {
+                "Would update"
+            } else {
+                "Would install"
+            }
+        } else if previous.is_some() {
+            "Updating"
+        } else {
+            "Installing"
+        },
+        name,
+        Some(&pkg.version),
+    );
+    ui::step("checking", "system dependencies");
     let rep = doctor::check_deps(&pkg.system_deps, &pkg.optional_system_deps)?;
     for warn in &rep.warnings {
-        eprintln!("  note: optional dep not installed: {warn}");
+        eprintln!(
+            "  {}",
+            ui::note(&format!("optional dep not installed: {warn}"))
+        );
     }
     if !rep.missing.is_empty() {
-        eprintln!("missing system deps for {name}: {}", rep.missing.join(", "));
-        eprintln!("install with: {}", doctor::install_hint(&rep.missing));
+        eprintln!(
+            "  {}",
+            ui::fail(&format!(
+                "missing system deps for {name}: {}",
+                rep.missing.join(", ")
+            ))
+        );
+        eprintln!(
+            "  {}",
+            ui::dim(&format!(
+                "install with: {}",
+                doctor::install_hint(&rep.missing)
+            ))
+        );
         bail!("system deps not satisfied");
     }
 
     if dry_run {
-        print_dry_run_plan(pkg, previous);
+        print_dry_run_plan(pkg);
         return Ok(());
     }
 
@@ -268,22 +323,23 @@ fn install_with_deps(
 /// already been made — this only renders that decision, it never
 /// recomputes it, so dry-run and real runs can't drift apart on "would this
 /// update happen at all".
-fn print_dry_run_plan(pkg: &manifest::Package, previous: Option<&state::InstalledPackage>) {
-    let verb = if previous.is_some() { "update" } else { "install" };
-    println!(
-        "  {} would {verb} {} to {}",
-        ui::style("dry-run:", ui::DIM),
-        pkg.name,
-        ui::style(&pkg.version, ui::BOLD)
-    );
-    println!(
-        "    binaries: {}",
-        pkg.binaries.iter().map(|b| b.name.as_str()).collect::<Vec<_>>().join(", ")
+fn print_dry_run_plan(pkg: &manifest::Package) {
+    ui::kv(
+        "binaries",
+        &pkg.binaries
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
     );
     if !pkg.services.is_empty() {
-        println!(
-            "    services: {}",
-            pkg.services.iter().map(|s| s.unit.as_str()).collect::<Vec<_>>().join(", ")
+        ui::kv(
+            "services",
+            &pkg.services
+                .iter()
+                .map(|s| s.unit.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
         );
     }
 }
@@ -311,8 +367,14 @@ fn cmd_update(
     };
 
     if targets.is_empty() {
-        println!("no packages installed");
+        println!("{}", ui::dim("no packages installed"));
         return Ok(());
+    }
+
+    let mut targets = targets;
+    targets.sort();
+    if all {
+        ui::heading("Update", &[&format!("{} packages", targets.len())]);
     }
 
     let mut any_failed = false;
@@ -322,7 +384,10 @@ fn cmd_update(
         let installed = match state.packages.get(pkg_name.as_str()) {
             Some(p) => p,
             None => {
-                eprintln!("{pkg_name} is not installed, skipping");
+                eprintln!(
+                    "  {}",
+                    ui::fail(&format!("{pkg_name} is not installed, skipping"))
+                );
                 any_failed = true;
                 continue;
             }
@@ -330,7 +395,10 @@ fn cmd_update(
         let latest = match index.get(pkg_name) {
             Some(p) => p,
             None => {
-                eprintln!("{pkg_name} not found in index, skipping");
+                eprintln!(
+                    "  {}",
+                    ui::fail(&format!("{pkg_name} not found in index, skipping"))
+                );
                 any_failed = true;
                 continue;
             }
@@ -350,57 +418,86 @@ fn cmd_update(
             // under a terminal palette that maps ANSI colors unusually.
             println!(
                 "  {}",
-                ui::unchanged(&format!("{pkg_name} is already at {}", installed.version))
+                ui::unchanged(&format!("{pkg_name} already at {}", installed.version))
             );
             unchanged += 1;
             continue;
         }
 
+        ui::action(
+            if dry_run { "Would update" } else { "Updating" },
+            pkg_name,
+            Some(&latest.version),
+        );
         if track_switch {
-            println!(
-                "{pkg_name} switching track {} {} {}, installing {}",
-                ui::style(installed.track.as_str(), ui::DIM),
-                ui::style("→", ui::CYAN),
-                ui::style(track.as_str(), ui::BOLD),
-                ui::style(&latest.version, ui::BOLD)
+            ui::step(
+                "track",
+                &format!(
+                    "{}  {}  {}",
+                    ui::dim(installed.track.as_str()),
+                    ui::style("→", ui::CYAN),
+                    ui::bold(track.as_str()),
+                ),
             );
         } else {
-            println!(
-                "updating {pkg_name} {} {} {}",
-                ui::style(&installed.version, ui::DIM),
-                ui::style("→", ui::CYAN),
-                ui::style(&latest.version, ui::BOLD)
+            ui::step(
+                "version",
+                &format!(
+                    "{}  {}  {}",
+                    ui::dim(&installed.version),
+                    ui::style("→", ui::CYAN),
+                    ui::bold(&latest.version)
+                ),
             );
         }
 
         let rep = match doctor::check_deps(&latest.system_deps, &latest.optional_system_deps) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("  doctor check failed for {pkg_name}: {e}");
+                eprintln!(
+                    "  {}",
+                    ui::fail(&format!("doctor check failed for {pkg_name}: {e}"))
+                );
                 any_failed = true;
                 continue;
             }
         };
         for warn in &rep.warnings {
-            eprintln!("  note: optional dep not installed: {warn}");
+            eprintln!(
+                "  {}",
+                ui::note(&format!("optional dep not installed: {warn}"))
+            );
         }
         if !rep.missing.is_empty() {
             eprintln!(
-                "  missing deps for {pkg_name}: {} — skipping update",
-                rep.missing.join(", ")
+                "  {}",
+                ui::fail(&format!(
+                    "missing deps for {pkg_name}: {} — skipping update",
+                    rep.missing.join(", ")
+                ))
             );
             any_failed = true;
             continue;
         }
 
         if dry_run {
-            print_dry_run_plan(latest, Some(installed));
+            print_dry_run_plan(latest);
             updated += 1;
             continue;
         }
 
-        if let Err(e) = install::install_package(latest, bin_dir, track, Some(installed), no_hooks, assume_yes) {
-            eprintln!("  failed to update {pkg_name}: {e}");
+        if let Err(e) = install::install_package(
+            latest,
+            bin_dir,
+            track,
+            Some(installed),
+            no_hooks,
+            assume_yes,
+        ) {
+            eprintln!(
+                "  {}",
+                ui::fail(&format!("failed to update {pkg_name}: {e}"))
+            );
             any_failed = true;
         } else {
             updated += 1;
@@ -410,12 +507,14 @@ fn cmd_update(
     // Only for --all: a single named update already makes its own outcome
     // obvious, and "1 updated, 0 already up to date" isn't a useful takeaway.
     if all {
-        let mut parts = Vec::new();
+        let updated_s = format!("{updated} updated");
+        let unchanged_s = format!("{unchanged} already current");
+        let mut parts: Vec<&str> = Vec::new();
         if updated > 0 {
-            parts.push(format!("{updated} updated"));
+            parts.push(&updated_s);
         }
-        parts.push(format!("{unchanged} already up to date"));
-        println!("{}", ui::style(&parts.join(", "), ui::BOLD));
+        parts.push(&unchanged_s);
+        ui::summary(&parts);
     }
 
     if any_failed {
@@ -427,7 +526,12 @@ fn cmd_update(
 /// Whether `pkg_name` should be updated: always true on a track switch
 /// (an explicit user action that must take effect regardless of version
 /// ordering), otherwise a real semver comparison via [`is_newer`].
-fn should_update(installed_version: &str, installed_track: Track, active_track: Track, latest_version: &str) -> bool {
+fn should_update(
+    installed_version: &str,
+    installed_track: Track,
+    active_track: Track,
+    latest_version: &str,
+) -> bool {
     if installed_track != active_track {
         return true;
     }
@@ -441,7 +545,10 @@ fn should_update(installed_version: &str, installed_track: Track, active_track: 
 /// (with a warning) for any version string that isn't valid semver, rather
 /// than hard-erroring on packages built before this convention existed.
 fn is_newer(installed: &str, latest: &str) -> bool {
-    match (semver::Version::parse(installed), semver::Version::parse(latest)) {
+    match (
+        semver::Version::parse(installed),
+        semver::Version::parse(latest),
+    ) {
         (Ok(i), Ok(l)) => l > i,
         _ => {
             if installed != latest {
@@ -455,15 +562,14 @@ fn is_newer(installed: &str, latest: &str) -> bool {
     }
 }
 
-/// Prints one index entry in the shared `list`/`search` format: name,
-/// version, description, and an `[installed <version>]` tag when applicable.
-fn print_index_entry(pkg: &manifest::Package, state: &state::State) {
-    let tag = if state.is_installed(&pkg.name) {
-        ui::style(&format!(" [installed {}]", state.packages[&pkg.name].version), ui::GREEN)
-    } else {
-        String::new()
-    };
-    println!("  {:<14} {:<10} — {}{}", pkg.name, pkg.version, pkg.description, tag);
+fn catalog_row(pkg: &manifest::Package, state: &state::State) -> ui::CatalogRow {
+    ui::CatalogRow {
+        name: pkg.name.clone(),
+        version: pkg.version.clone(),
+        installed: state.is_installed(&pkg.name),
+        detail: pkg.description.clone(),
+        aside: String::new(),
+    }
 }
 
 fn cmd_list(installed_only: bool, track: Track) -> Result<()> {
@@ -471,24 +577,44 @@ fn cmd_list(installed_only: bool, track: Track) -> Result<()> {
 
     if installed_only {
         if state.packages.is_empty() {
-            println!("no packages installed");
+            println!("{}", ui::dim("no packages installed"));
+            return Ok(());
         }
-        for pkg in state.packages.values() {
-            println!("  {} {} (installed {})", pkg.name, pkg.version, pkg.installed_at);
-        }
+        let mut pkgs: Vec<_> = state.packages.values().collect();
+        pkgs.sort_by(|a, b| a.name.cmp(&b.name));
+        ui::heading("Installed", &[&pkgs.len().to_string()]);
+        let rows: Vec<ui::CatalogRow> = pkgs
+            .iter()
+            .map(|pkg| ui::CatalogRow {
+                name: pkg.name.clone(),
+                version: pkg.version.clone(),
+                installed: true,
+                detail: String::new(),
+                aside: ui::short_date(&pkg.installed_at),
+            })
+            .collect();
+        ui::print_catalog(&rows);
         return Ok(());
-    }
-
-    if !matches!(track, Track::Stable) {
-        println!("tracking:{}\n", ui::track_badge(track));
     }
 
     let index = manifest::load(false, track)?;
     let mut names: Vec<&str> = index.packages.keys().map(|s| s.as_str()).collect();
     names.sort();
-    for name in names {
-        print_index_entry(&index.packages[name], &state);
-    }
+    let installed = names.iter().filter(|n| state.is_installed(n)).count();
+    let track_part = ui::track_tag(track);
+    ui::heading(
+        "Packages",
+        &[
+            &format!("{} in index", names.len()),
+            &format!("{installed} installed"),
+            &track_part,
+        ],
+    );
+    let rows: Vec<ui::CatalogRow> = names
+        .iter()
+        .map(|name| catalog_row(&index.packages[*name], &state))
+        .collect();
+    ui::print_catalog(&rows);
     Ok(())
 }
 
@@ -513,13 +639,19 @@ fn cmd_search(query: &str, track: Track) -> Result<()> {
     names.sort();
 
     if names.is_empty() {
-        println!("no packages matched '{query}'");
+        println!("{}", ui::dim(&format!("no packages matched '{query}'")));
         return Ok(());
     }
 
-    for name in names {
-        print_index_entry(&index.packages[name], &state);
-    }
+    ui::heading(
+        "Search",
+        &[&format!("'{query}'"), &format!("{} matches", names.len())],
+    );
+    let rows: Vec<ui::CatalogRow> = names
+        .iter()
+        .map(|name| catalog_row(&index.packages[*name], &state))
+        .collect();
+    ui::print_catalog(&rows);
     Ok(())
 }
 
@@ -531,40 +663,44 @@ fn cmd_info(name: &str, track: Track) -> Result<()> {
 
     let state = state::State::load()?;
     let status = if let Some(inst) = state.packages.get(name) {
-        ui::style(&format!("installed ({})", inst.version), ui::GREEN)
+        ui::style(&format!("installed  {}", inst.version), ui::GREEN)
     } else {
         ui::style("not installed", ui::DIM)
     };
 
-    println!("{}{} {}", ui::style(&pkg.name, ui::BOLD), ui::track_badge(track), pkg.version);
-    println!("  {}", pkg.description);
-    println!("  status:      {status}");
-    println!(
-        "  binaries:    {}",
-        pkg.binaries
+    let track_part = ui::track_tag(track);
+    ui::heading(&pkg.name, &[&ui::dim(&pkg.version), &track_part]);
+    println!("  {}\n", pkg.description);
+    ui::kv("status", &status);
+    ui::kv(
+        "binaries",
+        &pkg.binaries
             .iter()
             .map(|b| b.name.as_str())
             .collect::<Vec<_>>()
-            .join(", ")
+            .join(", "),
     );
     if !pkg.system_deps.is_empty() {
-        println!("  system deps: {}", pkg.system_deps.join(", "));
+        ui::kv("system deps", &pkg.system_deps.join(", "));
     }
     if !pkg.optional_system_deps.is_empty() {
-        println!("  optional deps: {}", pkg.optional_system_deps.join(", "));
+        ui::kv("optional", &pkg.optional_system_deps.join(", "));
     }
     if !pkg.bread_deps.is_empty() {
-        println!("  bread deps:  {}", pkg.bread_deps.join(", "));
+        ui::kv("bread deps", &pkg.bread_deps.join(", "));
     }
     if !pkg.services.is_empty() {
-        println!(
-            "  services:    {}",
-            pkg.services
+        ui::kv(
+            "services",
+            &pkg.services
                 .iter()
                 .map(|s| s.unit.as_str())
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(", "),
         );
+    }
+    if let Some(inst) = state.packages.get(name) {
+        ui::kv("installed", &ui::short_date(&inst.installed_at));
     }
     Ok(())
 }
@@ -584,18 +720,33 @@ fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Re
     };
 
     if targets.is_empty() {
-        println!("no packages installed — nothing to check");
+        println!("{}", ui::dim("no packages installed — nothing to check"));
         return Ok(());
     }
+
+    let mut targets = targets;
+    targets.sort();
+    ui::heading("Doctor", &[&format!("{} packages", targets.len())]);
+    let name_w = ui::name_width(&targets);
 
     let mut all_ok = true;
     for pkg_name in &targets {
         if let Some(pkg) = index.get(pkg_name) {
-            if !doctor::report(pkg_name, &pkg.system_deps, &pkg.optional_system_deps) {
+            if !doctor::report(
+                pkg_name,
+                &pkg.system_deps,
+                &pkg.optional_system_deps,
+                name_w,
+            ) {
                 all_ok = false;
             }
         } else {
-            eprintln!("  {pkg_name}: not found in index (removed from registry?)");
+            ui::check_row(
+                false,
+                pkg_name,
+                name_w,
+                "not found in index (removed from registry?)",
+            );
             all_ok = false;
         }
 
@@ -621,7 +772,7 @@ fn cmd_doctor(name: Option<&str>, track: Track, bin_dir: &std::path::Path) -> Re
     }
 
     if all_ok {
-        println!("{}", ui::ok("all checks passed"));
+        ui::summary(&[&ui::ok("all checks passed")]);
     }
     Ok(())
 }
@@ -674,38 +825,47 @@ fn cmd_verify(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
     };
 
     if targets.is_empty() {
-        println!("no packages installed — nothing to verify");
+        println!("{}", ui::dim("no packages installed — nothing to verify"));
         return Ok(());
     }
+
+    let mut targets = targets;
+    targets.sort();
+    ui::heading("Verify", &[&format!("{} packages", targets.len())]);
+    let name_w = ui::name_width(&targets);
 
     let mut any_bad = false;
     for pkg_name in &targets {
         let installed = &state.packages[pkg_name];
         if installed.binary_sha256.is_empty() {
-            println!(
-                "  {} {pkg_name}: no recorded checksums (installed before 'bakery verify' support)",
-                ui::style("?", ui::DIM)
+            ui::unknown_row(
+                pkg_name,
+                name_w,
+                "no recorded checksums (installed before verify support)",
             );
             continue;
         }
         for bin in &installed.binaries {
             match verify_binary(bin_dir, bin, installed.binary_sha256.get(bin)) {
-                VerifyStatus::Ok => println!("  {}", ui::ok(&format!("{pkg_name}: {bin}"))),
+                VerifyStatus::Ok => ui::check_row(true, pkg_name, name_w, bin),
                 VerifyStatus::Missing => {
-                    eprintln!("  {}", ui::fail(&format!("{pkg_name}: {bin} — MISSING")));
+                    ui::check_row(false, pkg_name, name_w, &format!("{bin}  missing"));
                     any_bad = true;
                 }
                 VerifyStatus::Tampered => {
-                    eprintln!(
-                        "  {}",
-                        ui::fail(&format!("{pkg_name}: {bin} — TAMPERED (checksum mismatch)"))
+                    ui::check_row(
+                        false,
+                        pkg_name,
+                        name_w,
+                        &format!("{bin}  tampered (checksum mismatch)"),
                     );
                     any_bad = true;
                 }
                 VerifyStatus::Unknown => {
-                    println!(
-                        "  {} {pkg_name}: {bin} — UNKNOWN (no recorded checksum for this binary)",
-                        ui::style("?", ui::DIM)
+                    ui::unknown_row(
+                        pkg_name,
+                        name_w,
+                        &format!("{bin}  no recorded checksum for this binary"),
                     );
                 }
             }
@@ -715,7 +875,7 @@ fn cmd_verify(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
     if any_bad {
         bail!("verification failed for one or more binaries");
     }
-    println!("{}", ui::ok("all recorded checksums match"));
+    ui::summary(&[&ui::ok("all recorded checksums match")]);
     Ok(())
 }
 
@@ -728,12 +888,19 @@ fn cmd_verify(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
 /// why rollback is backup-based rather than a network re-pin in the first
 /// place. Pure with respect to global state (caller supplies both dirs), so
 /// this is the piece of `bakery rollback` that's directly unit-testable.
-fn restore_binaries(backup_dir: &Path, binaries: &[String], bin_dir: &Path) -> Result<HashMap<String, String>> {
+fn restore_binaries(
+    backup_dir: &Path,
+    binaries: &[String],
+    bin_dir: &Path,
+) -> Result<HashMap<String, String>> {
     let mut sha256 = HashMap::new();
     for bin in binaries {
         let backup_path = backup_dir.join(bin);
         if !backup_path.exists() {
-            bail!("backup for binary '{bin}' is missing at {}", backup_path.display());
+            bail!(
+                "backup for binary '{bin}' is missing at {}",
+                backup_path.display()
+            );
         }
         let bytes = std::fs::read(&backup_path)
             .with_context(|| format!("reading backup {}", backup_path.display()))?;
@@ -767,6 +934,8 @@ fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
         anyhow::anyhow!("no previous version recorded for {pkg_name} — nothing to roll back to")
     })?;
 
+    ui::action("Rolling back", pkg_name, Some(&target_version));
+
     let backup_dir = state::backup_dir(pkg_name, &target_version);
     if !backup_dir.exists() {
         bail!(
@@ -794,7 +963,10 @@ fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
 
     println!(
         "  {}",
-        ui::ok(&format!("rolled back {pkg_name} {from_version} → {target_version}"))
+        ui::ok(&format!(
+            "rolled back {pkg_name}  {}  →  {target_version}",
+            ui::dim(&from_version)
+        ))
     );
     Ok(())
 }
@@ -838,18 +1010,33 @@ mod tests {
     fn should_update_true_on_track_switch_even_if_not_newer_by_semver() {
         // "bakery track set stable && bakery update --all" from beta must
         // always take effect, even though 0.3.0 < 0.4.0-beta by strict semver.
-        assert!(should_update("0.4.0-beta", Track::Beta, Track::Stable, "0.3.0"));
+        assert!(should_update(
+            "0.4.0-beta",
+            Track::Beta,
+            Track::Stable,
+            "0.3.0"
+        ));
     }
 
     #[test]
     fn should_update_false_when_same_track_and_not_newer() {
-        assert!(!should_update("0.3.1", Track::Stable, Track::Stable, "0.3.1"));
+        assert!(!should_update(
+            "0.3.1",
+            Track::Stable,
+            Track::Stable,
+            "0.3.1"
+        ));
         assert!(!should_update("0.3.2", Track::Dev, Track::Dev, "0.3.1"));
     }
 
     #[test]
     fn should_update_true_when_same_track_and_newer() {
-        assert!(should_update("0.3.1", Track::Stable, Track::Stable, "0.3.2"));
+        assert!(should_update(
+            "0.3.1",
+            Track::Stable,
+            Track::Stable,
+            "0.3.2"
+        ));
     }
 
     #[test]
@@ -902,7 +1089,10 @@ mod tests {
         let pkg = empty_binary_package(name, "9.9.9", "http://127.0.0.1:1/unreachable");
         let mut packages = std::collections::HashMap::new();
         packages.insert(name.to_string(), pkg);
-        let index = manifest::Index { version: "1".to_string(), packages };
+        let index = manifest::Index {
+            version: "1".to_string(),
+            packages,
+        };
 
         let bin_dir = tempdir().unwrap();
         let mut visited = HashSet::new();
@@ -926,7 +1116,10 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("mypkg"), b"good bytes").unwrap();
         let hash = hex::encode(Sha256::digest(b"good bytes"));
-        assert_eq!(verify_binary(dir.path(), "mypkg", Some(&hash)), VerifyStatus::Ok);
+        assert_eq!(
+            verify_binary(dir.path(), "mypkg", Some(&hash)),
+            VerifyStatus::Ok
+        );
     }
 
     #[test]
@@ -934,21 +1127,30 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("mypkg"), b"tampered bytes").unwrap();
         let wrong_hash = "0".repeat(64);
-        assert_eq!(verify_binary(dir.path(), "mypkg", Some(&wrong_hash)), VerifyStatus::Tampered);
+        assert_eq!(
+            verify_binary(dir.path(), "mypkg", Some(&wrong_hash)),
+            VerifyStatus::Tampered
+        );
     }
 
     #[test]
     fn verify_binary_missing_when_file_absent() {
         let dir = tempdir().unwrap();
         let hash = "0".repeat(64);
-        assert_eq!(verify_binary(dir.path(), "nope", Some(&hash)), VerifyStatus::Missing);
+        assert_eq!(
+            verify_binary(dir.path(), "nope", Some(&hash)),
+            VerifyStatus::Missing
+        );
     }
 
     #[test]
     fn verify_binary_unknown_when_no_recorded_hash() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("mypkg"), b"bytes").unwrap();
-        assert_eq!(verify_binary(dir.path(), "mypkg", None), VerifyStatus::Unknown);
+        assert_eq!(
+            verify_binary(dir.path(), "mypkg", None),
+            VerifyStatus::Unknown
+        );
     }
 
     #[test]
@@ -962,8 +1164,14 @@ mod tests {
 
         let hashes = restore_binaries(&backup_dir, &["mypkg".to_string()], &bin_dir).unwrap();
 
-        assert_eq!(fs::read(bin_dir.join("mypkg")).unwrap(), b"old version bytes");
-        assert_eq!(hashes["mypkg"], hex::encode(Sha256::digest(b"old version bytes")));
+        assert_eq!(
+            fs::read(bin_dir.join("mypkg")).unwrap(),
+            b"old version bytes"
+        );
+        assert_eq!(
+            hashes["mypkg"],
+            hex::encode(Sha256::digest(b"old version bytes"))
+        );
     }
 
     #[test]

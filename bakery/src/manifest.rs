@@ -52,8 +52,7 @@ fn verify_index_signature(bytes: &[u8], sig_text: &str) -> Result<()> {
 /// exercise the verification logic with a throwaway keypair instead of the
 /// real production key.
 fn verify_against_key(bytes: &[u8], sig_text: &str, pubkey_b64: &str) -> Result<()> {
-    let public_key =
-        PublicKey::from_base64(pubkey_b64).context("public key is malformed")?;
+    let public_key = PublicKey::from_base64(pubkey_b64).context("public key is malformed")?;
     let signature =
         Signature::decode(sig_text).context("index.json.minisig is malformed or unreadable")?;
     public_key
@@ -183,9 +182,7 @@ pub fn load(force_refresh: bool, track: Track) -> Result<Index> {
         match read_and_verify_cache(&cache_path, &sig_cache_path, track) {
             Ok(index) => return Ok(index),
             Err(err) => {
-                eprintln!(
-                    "  warning: cached index.json failed verification ({err}), re-fetching…"
-                );
+                eprintln!("  warning: cached index.json failed verification ({err}), re-fetching…");
             }
         }
     }
@@ -211,17 +208,12 @@ pub fn load(force_refresh: bool, track: Track) -> Result<Index> {
     }
 }
 
-fn read_and_verify_cache(
-    cache_path: &Path,
-    sig_cache_path: &Path,
-    track: Track,
-) -> Result<Index> {
+fn read_and_verify_cache(cache_path: &Path, sig_cache_path: &Path, track: Track) -> Result<Index> {
     let bytes = std::fs::read(cache_path).context("reading cached index")?;
     let sig_text = std::fs::read_to_string(sig_cache_path)
         .context("reading cached index.json.minisig (cache predates signing support)")?;
-    verify_index_signature(&bytes, &sig_text).with_context(|| {
-        format!("cached {track} index failed signature verification")
-    })?;
+    verify_index_signature(&bytes, &sig_text)
+        .with_context(|| format!("cached {track} index failed signature verification"))?;
     serde_json::from_slice(&bytes).context("parsing cached index")
 }
 
@@ -285,8 +277,10 @@ pub fn fetch_binary(primary_url: &str, fallback_url: &str) -> Result<Vec<u8>> {
         Ok(bytes) => Ok(bytes),
         Err(primary_err) => {
             eprintln!(
-                "  primary URL failed ({}), trying GitHub fallback…",
-                primary_err
+                "  {}",
+                crate::ui::note(&format!(
+                    "primary URL failed ({primary_err}), trying GitHub fallback…"
+                ))
             );
             fetch_bytes(fallback_url).context("both primary and GitHub fallback failed")
         }
@@ -305,9 +299,7 @@ const CHUNK_SIZE: usize = 64 * 1024;
 
 fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     use std::io::{IsTerminal, Read};
-    let resp = ureq::get(url)
-        .call()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let resp = ureq::get(url).call().map_err(|e| anyhow::anyhow!("{e}"))?;
     let status = resp.status();
     if status != 200 {
         bail!("HTTP {status} from {url}");
@@ -320,7 +312,11 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     // is what makes printing partway through the download possible, without
     // pulling in a progress-bar crate for what's meant to just be reassurance.
     let content_length: Option<u64> = resp.header("Content-Length").and_then(|v| v.parse().ok());
-    let show_progress = content_length.is_some() && std::io::stderr().is_terminal();
+    // Progress is reassurance for multi-MB binaries. A 4 KB index fetch
+    // drawing a 100% / 0.0 MB bar is noise, not feedback.
+    const MIN_PROGRESS_BYTES: u64 = 256 * 1024;
+    let show_progress =
+        content_length.is_some_and(|n| n >= MIN_PROGRESS_BYTES) && std::io::stderr().is_terminal();
 
     let mut buf = Vec::new();
     let mut reader = resp.into_reader();
@@ -336,25 +332,15 @@ fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
             bail!("response from {url} exceeds the {MAX_RESPONSE_BYTES}-byte limit");
         }
         if show_progress && last_print.elapsed() >= PROGRESS_THROTTLE {
-            print_progress(buf.len() as u64, content_length.unwrap());
+            crate::ui::print_progress(buf.len() as u64, content_length.unwrap());
             last_print = std::time::Instant::now();
         }
     }
     if show_progress {
-        print_progress(buf.len() as u64, content_length.unwrap());
-        eprintln!();
+        crate::ui::print_progress(buf.len() as u64, content_length.unwrap());
+        crate::ui::finish_progress();
     }
     Ok(buf)
-}
-
-fn print_progress(downloaded: u64, total: u64) {
-    use std::io::Write;
-    eprint!(
-        "\r  ⇣ {:.1}/{:.1} MB",
-        downloaded as f64 / 1_048_576.0,
-        total as f64 / 1_048_576.0
-    );
-    let _ = std::io::stderr().flush();
 }
 
 #[cfg(test)]
@@ -408,10 +394,7 @@ znmVfINB4jFDR2a4wuY8rOKlUBeSDOFjMkHYDXV3vxvAjK+r4V12ae9ZRQkfVtQ1YIEmFXbnJfbxywg+
     fn stable_cache_path_matches_pre_track_filename() {
         // Must stay exactly "index.json" so an existing warm cache from a
         // pre-track bakery binary is still used after an upgrade.
-        assert_eq!(
-            cache_path(Track::Stable).file_name().unwrap(),
-            "index.json"
-        );
+        assert_eq!(cache_path(Track::Stable).file_name().unwrap(), "index.json");
     }
 
     #[test]
@@ -428,13 +411,22 @@ znmVfINB4jFDR2a4wuY8rOKlUBeSDOFjMkHYDXV3vxvAjK+r4V12ae9ZRQkfVtQ1YIEmFXbnJfbxywg+
 
     #[test]
     fn stable_url_has_no_track_prefix() {
-        assert_eq!(primary_url(Track::Stable), format!("{}/index.json", base_url()));
+        assert_eq!(
+            primary_url(Track::Stable),
+            format!("{}/index.json", base_url())
+        );
     }
 
     #[test]
     fn beta_and_dev_urls_are_track_prefixed() {
-        assert_eq!(primary_url(Track::Beta), format!("{}/beta/index.json", base_url()));
-        assert_eq!(primary_url(Track::Dev), format!("{}/dev/index.json", base_url()));
+        assert_eq!(
+            primary_url(Track::Beta),
+            format!("{}/beta/index.json", base_url())
+        );
+        assert_eq!(
+            primary_url(Track::Dev),
+            format!("{}/dev/index.json", base_url())
+        );
     }
 
     fn minimal_package_json() -> &'static str {
