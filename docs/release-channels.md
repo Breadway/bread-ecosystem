@@ -38,13 +38,16 @@ only if:
    `archlinux:latest` container and `curl -X PUT`s the resulting
    `.pkg.tar.zst` to `https://git.breadway.dev/api/packages/Breadway/arch/os`.
 
-A repo can be on **both** channels (most GUI/daemon apps are — see
-breadbar, breadbox, breadcrumbs, bread, breadpad, breadpaper), **bakery
-only** (breadclip, breadmon, breadsearch, breadshot, bread-theme, bakery
-itself), **pacman only** (breadlock, breadhelp — both are OS-integration
-pieces where package-manager rigor matters more than a curl-script), or
-**neither** (dev-only / not yet released; no bakery.toml, no PKGBUILD, no
-release or package workflow — just the repo itself, e.g. breadarr today).
+A repo can be on **both** channels, **bakery only** (bread, breadbar,
+breadbox, breadcrumbs, breadpad, breadpaper, breadclip, breadmon,
+breadsearch, breadshot, breadhelp, bos-settings, bread-theme, breadcast,
+breadarr, bakery itself), **pacman only** (breadlock — installs a
+root-owned `/etc/pam.d/breadlock` PAM service file with no per-user
+equivalent, so it can never move to bakery), or **neither** (dev-only /
+not yet released). Desktop apps dropped pacman packaging; bakery-channel
+install is the supported path. `bakery` still carries a leftover
+`package.yml` / `packaging/arch/PKGBUILD` from when it was also published
+to the `[breadway]` pacman repo.
 
 `bos` is a fourth, deliberately special case: it ships as an ISO, not a
 binary, via its own `release-iso.yml`. It is never on either channel and
@@ -159,14 +162,15 @@ missing it; that gap is intentional and about to be moot everywhere.
 
 | Repo | bakery | pacman | tracks | notes |
 |---|---|---|---|---|
-| bread-ecosystem (bakery product) | yes | yes | stable, beta, dev | single-trunk model; `release-bakery.yml` recovered from a dead `.github/workflows/release.yml` that referenced a `hestia` self-hosted runner GitHub never had registered |
+| bread-ecosystem (bakery product) | yes | leftover `package.yml` | stable, beta, dev | bakery-channel (`curl -fsSL https://get.breadway.dev \| sh`) is the supported install; `package.yml` + `packaging/arch/PKGBUILD` remain from when bakery was also published to `[breadway]` |
 | bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | single-trunk model |
 | bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | no | stable, beta, dev | pacman packaging (PKGBUILD + `package.yml`) dropped — bakery-only, single-trunk model |
 | breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
-| breadhelp, bos-settings | yes | no | stable, beta, dev | both moved onto bakery this cycle (previously pacman-only or partially wired); single-trunk model |
+| breadhelp, bos-settings | yes | no | stable, beta, dev | bakery-channel desktop/settings apps; not pacman |
 | breadlock | no | yes | n/a | deliberate, permanent exception — installs a root-owned `/etc/pam.d/breadlock` PAM service file with no per-user equivalent, so it can never move to bakery |
 | bos | no | no | n/a | ISO-only via `release-iso.yml`; ships via a manual local build (`build-local.sh`), not a CI track — see its own branch note below |
-| breadarr | no | no | n/a | had an orphaned `bakery.toml` with no registry entry and zero workflows; removed. Not yet assigned a channel — do that deliberately when it's ready to ship, don't infer it from a stray config file |
+| breadcast | yes | no | stable, beta, dev | bakery product; not included in the BOS ISO |
+| breadarr | yes | no | stable, beta, dev | bakery product; homelab, not shipped on BOS |
 
 `bos` doesn't follow the tracks table above (it has no `dev`/`beta`/`stable`
 publish cadence — ISO builds are deliberate and manual) but does share the

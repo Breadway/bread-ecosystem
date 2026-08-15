@@ -19,12 +19,18 @@
 //! - [`gtk_popup`] (feature `gtk`) — shared layer-shell popup window setup,
 //!   list navigation, and click-outside-to-close.
 //! - [`bread_client`] (feature `bread-client`) — a persistent-connection
-//!   client for breadd's IPC socket (emit + subscribe), for sibling
-//!   `bread*` app daemons integrating with the bread automation fabric.
+//!   client for breadd's IPC socket (`emit`, unsourced `command`,
+//!   `health`/`api_version`, `subscribe`), for sibling `bread*` app
+//!   daemons integrating with the bread automation fabric.
+//! - [`screenshot_cli`] — shared `--screenshot` / `--output` /
+//!   `--width` / `--height` values, `SETTLE_DELAY` (300ms), and the
+//!   "both flags or neither" validator. Next-pin helper; no clap/GTK
+//!   dependency. Does not replace `bread-screenshots` or `bread-capture`.
 
 pub mod atomic;
 pub mod hypr;
 pub mod proc;
+pub mod screenshot_cli;
 pub mod singleton;
 pub mod xdg;
 

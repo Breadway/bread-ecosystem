@@ -4,20 +4,36 @@ A collection of Rust tools for the Linux desktop (Hyprland / Wayland / Arch).
 Install any product with a single command — no Rust toolchain required.
 
 ```sh
-curl https://breadway.dev/get | sh
+curl -fsSL https://get.breadway.dev | sh
 bakery install breadbar
 ```
 
 ## Products
 
+The table below is generated from [`registry/bread-ecosystem.toml`](registry/bread-ecosystem.toml). Regenerate with `scripts/gen-readme-products.sh`.
+
+<!-- gen-readme-products:start -->
+
 | Package | Description |
 |---------|-------------|
-| `bread` | Reactive automation daemon (`breadd`) + CLI — Lua scripting over Hyprland, udev, power, network, and Bluetooth events |
-| `breadbar` | GTK4 status bar (workspaces, clock, CPU/RAM/battery/WiFi/Bluetooth) and D-Bus notification daemon for Hyprland |
-| `breadbox` | GTK4 fuzzy app launcher for Hyprland with context-aware sorting; ships an icon-sync daemon (`breadbox-sync`) |
-| `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale exit-node management and a self-healing watch daemon |
-| `breadpad` | Quick-capture scratchpad popup with AI-powered note classification, reminders, recurrence, and a full note viewer (`breadman`) |
+| `bakery` | Bread ecosystem package manager |
+| `bread-theme` | Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem |
+| `bread` | Reactive automation daemon and CLI for Linux desktops |
+| `breadbar` | Minimal status bar and notification daemon for Hyprland |
+| `breadbox` | App launcher for Hyprland / Wayland |
+| `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale integration |
+| `breadpad` | Quick-capture scratchpad and note viewer with AI classification |
 | `breadpaper` | Wallpaper manager for the bread desktop |
+| `breadmon` | Terminal UI monitor manager for Hyprland |
+| `breadsearch` | Semantic system-wide search for BOS |
+| `breadclip` | Wayland clipboard history manager for Hyprland |
+| `breadshot` | Screenshot utility for the bread ecosystem |
+| `bos-settings` | System settings app for Bread OS |
+| `breadhelp` | Onboarding and help center for Bread OS |
+| `breadcast` | Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup — Bakery product; not included in the BOS ISO |
+| `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement — release watching, matching, grabbing, importing, and a terminal UI, no web UI — Homelab, not shipped on BOS |
+
+<!-- gen-readme-products:end -->
 
 ## Recommended keybinds
 
@@ -68,9 +84,7 @@ spacing, radii, colour roles) the stylesheet is built from.
 `bakery` is the package manager for the ecosystem. Install it with the bootstrap script:
 
 ```sh
-curl https://breadway.dev/get | sh
-# or
-curl -sSfL https://get.breadway.dev | sh
+curl -fsSL https://get.breadway.dev | sh
 ```
 
 The script downloads the prebuilt `bakery` binary to `~/.local/bin/bakery` and prints a note if that directory isn't on your `PATH` yet.
@@ -109,16 +123,23 @@ Install all required deps with `sudo pacman -S <packages>`. Use `pacman -Q <pkg>
 
 ## Workspace
 
-This repo is a Cargo workspace:
+This repo is a Cargo workspace. Bakery-channel products shipped from here
+are `bakery` and `bread-theme`; the other members are shared crates sibling
+apps pin, not bakery packages of their own.
 
 ```
 bread-ecosystem/
-├── bakery/          # package manager binary
-├── bread-theme/     # shared pywal + fixed-dark-base theming crate
-├── registry/        # bread-ecosystem.toml — product registry
+├── bakery/              # package manager binary
+├── bread-theme/         # shared pywal + fixed-dark-base theming crate
+├── bread-utils/         # shared plumbing (Hyprland IPC, singleton, XDG, BreadClient, …)
+├── bread-onnx/          # shared ONNX runtime helpers
+├── bread-screenshots/   # grim capture primitive used by app `--screenshot` modes
+├── bread-capture/       # orchestrator that drives those `--screenshot` modes
+├── registry/            # bread-ecosystem.toml — product registry
 └── scripts/
-    ├── get.sh       # curl | sh bootstrap
-    └── gen-index.sh # generates dl.breadway.dev/index.json from release artifacts
+    ├── get.sh                   # curl | sh bootstrap
+    ├── gen-index.sh             # generates dl.breadway.dev/index.json from release artifacts
+    └── gen-readme-products.sh   # rewrites the Products table from the registry
 ```
 
 ## Release pipeline
@@ -133,7 +154,7 @@ and mirrors the binary to GitHub Releases as a fallback.
 to the GitHub Release URL recorded in the manifest.
 
 Beyond stable releases, most products also publish **dev** and **beta**
-tracks — continuous builds off the `dev` and `beta` branches, respectively.
+tracks — continuous builds off `main` (dev) and `vX.Y.Z-rc.N` tags (beta).
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the branch/release workflow and
 [`docs/release-channels.md`](docs/release-channels.md) for the full track
 policy. Switch tracks with `bakery track set <stable|beta|dev>`.

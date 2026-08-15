@@ -1,7 +1,6 @@
 #!/bin/sh
 # Bootstrap script: downloads and installs the `bakery` binary.
-# Usage: curl https://breadway.dev/get | sh
-# Or:    curl -sSfL https://breadway.dev/get | sh
+# Usage: curl -fsSL https://get.breadway.dev | sh
 set -eu
 
 # Pinned minisign public key for the bakery release binary. Matches the
@@ -19,6 +18,14 @@ die() { echo "error: $*" >&2; exit 1; }
 # Verify platform.
 uname -m | grep -q x86_64 || die "bakery only supports x86_64 (got $(uname -m))"
 uname -s | grep -q Linux  || die "bakery only supports Linux (got $(uname -s))"
+
+# Signature verification is mandatory. Checksum-only is not sufficient —
+# the binary and its .sha256 typically come from the same server, so a
+# compromised host can serve a matching pair. Fail closed if minisign
+# isn't here rather than downloading something we refuse to trust.
+if ! command -v minisign >/dev/null 2>&1; then
+    die "minisign is required to verify bakery. Install it: pacman -S minisign / apt install minisign"
+fi
 
 # Build download URLs. GitHub's "latest" redirect lives at a different path from
 # versioned releases, so we handle them separately and always prefix tags with 'v'.
@@ -55,42 +62,33 @@ echo "downloading bakery…"
 if fetch "${DL_PRIMARY}" "${TMP}" 2>/dev/null; then
     echo "  from dl.breadway.dev"
     sig_url="${SIG_URL}"
-    checksum_only_fallback_note="  warning: could not fetch checksum — skipping verification"
+    sig_url_alt="${SIG_FALLBACK}"
 elif fetch "${DL_FALLBACK}" "${TMP}" 2>/dev/null; then
     echo "  from GitHub (fallback)"
     sig_url="${SIG_FALLBACK}"
-    checksum_only_fallback_note="  warning: no checksum available for GitHub fallback download"
+    sig_url_alt="${SIG_URL}"
 else
     die "failed to download bakery from both primary and fallback URLs"
 fi
 
-# Signature verification is the authoritative check: it proves the binary
-# was produced by whoever holds the bakery signing key, not just that bytes
-# match whatever the same (possibly compromised) server also reports as the
-# checksum. Prefer it whenever both a .minisig is published and a minisign
-# verifier is available on this machine.
-sig_verified=0
+# Signature is required. A missing .minisig is a refuse-to-install, not a
+# warning — checksum-only is not a substitute.
 if fetch "${sig_url}" "${TMP}.minisig" 2>/dev/null; then
-    if command -v minisign >/dev/null 2>&1; then
-        if minisign -V -q -m "${TMP}" -x "${TMP}.minisig" -P "${BAKERY_MINISIGN_PUBKEY}"; then
-            echo "  signature verified (minisign)"
-            sig_verified=1
-        else
-            die "minisign signature verification FAILED — refusing to install a binary that doesn't match the pinned bakery key"
-        fi
-    else
-        echo "  warning: 'minisign' is not installed — cannot verify the binary's" >&2
-        echo "  warning: signature, only its checksum. Install minisign for the" >&2
-        echo "  warning: strongest guarantee: pacman -S minisign / apt install minisign" >&2
-    fi
+    :
+elif [ "${sig_url_alt}" != "${sig_url}" ] && fetch "${sig_url_alt}" "${TMP}.minisig" 2>/dev/null; then
+    echo "  signature fetched from fallback URL"
 else
-    echo "  warning: no .minisig published for this release yet — signature not verified" >&2
+    die "could not fetch bakery-x86_64.minisig — refusing to install an unsigned binary"
 fi
 
-# Checksum is a secondary, best-effort check (kept for defense in depth and
-# for the case where minisign isn't installed). It is not a substitute for
-# signature verification: both the binary and its checksum typically come
-# from the same server, so a compromised server can serve a matching pair.
+if minisign -V -q -m "${TMP}" -x "${TMP}.minisig" -P "${BAKERY_MINISIGN_PUBKEY}"; then
+    echo "  signature verified (minisign)"
+else
+    die "minisign signature verification FAILED — refusing to install a binary that doesn't match the pinned bakery key"
+fi
+
+# Checksum is defense-in-depth only, and never enough on its own. A
+# mismatch still dies; a missing .sha256 is fine once the signature passed.
 if fetch "${SHA256_URL}" "${TMP}.sha256" 2>/dev/null; then
     expected="$(awk '{print $1}' "${TMP}.sha256")"
     actual="$(sha256sum "${TMP}" | awk '{print $1}')"
@@ -98,12 +96,6 @@ if fetch "${SHA256_URL}" "${TMP}.sha256" 2>/dev/null; then
         die "SHA-256 checksum mismatch (expected ${expected}, got ${actual})"
     fi
     echo "  checksum verified"
-else
-    echo "${checksum_only_fallback_note}"
-fi
-
-if [ "${sig_verified}" -ne 1 ]; then
-    echo "  warning: proceeding WITHOUT a verified signature on the bakery binary" >&2
 fi
 
 chmod +x "${TMP}"

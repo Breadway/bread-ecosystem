@@ -14,10 +14,15 @@
 //!
 //! A sibling app must never crash or block because breadd is down,
 //! restarting, or was never installed. Concretely:
-//! - [`BreadClient::emit`] is a best-effort, fire-and-forget single-shot
-//!   connection (mirroring `bread-emit`'s own stance) — if breadd is
-//!   unreachable, the event is silently dropped, not an error the caller
-//!   has to handle.
+//! - [`BreadClient::emit`] and [`BreadClient::command`] are best-effort,
+//!   fire-and-forget single-shot connections (mirroring `bread-emit`'s
+//!   own stance) — if breadd is unreachable, the event is silently
+//!   dropped, not an error the caller has to handle.
+//! - [`BreadClient::health`] / [`BreadClient::api_version`] return `None`
+//!   when breadd is unreachable or the response is missing fields.
+//!   Long-running daemons SHOULD log a warning in that case and MUST NOT
+//!   crash. [`BreadClient::connect`] never fails just because breadd is
+//!   down — do not change that.
 //! - [`BreadClient::subscribe`] runs its read loop on a background thread
 //!   that reconnects with exponential backoff on any disconnect. The
 //!   caller's callback simply stops being invoked while disconnected; it
@@ -29,6 +34,15 @@
 //! outside the app's own `bread.<app_id>.*` segment, so a misconfigured
 //! caller fails fast instead of discovering the mistake from the daemon's
 //! rejection. The daemon enforces the same rule server-side regardless.
+//!
+//! `command` is the outbound half of the same story: it publishes
+//! `bread.command.<target_app>.<verb>` as an **unsourced** IPC emit
+//! (`params` is `{ event, data }` only — no `source`/`kind`). The
+//! daemon treats unsourced `bread.command.<known_app>.*` as legal so a
+//! sibling can address another app without impersonating that app's
+//! own namespace. Local refusal (eprint + return, same stance as
+//! `emit`) if `target_app` or `verb` is empty, or if `verb` contains
+//! `.` (a command verb is a single segment).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
@@ -94,25 +108,60 @@ impl BreadClient {
             return;
         }
 
-        let request = json!({
-            "id": "0",
-            "method": "emit",
-            "params": {
-                "event": event,
-                "source": self.app_id,
-                "kind": event,
-                "data": data,
-            }
-        });
-        let Ok(line) = serde_json::to_string(&request) else {
-            return;
-        };
+        fire_and_forget_emit(json!({
+            "event": event,
+            "source": self.app_id,
+            "kind": event,
+            "data": data,
+        }));
+    }
 
-        let Ok(mut stream) = UnixStream::connect(bread_shared::resolve_socket_path()) else {
+    /// Publish `bread.command.<target_app>.<verb>` as an unsourced IPC
+    /// emit so another bread app (or a Lua workflow) can act on it.
+    ///
+    /// Fire-and-forget: same silent-if-down stance as [`emit`]. Locally
+    /// refuses (eprint + return, no socket) if `target_app` or `verb` is
+    /// empty, or if `verb` contains `.` — a verb is one segment
+    /// (`clear`, not `history.clear`).
+    ///
+    /// The wire payload is `{ method: "emit", params: { event, data } }`
+    /// with **no** `source`/`kind`. Do not add those: a sourced emit
+    /// would have to claim the *target's* namespace (or ours), and the
+    /// daemon half of this integration is specifically making unsourced
+    /// `bread.command.<known_app>.*` legal.
+    pub fn command(&self, target_app: &str, verb: &str, data: Value) {
+        if target_app.is_empty() || verb.is_empty() || verb.contains('.') {
+            eprintln!(
+                "bread-client: refusing to send command to '{target_app}' with verb '{verb}' \
+                 (target and verb must be non-empty; verb must be a single segment)"
+            );
             return;
-        };
-        let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
-        let _ = writeln!(stream, "{line}");
+        }
+
+        let event = format!("bread.command.{target_app}.{verb}");
+        fire_and_forget_emit(json!({
+            "event": event,
+            "data": data,
+        }));
+    }
+
+    /// One-shot `health` IPC request. `None` if breadd is unreachable or
+    /// the response is malformed / an error.
+    ///
+    /// Long-running daemons SHOULD log a warning when this returns
+    /// `None` (or when [`api_version`] is missing) and MUST NOT crash.
+    pub fn health(&self) -> Option<Value> {
+        self.request("health", json!({}))
+    }
+
+    /// `api_version` string from [`health`], or `None` if health failed
+    /// or the field is absent. Same SHOULD-warn / MUST-NOT-crash rule
+    /// as [`health`].
+    pub fn api_version(&self) -> Option<String> {
+        self.health()?
+            .get("api_version")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
     }
 
     /// Send a one-shot IPC request and return its `result`, or `None` on any
@@ -203,6 +252,27 @@ impl BreadClient {
             handle: Some(handle),
         }
     }
+}
+
+/// Fire-and-forget a single `emit` request. Shared by sourced [`BreadClient::emit`]
+/// and unsourced [`BreadClient::command`] so the write/timeout path cannot
+/// drift. Silent if the socket is missing, the write fails, or the body
+/// cannot be serialized.
+fn fire_and_forget_emit(params: Value) {
+    let request = json!({
+        "id": "0",
+        "method": "emit",
+        "params": params,
+    });
+    let Ok(line) = serde_json::to_string(&request) else {
+        return;
+    };
+
+    let Ok(mut stream) = UnixStream::connect(bread_shared::resolve_socket_path()) else {
+        return;
+    };
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
+    let _ = writeln!(stream, "{line}");
 }
 
 /// Connects once, sends `events.subscribe`, and invokes `on_event` for every
@@ -334,12 +404,81 @@ mod tests {
         // integration tests for the IPC-side of namespace validation.
     }
 
+    /// Point `HOME` + `XDG_RUNTIME_DIR` at an empty temp dir so
+    /// `resolve_socket_path` cannot find a live breadd (either via
+    /// `~/.config/bread/breadd.toml` or `$XDG_RUNTIME_DIR/bread/breadd.sock`).
+    /// Serialized with the other env-mutating tests via `env_test_lock`.
+    fn with_unreachable_daemon<T>(f: impl FnOnce() -> T) -> T {
+        let _lock = crate::env_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let old_home = std::env::var("HOME").ok();
+        let old_xdg = std::env::var("XDG_RUNTIME_DIR").ok();
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("XDG_RUNTIME_DIR", tmp.path());
+        }
+        struct Restore(Option<String>, Option<String>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.0 {
+                        Some(v) => std::env::set_var("HOME", v),
+                        None => std::env::remove_var("HOME"),
+                    }
+                    match &self.1 {
+                        Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
+                        None => std::env::remove_var("XDG_RUNTIME_DIR"),
+                    }
+                }
+            }
+        }
+        let _restore = Restore(old_home, old_xdg);
+        f()
+    }
+
     #[test]
     fn request_returns_none_when_daemon_is_unreachable() {
-        // No daemon present in the test environment; must return None
-        // promptly rather than blocking or panicking.
+        with_unreachable_daemon(|| {
+            let client = BreadClient::connect("clip");
+            assert!(client.request("widgets.list", json!(null)).is_none());
+        });
+    }
+
+    #[test]
+    fn command_refuses_empty_target_without_connecting() {
         let client = BreadClient::connect("clip");
-        assert!(client.request("widgets.list", json!(null)).is_none());
+        client.command("", "clear", json!({}));
+    }
+
+    #[test]
+    fn command_refuses_empty_verb_without_connecting() {
+        let client = BreadClient::connect("clip");
+        client.command("clip", "", json!({}));
+    }
+
+    #[test]
+    fn command_refuses_dotted_verb_without_connecting() {
+        // A verb is a single segment — `history.clear` would produce
+        // `bread.command.clip.history.clear`, which is two verb segments.
+        let client = BreadClient::connect("clip");
+        client.command("clip", "history.clear", json!({}));
+    }
+
+    #[test]
+    fn command_is_a_silent_no_op_when_daemon_is_unreachable() {
+        let client = BreadClient::connect("clip");
+        client.command("clip", "clear", json!({ "n": 1 }));
+    }
+
+    #[test]
+    fn health_and_api_version_return_none_when_daemon_is_unreachable() {
+        with_unreachable_daemon(|| {
+            let client = BreadClient::connect("clip");
+            assert!(client.health().is_none());
+            assert!(client.api_version().is_none());
+        });
     }
 
     #[test]

@@ -1,9 +1,12 @@
 # Contributing
 
-This repo hosts `bakery` (the ecosystem package manager) and `bread-theme`
-(the shared theming crate). Other ecosystem products (`bread`, `breadbar`,
-`breadbox`, …) live in their own repos under `Breadway/` but follow the same
-workflow described here.
+This repo is a Cargo workspace. Bakery-channel products shipped from here
+are `bakery` (the ecosystem package manager) and `bread-theme` (the shared
+theming crate). Shared crates that sibling apps pin — not bakery packages
+of their own — are `bread-utils`, `bread-onnx`, `bread-screenshots`, and
+`bread-capture`. Other ecosystem products (`bread`, `breadbar`, `breadbox`,
+…) live in their own repos under `Breadway/` but follow the same workflow
+described here. The product list is `registry/bread-ecosystem.toml`.
 
 ## Branches
 
@@ -76,8 +79,10 @@ cargo build --release -p bakery
 cargo test --release -p bakery
 ```
 
-Both `bakery` and `bread-theme` are members of this workspace's Cargo.toml.
-Run the same commands with `-p bread-theme --bin bread-theme` for that crate.
+`bakery`, `bread-theme`, `bread-utils`, `bread-onnx`, `bread-screenshots`,
+and `bread-capture` are all workspace members. Run the same commands with
+`-p bread-theme --bin bread-theme` for that crate, or `-p bread-utils
+--features bread-client` for the IPC client.
 
 ## CI
 
