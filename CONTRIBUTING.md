@@ -44,6 +44,15 @@ just **tags** on `main`, not branches that need to be kept in sync:
    `git tag vX.Y.Z && git push origin vX.Y.Z` — that's what triggers the
    signed stable release build.
 
+**Version honesty**: bakery's compiled `--version` is
+`[workspace.package] version` in the root `Cargo.toml`. The bakery
+package version in the index (what `bakery list` shows) is the git tag.
+Those must match at tag time — bump `workspace.package.version` to
+`X.Y.Z` *before* pushing `vX.Y.Z` or `vX.Y.Z-rc.N`. Never jump a tag
+(e.g. `v0.3.1` → `v0.7.1`) without that Cargo.toml bump; the resulting
+binary will report the old workspace version while the index claims the
+new tag.
+
 **Note**: `bakery` and `bread-theme` share the same `v*` tag pattern
 (both `release-bakery.yml` and `release-bread-theme.yml` trigger on
 `tags: ['v*']`, pre-existing behavior this doc isn't changing) — a single

@@ -1,6 +1,8 @@
 # Maintainer: Breadway <plasticbread849@gmail.com>
 
 pkgname=bakery
+# Template only — package.yml sed-replaces this from the git tag at build
+# time. 0.2.3 is not the current bakery release.
 pkgver=0.2.3
 pkgrel=1
 pkgdesc="Package manager for the bread ecosystem"

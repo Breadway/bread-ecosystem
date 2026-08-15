@@ -112,6 +112,18 @@ identifier sorts below the same version without one, and `dev` < `rc`
 alphabetically, giving `X.Y.Z-dev... < X.Y.Z-rc.N < X.Y.Z` for the same
 base version.
 
+**Bakery package version honesty**: `bakery --version` is compiled from
+this repo's `[workspace.package] version` (`CARGO_PKG_VERSION`); `bakery
+list` reports the *tagged* package version from the index. Those two must
+match at tag time — set `workspace.package.version` to `X.Y.Z` *before*
+pushing `vX.Y.Z` or `vX.Y.Z-rc.N`, and never jump a git tag without that
+Cargo.toml bump. The `v0.3.1` → `v0.7.1` tag jump that left Cargo.toml at
+`0.3.1` is the bug this rule exists to prevent. Dev-track auto-versioning
+keys off the latest stable tag rather than Cargo.toml so a stale
+workspace version cannot publish a dev build that sorts *older* than
+installed bakery; that fallback is not permission to leave the workspace
+version stale.
+
 Adding dev/beta to a bakery-channel repo: copy `dev-bakery.yml` /
 `rc-bakery.yml` (or `bread`'s `dev-release.yml` / `rc-release.yml` if the
 repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
