@@ -1,0 +1,20 @@
+[package]
+name = "bread-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "GTK application bootstrap for bread desktop tools: app id, singleton, optional overlay popup, and command listen loop"
+repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
+keywords = ["gtk4", "wayland", "hyprland"]
+
+[dependencies]
+bread-utils = { path = "../bread-utils" }
+
+[features]
+# Layer-shell overlay helper (`gtk_popup`). Matches `bread-utils/gtk` so a
+# consumer that only wants app-id / singleton helpers does not pull GTK4.
+gtk = ["bread-utils/gtk"]
+# `BreadClient` listen loop on `bread.command.<app>.**`. Matches
+# `bread-utils/bread-client`.
+bread-client = ["bread-utils/bread-client"]

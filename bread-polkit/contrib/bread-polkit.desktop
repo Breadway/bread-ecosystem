@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Bread PolicyKit Agent
+Comment=Themed PolicyKit authentication agent for the bread desktop
+Exec=bread-polkit
+Icon=dialog-password
+Terminal=false
+Categories=System;Security;
+StartupNotify=false
+X-GNOME-Autostart-Phase=Initialization
+X-GNOME-AutoRestart=true
+X-GNOME-Autostart-Notify=false

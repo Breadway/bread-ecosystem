@@ -145,13 +145,15 @@ Install all required deps with `sudo pacman -S <packages>`. Use `pacman -Q <pkg>
 
 This repo is a Cargo workspace. Bakery-channel products shipped from here
 are `bakery` and `bread-theme`; the other members are shared crates sibling
-apps pin, not bakery packages of their own.
+apps pin, or in-tree tools that are not bakery packages of their own.
 
 ```
 bread-ecosystem/
 ├── bakery/              # package manager binary
 ├── bread-theme/         # shared pywal + fixed-dark-base theming crate
 ├── bread-utils/         # shared plumbing (Hyprland IPC, singleton, XDG, BreadClient, …)
+├── bread-app/           # GTK bootstrap new tools should use (app id, singleton, overlay, command listen)
+├── bread-polkit/        # themed PolicyKit authentication agent (not a bakery product)
 ├── bread-onnx/          # shared ONNX runtime helpers
 ├── bread-screenshots/   # grim capture primitive used by app `--screenshot` modes
 ├── bread-capture/       # orchestrator that drives those `--screenshot` modes
@@ -160,6 +162,39 @@ bread-ecosystem/
     ├── get.sh                   # curl | sh bootstrap
     ├── gen-index.sh             # generates dl.breadway.dev/index.json from release artifacts
     └── gen-readme-products.sh   # rewrites the Products table from the registry
+```
+
+### New GTK tools
+
+Do not copy another app's `main.rs`. Depend on `bread-app`:
+
+- `bread_app::application_id` / `try_acquire` / `toggle_or_kill` for the
+  `com.breadway.*` application id and single-instance lock
+- feature `gtk` re-exports `bread_utils::gtk_popup` (layer-shell overlay)
+- feature `bread-client` for `listen_commands` on `bread.command.<app>.**`
+
+See the `bread-app` crate docs. Existing apps are not migrated in this
+tree; `bread-polkit` is the first in-tree consumer.
+
+### bread-polkit
+
+A session PolicyKit authentication agent (password prompt, cancel,
+identity). Not a wrapper around `polkit-gnome`. Not published via bakery
+and not on the BOS ISO lockfile.
+
+```sh
+cargo run -p bread-polkit
+```
+
+Autostart — pick one:
+
+```sh
+cp bread-polkit/contrib/bread-polkit.desktop ~/.config/autostart/
+```
+
+```
+# hyprland.conf
+exec-once = bread-polkit
 ```
 
 ## Release pipeline

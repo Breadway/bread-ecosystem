@@ -3,10 +3,13 @@
 This repo is a Cargo workspace. Bakery-channel products shipped from here
 are `bakery` (the ecosystem package manager) and `bread-theme` (the shared
 theming crate). Shared crates that sibling apps pin — not bakery packages
-of their own — are `bread-utils`, `bread-onnx`, `bread-screenshots`, and
-`bread-capture`. Other ecosystem products (`bread`, `breadbar`, `breadbox`,
-…) live in their own repos under `Breadway/` but follow the same workflow
-described here. The product list is `registry/bread-ecosystem.toml`.
+of their own — are `bread-utils`, `bread-app`, `bread-onnx`,
+`bread-screenshots`, and `bread-capture`. `bread-polkit` is an in-tree
+session agent, also not a bakery product. Other ecosystem products
+(`bread`, `breadbar`, `breadbox`, …) live in their own repos under
+`Breadway/` but follow the same workflow described here. The product list
+is `registry/bread-ecosystem.toml`. New GTK tools should depend on
+`bread-app` instead of copying another app's bootstrap.
 
 ## Branches
 
@@ -88,10 +91,12 @@ cargo build --release -p bakery
 cargo test --release -p bakery
 ```
 
-`bakery`, `bread-theme`, `bread-utils`, `bread-onnx`, `bread-screenshots`,
-and `bread-capture` are all workspace members. Run the same commands with
-`-p bread-theme --bin bread-theme` for that crate, or `-p bread-utils
---features bread-client` for the IPC client.
+`bakery`, `bread-theme`, `bread-utils`, `bread-app`, `bread-polkit`,
+`bread-onnx`, `bread-screenshots`, and `bread-capture` are all workspace
+members. Run the same commands with `-p bread-theme --bin bread-theme`
+for that crate, `-p bread-utils --features bread-client` for the IPC
+client, or `-p bread-app --features bread-client` for the GTK bootstrap
+helpers.
 
 ## CI
 

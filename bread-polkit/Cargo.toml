@@ -1,0 +1,27 @@
+[package]
+name = "bread-polkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Themed PolicyKit authentication agent for the bread desktop"
+repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
+keywords = ["polkit", "gtk4", "wayland"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bread-polkit"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+bread-app = { path = "../bread-app", features = ["gtk"] }
+bread-theme = { path = "../bread-theme", features = ["gtk"] }
+gtk4 = { version = "0.11", features = ["v4_12"] }
+serde = { workspace = true }
+tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros", "io-util", "process"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
