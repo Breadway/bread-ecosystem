@@ -135,6 +135,7 @@ pub fn show_prompt(app: &Application, prompt: Prompt) {
     panel.append(&buttons);
 
     window.set_child(Some(&panel));
+    bread_theme::gtk::bind_window_auto_with_app_css(&window, |_| app_css());
 
     let reply = prompt.reply.clone();
     let cookie = prompt.cookie.clone();

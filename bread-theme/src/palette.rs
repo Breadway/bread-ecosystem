@@ -9,10 +9,10 @@ use std::path::PathBuf;
 /// off-hue background, and every bread GUI's panels inherit it — the app
 /// stops looking like a dark BOS tool and starts looking like whatever colour
 /// the wallpaper happened to be.
-const FIXED_BACKGROUND: &str = "#0c0c0c";
-const FIXED_FOREGROUND: &str = "#e8e8e8";
-const FIXED_SURFACE: &str = "#1a1a1a";
-const FIXED_OVERLAY: &str = "#d8d8d8";
+pub(crate) const FIXED_BACKGROUND: &str = "#0c0c0c";
+pub(crate) const FIXED_FOREGROUND: &str = "#e8e8e8";
+pub(crate) const FIXED_SURFACE: &str = "#1a1a1a";
+pub(crate) const FIXED_OVERLAY: &str = "#d8d8d8";
 
 /// Accent fallback when no pywal palette exists yet (fresh install, before
 /// any wallpaper has been set for real) — BOS's own bread-toned accents,
@@ -84,7 +84,10 @@ pub fn load_palette() -> Palette {
 pub(crate) fn from_wal_json(json: &str) -> Option<Palette> {
     let wal: WalColors = serde_json::from_str(json).ok()?;
     let c = |k: &str, fallback: &str| -> String {
-        wal.colors.get(k).cloned().unwrap_or_else(|| fallback.into())
+        wal.colors
+            .get(k)
+            .cloned()
+            .unwrap_or_else(|| fallback.into())
     };
     Some(Palette {
         background: FIXED_BACKGROUND.into(),

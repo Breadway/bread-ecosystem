@@ -1,9 +1,15 @@
-pub mod palette;
-#[cfg(feature = "gtk")]
-pub mod gtk;
 #[cfg(feature = "adw")]
 pub mod adw;
+#[cfg(feature = "gtk")]
+pub mod gtk;
+mod output;
+pub mod palette;
 
+pub use output::{
+    generate_output, load_palette_for, output_css_path, output_palette_path, palette_from_image,
+    palette_from_json, palettes_dir, sanitize_output, themes_dir, write_output_css,
+    write_output_palette, write_shared_css_from,
+};
 pub use palette::{load_palette, Palette};
 
 /// Design tokens from BREAD_DESIGN_SYSTEM.md.
@@ -53,7 +59,11 @@ pub fn luminance(hex: &str) -> f32 {
     let h = hex.trim_start_matches('#');
     let lin = |i: usize| -> f32 {
         let c = u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0) as f32 / 255.0;
-        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
     };
     0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4)
 }
@@ -64,7 +74,11 @@ pub fn luminance(hex: &str) -> f32 {
 /// text readable no matter how light or dark pywal makes a given palette slot,
 /// without altering the palette colours themselves.
 pub fn ink_on(hex: &str) -> &'static str {
-    if luminance(hex) > 0.179 { "#11111b" } else { "#f5f5f5" }
+    if luminance(hex) > 0.179 {
+        "#11111b"
+    } else {
+        "#f5f5f5"
+    }
 }
 
 /// Canonical (name, value) list: the single naming all bread apps share.
@@ -143,9 +157,18 @@ pub fn css_tokens() -> String {
          \x20\x20--radius-tertiary: {r3}px;\n\
          \x20\x20--radius-pill: {pill}px;\n\
          }}\n",
-        font = FONT_FAMILY, base = FONT_SIZE_BASE, sec = FONT_SIZE_SECONDARY,
-        xs = SPACE_XS, sm = SPACE_SM, md = SPACE_MD, lg = SPACE_LG, xl = SPACE_XL,
-        r1 = RADIUS_PRIMARY, r2 = RADIUS_SECONDARY, r3 = RADIUS_TERTIARY, pill = RADIUS_PILL,
+        font = FONT_FAMILY,
+        base = FONT_SIZE_BASE,
+        sec = FONT_SIZE_SECONDARY,
+        xs = SPACE_XS,
+        sm = SPACE_SM,
+        md = SPACE_MD,
+        lg = SPACE_LG,
+        xl = SPACE_XL,
+        r1 = RADIUS_PRIMARY,
+        r2 = RADIUS_SECONDARY,
+        r3 = RADIUS_TERTIARY,
+        pill = RADIUS_PILL,
     )
 }
 
@@ -261,28 +284,33 @@ pub fn render() -> String {
 /// `bread-theme generate` CLI writes it. Per-session under `XDG_RUNTIME_DIR`,
 /// falling back to the cache dir.
 pub fn shared_css_path() -> std::path::PathBuf {
-    if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
-        if !rt.is_empty() {
-            return std::path::PathBuf::from(rt).join("bread").join("theme.css");
-        }
-    }
-    dirs::cache_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join("bread")
-        .join("theme.css")
+    output::runtime_bread_dir().join("theme.css")
 }
 
 /// Write the shared stylesheet to [`shared_css_path`] (atomic rename). Returns
 /// the path written. Used by the `bread-theme` CLI.
 pub fn write_shared_css() -> std::io::Result<std::path::PathBuf> {
-    let path = shared_css_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    write_shared_css_from(&load_palette())
+}
+
+/// `stylesheet()` with `@name` references in rule bodies replaced by hex.
+/// Longer names first (`on-surface` before `surface`, `on-bg` before `bg`)
+/// so a prefix match cannot half-replace `@on-bg`.
+pub fn stylesheet_resolved(p: &Palette) -> String {
+    resolve_color_names(&stylesheet(p), p)
+}
+
+/// Replace `@define-color` names (`@accent`, `@on-bg`, …) with hex values.
+/// Used by [`stylesheet_resolved`] and by GTK `bind_window` so display-global
+/// named colors cannot leak the wrong monitor's accent.
+pub(crate) fn resolve_color_names(css: &str, p: &Palette) -> String {
+    let mut pairs: Vec<(&str, String)> = color_pairs(p).into_iter().collect();
+    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    let mut out = css.to_string();
+    for (name, value) in pairs {
+        out = out.replace(&format!("@{name}"), &value);
     }
-    let tmp = path.with_extension("css.tmp");
-    std::fs::write(&tmp, render())?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(path)
+    out
 }
 
 /// Convert a `#rrggbb` hex colour to `rgba(r, g, b, alpha)`.
@@ -301,8 +329,13 @@ mod tests {
     #[test]
     fn css_vars_contains_all_define_color_names() {
         let css = css_vars(&Palette::default());
-        for name in &["bg", "fg", "surface", "red", "green", "yellow", "blue", "pink", "teal", "overlay"] {
-            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+        for name in &[
+            "bg", "fg", "surface", "red", "green", "yellow", "blue", "pink", "teal", "overlay",
+        ] {
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "missing @define-color {name}"
+            );
         }
     }
 
@@ -322,8 +355,18 @@ mod tests {
         // color name — the illegible-text bug. css_vars() must now emit
         // exactly the same color set as the full stylesheet.
         let css = css_vars(&Palette::default());
-        for name in &["accent", "on-bg", "on-surface", "on-accent", "on-red", "on-overlay"] {
-            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+        for name in &[
+            "accent",
+            "on-bg",
+            "on-surface",
+            "on-accent",
+            "on-red",
+            "on-overlay",
+        ] {
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "missing @define-color {name}"
+            );
         }
     }
 
@@ -334,7 +377,16 @@ mod tests {
         let p = Palette::default();
         let vars = css_vars(&p);
         let sheet = stylesheet(&p);
-        for name in &["bg", "fg", "surface", "overlay", "accent", "on-bg", "on-surface", "on-accent"] {
+        for name in &[
+            "bg",
+            "fg",
+            "surface",
+            "overlay",
+            "accent",
+            "on-bg",
+            "on-surface",
+            "on-accent",
+        ] {
             let needle = format!("@define-color {name} ");
             assert!(vars.contains(&needle) && sheet.contains(&needle));
         }
@@ -344,10 +396,21 @@ mod tests {
     fn stylesheet_defines_canonical_colors_and_components() {
         let css = stylesheet(&Palette::default());
         for name in &["bg", "fg", "surface", "overlay", "accent", "red", "blue"] {
-            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "missing @define-color {name}"
+            );
         }
         // a representative spread of the shared component selectors
-        for sel in &["button", "entry", "switch:checked", ".card", ".sidebar", "scrollbar slider", ".page-title"] {
+        for sel in &[
+            "button",
+            "entry",
+            "switch:checked",
+            ".card",
+            ".sidebar",
+            "scrollbar slider",
+            ".page-title",
+        ] {
             assert!(css.contains(sel), "stylesheet missing selector: {sel}");
         }
         assert!(css.contains("Varela Round"));
@@ -362,7 +425,10 @@ mod tests {
         let gtk = define_colors(&p);
         let web = css_custom_properties(&p);
         for (name, _) in color_pairs(&p) {
-            assert!(gtk.contains(&format!("@define-color {name} ")), "gtk missing {name}");
+            assert!(
+                gtk.contains(&format!("@define-color {name} ")),
+                "gtk missing {name}"
+            );
             assert!(web.contains(&format!("--{name}: ")), "web missing {name}");
         }
     }
@@ -409,7 +475,10 @@ mod tests {
     fn stylesheet_defines_on_colors() {
         let css = stylesheet(&Palette::default());
         for name in &["on-bg", "on-surface", "on-accent", "on-red", "on-overlay"] {
-            assert!(css.contains(&format!("@define-color {name} ")), "missing @define-color {name}");
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "missing @define-color {name}"
+            );
         }
     }
 
@@ -418,13 +487,58 @@ mod tests {
         // A bare `label { color: ... }` would override container colours on child
         // labels — the bug that made coloured-background text illegible.
         let css = stylesheet(&Palette::default());
-        assert!(!css.contains("label { color:"), "blanket label colour rule reintroduced");
+        assert!(
+            !css.contains("label { color:"),
+            "blanket label colour rule reintroduced"
+        );
     }
 
     #[test]
     fn shared_css_path_uses_runtime_dir() {
+        let _lock = crate::output::XDG_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1234");
-        assert_eq!(shared_css_path(), std::path::PathBuf::from("/run/user/1234/bread/theme.css"));
+        assert_eq!(
+            shared_css_path(),
+            std::path::PathBuf::from("/run/user/1234/bread/theme.css")
+        );
+    }
+
+    #[test]
+    fn stylesheet_resolved_inlines_color4_and_drops_named_refs_in_rules() {
+        let mut p = Palette::default();
+        p.color4 = "#7aa2f7".into();
+        let css = stylesheet_resolved(&p);
+        assert!(css.contains("#7aa2f7"), "color4 must appear as hex: {css}");
+        // Rule bodies must not keep named colors — GTK display-global
+        // @define-color would otherwise leak the wrong monitor's accent.
+        let rules = css
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("@define-color"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !rules.contains("@accent"),
+            "leftover @accent in rules:\n{rules}"
+        );
+        assert!(
+            !rules.contains("@on-bg"),
+            "leftover @on-bg in rules:\n{rules}"
+        );
+        assert!(
+            !rules.contains("@on-surface"),
+            "leftover @on-surface in rules:\n{rules}"
+        );
+        assert!(
+            !rules.contains("@on-accent"),
+            "leftover @on-accent in rules:\n{rules}"
+        );
+        // Longer names first: @on-bg must not become @on-#...
+        assert!(
+            !rules.contains("@on-#"),
+            "half-replaced on-* name:\n{rules}"
+        );
     }
 
     #[test]
