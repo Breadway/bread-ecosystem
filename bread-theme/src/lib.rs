@@ -32,6 +32,13 @@ pub mod tokens {
     pub const RADIUS_PILL: u16 = 999;
 }
 
+/// CSS `font-family` list: quote the named face, leave the generic fallback
+/// unquoted. Wrapping [`tokens::FONT_FAMILY`] in one pair of quotes would
+/// make a single family named "Varela Round, sans-serif" and drop sans-serif.
+fn css_font_family() -> &'static str {
+    "'Varela Round', sans-serif"
+}
+
 /// Emit the `@define-color` block that all bread apps use, plus the shared
 /// font rule.
 ///
@@ -47,9 +54,9 @@ pub mod tokens {
 /// one color-block implementation and it cannot drift again.
 pub fn css_vars(p: &Palette) -> String {
     format!(
-        "{vars}* {{ font-family: '{font}'; font-size: {size}px; }}\n",
+        "{vars}* {{ font-family: {font}; font-size: {size}px; }}\n",
         vars = define_colors(p),
-        font = tokens::FONT_FAMILY,
+        font = css_font_family(),
         size = tokens::FONT_SIZE_BASE,
     )
 }
@@ -144,7 +151,7 @@ pub fn css_tokens() -> String {
     use tokens::*;
     format!(
         ":root {{\n\
-         \x20\x20--font-family: '{font}';\n\
+         \x20\x20--font-family: {font};\n\
          \x20\x20--font-size-base: {base}px;\n\
          \x20\x20--font-size-secondary: {sec}px;\n\
          \x20\x20--space-xs: {xs}px;\n\
@@ -157,7 +164,7 @@ pub fn css_tokens() -> String {
          \x20\x20--radius-tertiary: {r3}px;\n\
          \x20\x20--radius-pill: {pill}px;\n\
          }}\n",
-        font = FONT_FAMILY,
+        font = css_font_family(),
         base = FONT_SIZE_BASE,
         sec = FONT_SIZE_SECONDARY,
         xs = SPACE_XS,
@@ -182,7 +189,7 @@ pub fn stylesheet(p: &Palette) -> String {
     use tokens::*;
     format!(
         "{vars}\
-         * {{ font-family: '{font}'; font-size: {base}px; }}\n\
+         * {{ font-family: {font}; font-size: {base}px; }}\n\
          /* Colour is set on containers; labels inherit it, so text on any panel,\
             button, or accent is always the legible ink for that background. Bare\
             `label {{ color }}` is deliberately avoided — as a type selector it\
@@ -265,7 +272,7 @@ pub fn stylesheet(p: &Palette) -> String {
          textview, .mono {{ font-family: monospace; }}\n\
          textview text {{ background-color: @surface; color: @on-surface; }}\n",
         vars = define_colors(p),
-        font = FONT_FAMILY,
+        font = css_font_family(),
         base = FONT_SIZE_BASE,
         sec = FONT_SIZE_SECONDARY,
         xs = SPACE_XS, sm = SPACE_SM, md = SPACE_MD, lg = SPACE_LG,
@@ -342,7 +349,11 @@ mod tests {
     #[test]
     fn css_vars_contains_font_rule() {
         let css = css_vars(&Palette::default());
-        assert!(css.contains("Varela Round"));
+        assert!(css.contains("font-family: 'Varela Round', sans-serif;"));
+        assert!(
+            !css.contains("font-family: 'Varela Round, sans-serif'"),
+            "named face and generic fallback must not be one quoted family"
+        );
         assert!(css.contains("14px"));
     }
 
@@ -413,7 +424,11 @@ mod tests {
         ] {
             assert!(css.contains(sel), "stylesheet missing selector: {sel}");
         }
-        assert!(css.contains("Varela Round"));
+        assert!(css.contains("font-family: 'Varela Round', sans-serif;"));
+        assert!(
+            !css.contains("font-family: 'Varela Round, sans-serif'"),
+            "named face and generic fallback must not be one quoted family"
+        );
     }
 
     #[test]
@@ -445,7 +460,11 @@ mod tests {
     #[test]
     fn css_tokens_contains_font_and_spacing_vars() {
         let css = css_tokens();
-        assert!(css.contains("--font-family: 'Varela Round, sans-serif';"));
+        assert!(css.contains("--font-family: 'Varela Round', sans-serif;"));
+        assert!(
+            !css.contains("--font-family: 'Varela Round, sans-serif'"),
+            "named face and generic fallback must not be one quoted family"
+        );
         assert!(css.contains("--font-size-base: 14px;"));
         assert!(css.contains("--space-md: 12px;"));
         assert!(css.contains("--radius-pill: 999px;"));
