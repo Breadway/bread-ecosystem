@@ -7,11 +7,9 @@ name: beta (rc) bread-theme
 on:
   push:
     tags: ['v*']
-    paths:
-      - 'bread-theme/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.forgejo/workflows/beta-bread-theme.yml'
+    # No paths: filter. Tag pushes compare against an unrelated commit and
+    # would skip the RC publish if bread-theme/** wasn't in that diff; the
+    # job `if: contains -rc.` is the real gate.
 
 jobs:
   build:
@@ -32,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           PKG_DIR="/srv/breadway-dl/beta/bread-theme/${VERSION}"
           mkdir -p "${PKG_DIR}"
           cp "src/target/release/bread-theme" "${PKG_DIR}/bread-theme-x86_64"
