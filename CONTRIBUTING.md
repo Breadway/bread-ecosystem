@@ -5,7 +5,9 @@ are `bakery` (the ecosystem package manager) and `bread-theme` (the shared
 theming crate). Shared crates that sibling apps pin — not bakery packages
 of their own — are `bread-utils`, `bread-app`, `bread-onnx`,
 `bread-screenshots`, and `bread-capture`. `bread-polkit` is an in-tree
-session agent, also not a bakery product. Other ecosystem products
+session agent: it has `bread-polkit/bakery.toml` so it *can* be published,
+but it is not in `registry/bread-ecosystem.toml` (unpublished — not on
+the bakery index, not on the BOS ISO). Other ecosystem products
 (`bread`, `breadbar`, `breadbox`, …) live in their own repos under
 `Breadway/` but follow the same workflow described here. The product list
 is `registry/bread-ecosystem.toml`. New GTK tools should depend on

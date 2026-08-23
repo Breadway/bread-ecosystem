@@ -1,0 +1,11 @@
+name = "bread-polkit"
+description = "Themed PolicyKit authentication agent for the bread desktop"
+binaries = ["bread-polkit"]
+system_deps = ["gtk4", "gtk4-layer-shell", "polkit"]
+optional_system_deps = ["hyprland"]
+bread_deps = []
+license_file = "LICENSE"
+desktop_file = "bread-polkit.desktop"
+
+[install]
+post_install = []

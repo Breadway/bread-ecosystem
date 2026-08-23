@@ -153,7 +153,7 @@ bread-ecosystem/
 ├── bread-theme/         # shared pywal + fixed-dark-base theming crate
 ├── bread-utils/         # shared plumbing (Hyprland IPC, singleton, XDG, BreadClient, …)
 ├── bread-app/           # GTK bootstrap new tools should use (app id, singleton, overlay, command listen)
-├── bread-polkit/        # themed PolicyKit authentication agent (not a bakery product)
+├── bread-polkit/        # themed PolicyKit agent (bakery.toml present; unpublished)
 ├── bread-onnx/          # shared ONNX runtime helpers
 ├── bread-screenshots/   # grim capture primitive used by app `--screenshot` modes
 ├── bread-capture/       # orchestrator that drives those `--screenshot` modes
@@ -179,8 +179,10 @@ tree; `bread-polkit` is the first in-tree consumer.
 ### bread-polkit
 
 A session PolicyKit authentication agent (password prompt, cancel,
-identity). Not a wrapper around `polkit-gnome`. Not published via bakery
-and not on the BOS ISO lockfile.
+identity). Not a wrapper around `polkit-gnome`. `bread-polkit/bakery.toml`
+exists so it can be published via bakery; it is not in
+`registry/bread-ecosystem.toml` and is therefore unpublished — not on the
+bakery index and not on the BOS ISO lockfile.
 
 ```sh
 cargo run -p bread-polkit
