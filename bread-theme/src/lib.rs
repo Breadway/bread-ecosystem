@@ -4,6 +4,7 @@ pub mod adw;
 pub mod gtk;
 mod output;
 pub mod palette;
+pub mod shell;
 
 pub use output::{
     generate_output, load_palette_for, output_css_path, output_palette_path, palette_from_image,

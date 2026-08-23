@@ -257,11 +257,14 @@ dependencies = [
 name = "bread-theme"
 version = "0.7.4"
 dependencies = [
+ "anyhow",
  "dirs 5.0.1",
  "gtk4",
  "libadwaita",
  "serde",
  "serde_json",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

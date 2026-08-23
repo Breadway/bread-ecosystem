@@ -1,0 +1,154 @@
+# The compiled-in builtin theme (bread-theme/src/shell/builtin.rs). Describes
+# breadbar/breadbox AS THEY EXIST TODAY, not the 01-liquid-motion.html demo —
+# where the two disagree (bar side margin, launcher width/top, the two easing
+# curves), this file follows the current Rust source, since Phase 2's
+# acceptance test is pixel-identical rendering against today's bar.
+#
+# Sources: breadbar/src/main.rs:16-22 (BAR_* / CHIP_HEIGHT / ICON_PX consts),
+# breadbar/src/theme.rs (load_css's radius/pad/spring locals and the actual
+# CSS selectors), breadbar/src/{panel,osd}.rs and
+# breadbar/src/notifications/{popup,history}.rs (satellite window anchors,
+# margins, namespaces), breadbox/breadbox/src/main.rs:341-344 (launcher
+# geometry), ~/.config/hypr/scripts/ui/rules.lua (compositor rules).
+
+name = "Liquid Motion"
+id   = "liquid-motion"
+
+[tokens]
+font_family    = "Varela Round, sans-serif"
+font_fallback  = "sans-serif"
+font_size_base = 14
+radius_bar     = 16
+radius_card    = 12
+radius_sm      = 9
+# Not in the plan's §4 schema list, but a named local in theme.rs::load_css
+# alongside radius_bar/radius_card/radius_sm (`radius_pill = "999px"`) — the
+# OSD pill's corner radius.
+radius_pill    = 999
+pad            = 12
+bg_alpha       = 0.72
+# Two curves theme.rs actually uses, not one: `spring` is the overshoot/bounce
+# curve (clock flips, pop-ins, the workspace caret draw); `spring_settle` is
+# the flatter curve used for hovers and workspace/stat-pair transitions. The
+# plan's §4 example names only `spring`.
+spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
+spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+# "accent" flows through as @accent (the workspace-trail gradient's start);
+# these are palette token NAMES, not hex - pywal still drives colour.
+accent_from    = "accent"
+accent_to      = "teal"
+# Not in the plan's §4 schema list, but breadbar::CHIP_HEIGHT / ::ICON_PX
+# today.
+chip_height    = 32
+icon_px        = 24
+
+[bar.window]
+anchors   = ["top", "left", "right"]
+width     = "fill"
+height    = 44
+margin    = { top = 12, left = 16, right = 16 }
+exclusive = "auto"
+# breadbar never calls gtk4-layer-shell's set_keyboard_mode today, which
+# defaults to KeyboardMode::None — spelled out explicitly here rather than
+# left to omit-means-default, since "the shell must never fail to start
+# because a theme file is malformed" cuts both ways: an explicit builtin
+# value can't silently drift if the crate's own Default ever changes.
+keyboard  = "none"
+layer     = "top"
+
+[bar.slots]
+left   = ["workspaces"]
+centre = ["media", "clock"]
+right  = ["volume", "wifi", "battery", "control"]
+drawer = []
+
+[modules.workspaces]
+style      = "trail"
+show_empty = true
+
+[modules.clock]
+style     = "flip"
+format    = "%H:%M"
+show_date = false
+
+[launcher]
+# breadbox/breadbox/src/main.rs:341-344 sets vbox.set_margin_top(120) and
+# vbox.set_size_request(600, -1) — the demo's "540px overlay, 16% top" is a
+# design-doc approximation, not what the code does today.
+mode     = "overlay"
+width    = 600
+top      = "120px"
+radius   = 20
+icon_px  = 36
+row_anim = "flip"
+rule     = "gradient"
+footer   = "count_apps"
+sections = false
+modes    = ["apps"]
+
+# Keyed by layer-shell namespace, matching [compositor.*] below, so the two
+# tables share one keyspace and can be validated against each other.
+# breadbar-notif's popup toast uses set_default_width(320) (its history
+# sibling on the same namespace uses 360 — 320 is the live-toast surface, the
+# one this positions). breadbar-panel sets no window width at all: its
+# popovers size from their own CSS (.control-panel-inner / .wifi-popover-inner
+# min-width), which is why its width is "auto" rather than a number.
+[surfaces."breadbar-notif"]
+anchor = "top_right"
+offset = [16, 64]
+width  = 320
+layer  = "overlay"
+
+[surfaces."breadbar-osd"]
+anchor = "bottom_centre"
+offset = 80
+width  = 180
+layer  = "overlay"
+
+[surfaces."breadbar-panel"]
+anchor = "top_right"
+offset = [16, 64]
+width  = "auto"
+layer  = "overlay"
+
+[surfaces."breadbar-dismiss"]
+# Anchored to all four edges (a fullscreen click-away scrim) with only a top
+# margin, so it starts below the bar rather than covering it.
+anchor = "fill"
+offset = 56
+width  = "fill"
+layer  = "overlay"
+
+# Faithful to scripts/ui/rules.lua's five breadbar namespaces + breadbox.
+[compositor."breadbar"]
+blur         = true
+ignore_alpha = 0.2
+blur_popups  = true
+animation    = "slide top"
+
+[compositor."breadbar-osd"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide bottom"
+
+[compositor."breadbar-notif"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-panel"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-dismiss"]
+no_anim = true
+
+[compositor."breadbox"]
+blur         = true
+ignore_alpha = 0.2
+
+# No `css = "..."` overlay: the builtin is compiled in via `include_str!`
+# and has no on-disk directory to resolve a relative overlay path against.
+# `extra.css` is for user/system themes, which do have one — see
+# `resolve_theme` in mod.rs.
