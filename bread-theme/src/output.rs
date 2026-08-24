@@ -54,7 +54,7 @@ pub fn output_palette_path(output: &str) -> PathBuf {
     palettes_dir().join(format!("{}.json", sanitize_output(output)))
 }
 
-fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
+pub(crate) fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

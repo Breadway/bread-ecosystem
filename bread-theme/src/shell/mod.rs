@@ -403,13 +403,6 @@ pub fn list() -> Vec<ThemeSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    // Guards mutation of XDG_CONFIG_HOME / BREAD_SHELL_THEME, which are
-    // process-global — mirrors bread_theme::output's XDG_ENV_LOCK pattern
-    // (a different env var, same reason: cargo test runs a module's tests
-    // in parallel by default).
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct EnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
@@ -437,7 +430,12 @@ mod tests {
     /// whatever's set in the outer test-runner environment. Held for the
     /// guard's lifetime.
     fn isolated_xdg() -> EnvGuard {
-        let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Shared with `layerrules::tests`, which also isolates
+        // XDG_CONFIG_HOME — see `crate::test_support` for why this must be
+        // the *same* lock rather than a module-private one.
+        let lock = crate::test_support::XDG_CONFIG_HOME_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!(
             "bread-theme-shell-test-{}-{}",
             std::process::id(),

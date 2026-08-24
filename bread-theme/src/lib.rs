@@ -2,16 +2,31 @@
 pub mod adw;
 #[cfg(feature = "gtk")]
 pub mod gtk;
+mod layerrules;
 mod output;
 pub mod palette;
 pub mod shell;
 
+pub use layerrules::{layerrules_json, layerrules_path, write_layerrules, write_layerrules_active};
 pub use output::{
     generate_output, load_palette_for, output_css_path, output_palette_path, palette_from_image,
     palette_from_json, palettes_dir, sanitize_output, themes_dir, write_output_css,
     write_output_palette, write_shared_css_from,
 };
 pub use palette::{load_palette, Palette};
+
+/// Env-var locks shared by any test module that mutates process-global
+/// state (`std::env::set_var`) — `cargo test` runs a crate's tests in
+/// parallel by default, so every module touching the *same* env var must
+/// serialize through the *same* lock or their mutations race each other's
+/// reads. `bread_theme::output`'s own `XDG_ENV_LOCK` guards `XDG_RUNTIME_DIR`
+/// specifically and stays where it is; `XDG_CONFIG_HOME_LOCK` here is the
+/// one shared by `shell::tests` and `layerrules::tests`, which both point
+/// `XDG_CONFIG_HOME` at an isolated temp dir.
+#[cfg(test)]
+pub(crate) mod test_support {
+    pub(crate) static XDG_CONFIG_HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}
 
 /// Design tokens from BREAD_DESIGN_SYSTEM.md.
 pub mod tokens {

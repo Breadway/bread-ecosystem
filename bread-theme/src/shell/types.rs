@@ -181,9 +181,18 @@ pub struct Surface {
 /// ignore_alpha, blur_popups, animation, no_anim) — that Lua API isn't in
 /// hyprland-api.lua's type annotations, so this field set is evidenced by
 /// working usage, not documentation (plan §12 risk 3).
-#[derive(Debug, Clone, PartialEq, Default)]
+///
+/// Also `Serialize`: this is the per-namespace shape written to
+/// `~/.config/hypr/layerrules.json` by `bread_theme::layerrules` (plan §9
+/// step 3-4), which `scripts/ui/rules.lua` parses back into `hl.layer_rule`
+/// calls. `Option::None` fields are omitted rather than emitted as `null` —
+/// the Lua JSON reader treats a missing key and a `null` value identically
+/// (assigning `nil` into a table key is a no-op), so either encoding is
+/// correct, but omitting keeps the file legible for hand inspection.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 pub struct LayerRule {
     pub blur: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ignore_alpha: Option<f64>,
     pub blur_popups: bool,
     /// Passed through verbatim to `hl.layer_rule`'s `animation` field
@@ -192,6 +201,7 @@ pub struct LayerRule {
     /// evidenced by working usage in `rules.lua`, not documented (plan §12
     /// risk 3); a closed Rust enum here would need updating in lockstep
     /// with Hyprland additions this crate has no way to know about.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub animation: Option<String>,
     pub no_anim: bool,
 }
