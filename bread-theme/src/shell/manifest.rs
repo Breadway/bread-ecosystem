@@ -29,6 +29,11 @@ const KNOWN_MODULES: &[&str] = &[
     "control",
     "launcher_entry",
     "launcher_results",
+    // `02-glass-workbench` (plan §11 phase 5): plain right-side stat chips,
+    // reusing the same `AppInput::StatsUpdate` data the control panel's
+    // sys-grid already receives — see breadbar's `bar::slots` module docs.
+    "cpu",
+    "ram",
 ];
 
 pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> anyhow::Result<()> {

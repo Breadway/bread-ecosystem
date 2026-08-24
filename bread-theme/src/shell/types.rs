@@ -348,6 +348,16 @@ impl Tokens {
     pub fn icon_px(&self) -> i64 {
         self.int_or("icon_px", 24)
     }
+    /// Not in the plan §4 schema. `"full"` (default, liquid-motion's island)
+    /// draws a border on all four edges; `"bottom"` (glass-workbench's flush
+    /// edge-to-edge bar, plan §1) draws only the bottom hairline the demo's
+    /// `.bar { border-bottom: 1px solid #ffffff12 }` calls for — a floating
+    /// island's full border would otherwise render as a stray top/side line
+    /// flush against the screen edge. See [`Tokens`] doc; consumed by
+    /// `breadbar::theme::load_css`, not by [`crate::shell::ShellTheme::css`].
+    pub fn bar_border(&self) -> String {
+        self.str_or("bar_border", "full")
+    }
 
     /// Replace every `{name}` occurrence in `template` with that token's
     /// [`TokenValue::as_css`] form. Longest names are substituted first

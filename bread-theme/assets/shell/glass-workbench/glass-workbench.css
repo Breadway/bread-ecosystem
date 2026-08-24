@@ -1,0 +1,86 @@
+/* CSS template for the glass-workbench builtin (bread-theme/src/shell/
+ * builtin.rs). Same scope and substitution rules as liquid-motion.css: only
+ * the window/workspace/clock chrome the manifest's own concepts model, `{name}`
+ * tokens substituted, `@name` palette references passed through untouched.
+ *
+ * Source: bos-ui-demos/02-glass-workbench.html's <style> block. No
+ * per-digit flip (this theme has no `.clock-digit` markup at all — plain
+ * style is a date label + one time label) and no gradient trail (pill style
+ * never makes `.workspace-trail` visible — see breadbar's
+ * `WorkspaceTrail::place`/`stretch`, which this theme's slot config simply
+ * never calls).
+ */
+
+window.breadbar {
+  background-color: alpha(@bg, {bg_alpha});
+  color: @on-bg;
+  border-radius: {radius_bar}px;
+  border: none;
+  border-bottom: 1px solid alpha(@on-bg, 0.07);
+}
+window.breadbar > centerbox { padding: 0 {pad}px; }
+window.breadbar button { min-height: 0; min-width: 0; }
+
+/* Pill workspaces: solid accent fill when active, dimmed when empty — no
+ * trail overlay is ever shown (place()/stretch() are never called for this
+ * style), so `.workspace-trail` itself needs no rule here.
+ */
+.workspace-btn {
+  background: transparent;
+  opacity: 1;
+  color: alpha(@on-bg, 0.4);
+  border-radius: {radius_sm}px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 22px;
+  min-height: {chip_height}px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.22s {spring_settle}, color 0.22s {spring_settle},
+    opacity 0.22s {spring_settle};
+}
+.workspace-btn:hover { background: alpha(@on-bg, 0.08); }
+.workspace-btn.occupied { color: alpha(@on-bg, 0.8); }
+.workspace-btn:not(.occupied):not(.active) { opacity: 0.35; }
+.workspace-btn.active {
+  background: @{accent_from};
+  color: @on-accent;
+  opacity: 1;
+}
+.workspace-btn.active:hover { background: @{accent_from}; }
+
+.clock-plain { padding: 0 4px; }
+.clock-plain-time {
+  font-size: {font_size_base}px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.date-label {
+  font-size: 12px;
+  opacity: 0.48;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+window.breadbar-osd {
+  background-color: alpha(@bg, 0.72);
+  color: @on-bg;
+  border-radius: {radius_pill}px;
+  border: 1px solid alpha(@on-bg, 0.10);
+}
+
+window.breadbar-panel {
+  background-color: alpha(@bg, 0.86);
+  color: @on-bg;
+  border-radius: {radius_card}px;
+  border: 1px solid alpha(@on-bg, 0.12);
+}
+
+window.breadbar-dismiss {
+  background-color: alpha(#000000, 0.02);
+}
+
+.bread-widget-slot { margin-right: {pad}px; }

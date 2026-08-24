@@ -175,7 +175,10 @@ fn system_theme_path(id: &str) -> PathBuf {
 enum Source {
     User(PathBuf),
     System(PathBuf),
-    Builtin,
+    /// Carries the id rather than being a bare unit variant now that there's
+    /// more than one compiled-in theme — [`read_source`]/[`css_template_for`]
+    /// need to know *which* builtin's assets to hand back.
+    Builtin(String),
 }
 
 fn find_source(id: &str) -> Option<Source> {
@@ -187,8 +190,8 @@ fn find_source(id: &str) -> Option<Source> {
     if system.is_file() {
         return Some(Source::System(system));
     }
-    if id == builtin::LIQUID_MOTION_ID {
-        return Some(Source::Builtin);
+    if builtin::find(id).is_some() {
+        return Some(Source::Builtin(id.to_string()));
     }
     None
 }
@@ -202,16 +205,19 @@ fn read_source(src: &Source) -> anyhow::Result<(String, Option<PathBuf>)> {
                 std::fs::read_to_string(p).with_context(|| format!("reading {}", p.display()))?;
             Ok((text, p.parent().map(|d| d.to_path_buf())))
         }
-        Source::Builtin => Ok((builtin::LIQUID_MOTION_TOML.to_string(), None)),
+        Source::Builtin(id) => {
+            let toml = builtin::find(id)
+                .map(|t| t.toml.to_string())
+                .unwrap_or_default();
+            Ok((toml, None))
+        }
     }
 }
 
 fn css_template_for(id: &str) -> String {
-    if id == builtin::LIQUID_MOTION_ID {
-        builtin::LIQUID_MOTION_CSS.to_string()
-    } else {
-        String::new()
-    }
+    builtin::find(id)
+        .map(|t| t.css.to_string())
+        .unwrap_or_default()
 }
 
 /// The fallible primitive: look up `id` through discovery, apply one level
@@ -278,25 +284,27 @@ fn resolve_theme(id: &str, extends_depth: u8) -> anyhow::Result<ShellTheme> {
 }
 
 /// Bypasses discovery entirely and resolves straight from the compiled-in
-/// `LIQUID_MOTION_TOML`/`LIQUID_MOTION_CSS` constants — used as [`load`]'s
-/// fallback specifically *because* it cannot be affected by a broken user
-/// override file at the same id (unlike calling `load_named("liquid-motion")`
-/// again, which would hit that same broken file first via discovery and
-/// fail identically).
+/// `liquid-motion` assets — used as [`load`]'s fallback specifically
+/// *because* it cannot be affected by a broken user override file at the
+/// same id (unlike calling `load_named("liquid-motion")` again, which would
+/// hit that same broken file first via discovery and fail identically).
+/// Deliberately always `liquid-motion`, not "whichever theme was active" or
+/// "the first entry in `builtin::ALL`" — this is the one theme every other
+/// fallback path in this module bottoms out at, so its identity has to stay
+/// pinned regardless of how many more builtins `glass-workbench` grows
+/// siblings.
 fn resolve_builtin() -> ShellTheme {
-    let value: toml::Value = toml::from_str(builtin::LIQUID_MOTION_TOML)
-        .expect("compiled-in builtin theme.toml must parse");
+    let asset = builtin::find(builtin::LIQUID_MOTION_ID)
+        .expect("liquid-motion must always be present in builtin::ALL");
+    let value: toml::Value =
+        toml::from_str(asset.toml).expect("compiled-in builtin theme.toml must parse");
     let raw: RawManifest = value
         .try_into()
         .expect("compiled-in builtin theme.toml must satisfy the manifest schema");
     manifest::validate_slots(&raw, builtin::LIQUID_MOTION_ID)
         .expect("compiled-in builtin theme.toml must use only known module names");
-    raw.resolve(
-        builtin::LIQUID_MOTION_ID,
-        builtin::LIQUID_MOTION_CSS.to_string(),
-        None,
-    )
-    .expect("compiled-in builtin theme.toml must resolve")
+    raw.resolve(builtin::LIQUID_MOTION_ID, asset.css.to_string(), None)
+        .expect("compiled-in builtin theme.toml must resolve")
 }
 
 static FALLBACK_LOGGED: std::sync::Once = std::sync::Once::new();
@@ -390,12 +398,14 @@ pub fn list() -> Vec<ThemeSummary> {
         &mut out,
         &mut seen,
     );
-    if seen.insert(builtin::LIQUID_MOTION_ID.to_string()) {
-        out.push(ThemeSummary {
-            id: builtin::LIQUID_MOTION_ID.to_string(),
-            name: "Liquid Motion".to_string(),
-            source: ThemeSource::Builtin,
-        });
+    for b in builtin::ALL {
+        if seen.insert(b.id.to_string()) {
+            out.push(ThemeSummary {
+                id: b.id.to_string(),
+                name: b.name.to_string(),
+                source: ThemeSource::Builtin,
+            });
+        }
     }
     out
 }
@@ -616,6 +626,99 @@ mod tests {
                 "unsubstituted token placeholder {placeholder}:\n{css}"
             );
         }
+    }
+
+    // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
+
+    #[test]
+    fn glass_workbench_loads_and_appears_in_list() {
+        let theme = load_named(builtin::GLASS_WORKBENCH_ID)
+            .expect("glass-workbench builtin should resolve");
+        assert_eq!(theme.id(), "glass-workbench");
+        assert_eq!(theme.name(), "Glass Workbench");
+
+        let summaries = list();
+        assert!(
+            summaries
+                .iter()
+                .any(|s| s.id == "glass-workbench" && s.source == ThemeSource::Builtin),
+            "glass-workbench missing from list(): {summaries:?}"
+        );
+        // Both builtins must be listed side by side — Phase 5 must not have
+        // dropped liquid-motion in the process of adding a second theme.
+        assert!(summaries
+            .iter()
+            .any(|s| s.id == "liquid-motion" && s.source == ThemeSource::Builtin));
+    }
+
+    #[test]
+    fn glass_workbench_window_is_flush_edge_to_edge_not_a_floating_island() {
+        let theme =
+            load_named(builtin::GLASS_WORKBENCH_ID).expect("glass-workbench should resolve");
+        let w = theme.window();
+        assert_eq!(w.anchors, vec!["top", "left", "right"]);
+        assert!(matches!(w.width, Width::Fill));
+        assert_eq!(w.height, 36);
+        assert_eq!(
+            w.margin,
+            Margin {
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0
+            },
+            "flush bar must have no margin on any edge"
+        );
+        assert_eq!(
+            theme.tokens().radius_bar(),
+            0,
+            "flush edge-to-edge bar must have square corners"
+        );
+        assert_eq!(
+            theme.tokens().bar_border(),
+            "bottom",
+            "flush bar draws only a bottom hairline, not liquid-motion's full border"
+        );
+    }
+
+    #[test]
+    fn glass_workbench_modules_are_pill_and_plain_with_no_media_slot() {
+        let theme =
+            load_named(builtin::GLASS_WORKBENCH_ID).expect("glass-workbench should resolve");
+        assert!(matches!(
+            theme.modules().workspaces.style,
+            WorkspaceStyle::Pill
+        ));
+        assert!(matches!(theme.modules().clock.style, ClockStyle::Plain));
+        assert!(theme.modules().clock.show_date);
+        assert_eq!(theme.slots().centre, vec!["clock"]);
+        assert!(
+            !theme.slots().centre.contains(&"media".to_string()),
+            "demo 02 has no media widget"
+        );
+        assert_eq!(
+            theme.slots().right,
+            vec!["cpu", "ram", "wifi", "battery", "control"]
+        );
+    }
+
+    #[test]
+    fn glass_workbench_accent_is_flat_and_a_palette_token_not_hex() {
+        let theme =
+            load_named(builtin::GLASS_WORKBENCH_ID).expect("glass-workbench should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.accent_from(), "green");
+        assert_eq!(t.accent_to(), "green");
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("@green"),
+            "accent_from/accent_to must resolve to the @green palette token, not a hex literal:\n{css}"
+        );
+        assert!(
+            !css.contains("#7a9a88"),
+            "the demo's sage hex must never leak into the manifest — pywal theming depends on \
+             this staying a palette token name:\n{css}"
+        );
     }
 
     // ---- extends merge ------------------------------------------------
