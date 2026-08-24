@@ -550,8 +550,14 @@ mod tests {
     #[test]
     fn builtin_slots_and_modules_are_trail_and_flip() {
         let theme = resolve_builtin();
-        assert_eq!(theme.slots().left, vec!["workspaces"]);
-        assert_eq!(theme.slots().centre, vec!["media", "clock"]);
+        assert_eq!(
+            theme.slots().left,
+            vec!["workspaces", "widget:right_of_workspaces"]
+        );
+        assert_eq!(
+            theme.slots().centre,
+            vec!["media", "widget:left_of_clock", "clock", "widget:right_of_clock"]
+        );
         assert!(matches!(
             theme.modules().workspaces.style,
             WorkspaceStyle::Trail

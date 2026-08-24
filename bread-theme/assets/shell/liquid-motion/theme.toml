@@ -57,9 +57,16 @@ keyboard  = "none"
 layer     = "top"
 
 [bar.slots]
-left   = ["workspaces"]
-centre = ["media", "clock"]
-right  = ["volume", "wifi", "battery", "control"]
+# The `widget:*` entries reproduce breadbar's pre-Phase-3b fixed Lua-widget
+# interleave exactly (main.rs's now-removed widget_right_of_workspaces /
+# widget_left_of_clock / widget_right_of_clock / widget_left_of_stats), so
+# this manifest still renders pixel-identically to today's bar. `tray`
+# deliberately has NO slot entry anywhere — it lives in the control-panel
+# popover, not the bar, and is keyed directly by breadbar regardless of
+# `[bar.slots]`.
+left   = ["workspaces", "widget:right_of_workspaces"]
+centre = ["media", "widget:left_of_clock", "clock", "widget:right_of_clock"]
+right  = ["widget:left_of_stats", "volume", "wifi", "battery", "control"]
 drawer = []
 
 [modules.workspaces]
