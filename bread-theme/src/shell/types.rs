@@ -25,6 +25,16 @@ pub enum ClockStyle {
     None,
 }
 
+/// Dot pill widths (px) for 0/1/2/3-or-more open windows, `style = "dots"`
+/// (theme 04/spotlight). Index 3 covers "3 or more" — the demo's own dots
+/// never grow past that fourth width. Unused by `Trail`/`Pill`.
+pub type DotWidths = [i32; 4];
+
+/// The demo's own numbers (`04-spotlight.html`'s `.dots button[data-n="N"]`
+/// rules) — the default a theme gets if it sets `style = "dots"` but omits
+/// `dot_widths`.
+pub const DEFAULT_DOT_WIDTHS: DotWidths = [6, 10, 14, 18];
+
 /// How the launcher attaches to the shell. Phase 1 ships only `Overlay`
 /// (breadbox's own window); `Embedded` is theme 04's bar-drawer launcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +143,8 @@ pub struct Slots {
 pub struct WorkspacesModule {
     pub style: WorkspaceStyle,
     pub show_empty: bool,
+    /// `style = "dots"` only — see [`DotWidths`]. Trail/Pill ignore this.
+    pub dot_widths: DotWidths,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +152,12 @@ pub struct ClockModule {
     pub style: ClockStyle,
     pub format: String,
     pub show_date: bool,
+    /// `style = "none"` + this `true`: no module renders a clock label of
+    /// its own — `launcher_entry`'s placeholder text becomes the time
+    /// instead (theme 04/spotlight: the capsule's entry IS the clock until
+    /// focused, per `04-spotlight.html`'s `q.placeholder = t`). Meaningless
+    /// for `Flip`/`Plain`, which already show a time some other way.
+    pub placeholder_clock: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

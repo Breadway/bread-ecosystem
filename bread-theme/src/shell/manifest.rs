@@ -156,6 +156,11 @@ pub(super) struct RawModules {
 pub(super) struct RawWorkspacesModule {
     pub(super) style: Option<String>,
     pub(super) show_empty: Option<bool>,
+    /// `[6, 10, 14, 18]`-shaped — see [`DotWidths`]. A length other than 4
+    /// is a hard error (validated in [`resolve_modules`]) rather than
+    /// silently truncated/padded, matching this file's "typo'd key is a
+    /// hard error" policy for enum-ish values.
+    pub(super) dot_widths: Option<Vec<i64>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -164,6 +169,7 @@ pub(super) struct RawClockModule {
     pub(super) style: Option<String>,
     pub(super) format: Option<String>,
     pub(super) show_date: Option<bool>,
+    pub(super) placeholder_clock: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -318,6 +324,15 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
         ),
     };
     let show_empty = ws.and_then(|w| w.show_empty).unwrap_or(true);
+    let dot_widths = match ws.and_then(|w| w.dot_widths.as_ref()) {
+        None => DEFAULT_DOT_WIDTHS,
+        Some(v) if v.len() == 4 => [v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32],
+        Some(v) => bail!(
+            "theme '{theme_id}': modules.workspaces.dot_widths has {} entries, expected 4 \
+             (0/1/2/3-or-more open windows)",
+            v.len()
+        ),
+    };
 
     let ck = m.and_then(|m| m.clock.as_ref());
     let cstyle = match ck.and_then(|c| c.style.as_deref()) {
@@ -333,13 +348,19 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
         .and_then(|c| c.format.clone())
         .unwrap_or_else(|| "%H:%M".to_string());
     let show_date = ck.and_then(|c| c.show_date).unwrap_or(false);
+    let placeholder_clock = ck.and_then(|c| c.placeholder_clock).unwrap_or(false);
 
     Ok(Modules {
-        workspaces: WorkspacesModule { style, show_empty },
+        workspaces: WorkspacesModule {
+            style,
+            show_empty,
+            dot_widths,
+        },
         clock: ClockModule {
             style: cstyle,
             format,
             show_date,
+            placeholder_clock,
         },
     })
 }

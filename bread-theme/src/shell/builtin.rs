@@ -35,6 +35,18 @@ const GLASS_WORKBENCH_CSS: &str = include_str!(concat!(
     "/assets/shell/glass-workbench/glass-workbench.css"
 ));
 
+pub const SPOTLIGHT_ID: &str = "spotlight";
+
+const SPOTLIGHT_TOML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/spotlight/theme.toml"
+));
+
+const SPOTLIGHT_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/spotlight/spotlight.css"
+));
+
 /// One compiled-in theme's identity plus its two `include_str!`ed assets.
 /// `id`/`name` are also duplicated inside `toml`'s own `id =`/`name =`
 /// fields — kept here too so [`all`]/[`find`] can list/look up a builtin
@@ -67,6 +79,12 @@ pub const ALL: &[BuiltinTheme] = &[
         name: "Glass Workbench",
         toml: GLASS_WORKBENCH_TOML,
         css: GLASS_WORKBENCH_CSS,
+    },
+    BuiltinTheme {
+        id: SPOTLIGHT_ID,
+        name: "Spotlight",
+        toml: SPOTLIGHT_TOML,
+        css: SPOTLIGHT_CSS,
     },
 ];
 

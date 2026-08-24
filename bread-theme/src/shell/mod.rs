@@ -721,6 +721,103 @@ mod tests {
         );
     }
 
+    // ---- spotlight builtin (plan §11 phase 6) ------------------------------
+
+    #[test]
+    fn spotlight_loads_and_appears_in_list_alongside_the_other_two() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight builtin should resolve");
+        assert_eq!(theme.id(), "spotlight");
+        assert_eq!(theme.name(), "Spotlight");
+
+        let summaries = list();
+        assert!(
+            summaries
+                .iter()
+                .any(|s| s.id == "spotlight" && s.source == ThemeSource::Builtin),
+            "spotlight missing from list(): {summaries:?}"
+        );
+        // All three builtins must be listed side by side — adding the third
+        // must not have displaced either of the first two.
+        for id in ["liquid-motion", "glass-workbench"] {
+            assert!(
+                summaries
+                    .iter()
+                    .any(|s| s.id == id && s.source == ThemeSource::Builtin),
+                "{id} missing from list() after adding spotlight: {summaries:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn spotlight_window_is_a_centred_capsule_not_a_full_width_bar() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let w = theme.window();
+        // Anchored top ONLY — neither left nor right, which is what makes
+        // gtk4-layer-shell centre the surface instead of stretching it
+        // (THEME_SYSTEM_PLAN.md §7).
+        assert_eq!(w.anchors, vec!["top"]);
+        assert_eq!(w.width, Width::Px(480));
+        assert_eq!(w.height, 36);
+        assert_eq!(w.margin.top, 16);
+        assert_eq!(
+            w.exclusive,
+            Exclusive::None,
+            "the capsule floats over tiled content, unlike Island/Edge's reserved strip"
+        );
+        assert_eq!(
+            w.keyboard,
+            Keyboard::OnDemand,
+            "keyboard focus hands over only while launcher_entry holds it"
+        );
+    }
+
+    #[test]
+    fn spotlight_launcher_is_embedded_not_an_overlay_window() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        assert_eq!(theme.launcher().mode, LauncherMode::Embedded);
+        assert_eq!(theme.slots().centre, vec!["launcher_entry"]);
+        assert_eq!(theme.slots().drawer, vec!["launcher_results"]);
+        assert!(
+            !theme.slots().drawer.is_empty(),
+            "spotlight is the one builtin that actually uses the drawer slot"
+        );
+    }
+
+    #[test]
+    fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        assert!(matches!(theme.modules().workspaces.style, WorkspaceStyle::Dots));
+        assert_eq!(theme.modules().workspaces.dot_widths, [6, 10, 14, 18]);
+    }
+
+    #[test]
+    fn spotlight_clock_is_none_with_placeholder_clock_set() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        assert!(matches!(theme.modules().clock.style, ClockStyle::None));
+        assert!(
+            theme.modules().clock.placeholder_clock,
+            "spotlight's entry placeholder stands in for a clock module entirely"
+        );
+    }
+
+    #[test]
+    fn spotlight_accent_is_flat_pink_and_a_palette_token_not_hex() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.accent_from(), "pink");
+        assert_eq!(t.accent_to(), "pink");
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("@pink"),
+            "accent_from/accent_to must resolve to the @pink palette token, not a hex literal:\n{css}"
+        );
+        assert!(
+            !css.contains("#e87898"),
+            "the demo's pink hex must never leak into the manifest — pywal theming depends on \
+             this staying a palette token name:\n{css}"
+        );
+    }
+
     // ---- extends merge ------------------------------------------------
 
     #[test]

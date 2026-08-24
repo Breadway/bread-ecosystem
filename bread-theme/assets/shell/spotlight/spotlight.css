@@ -1,0 +1,73 @@
+/* CSS template for the spotlight builtin (bread-theme/src/shell/builtin.rs).
+ * Same scope and substitution rules as liquid-motion.css/glass-workbench.css:
+ * only the window/workspace/clock chrome the manifest's own concepts model.
+ *
+ * NOTE (unlike its two siblings): breadbar does not actually call
+ * `ShellTheme::css()` today — its live stylesheet is the hand-written,
+ * token-driven `breadbar::theme::load_css()`, which is where the capsule's
+ * real chrome (dots, `.launcher-entry`, `.bread-drawer`/results rows) lives.
+ * This file exists so the manifest's own template mechanism stays exercised
+ * for all three builtins equally (and so a future `bread-theme` CLI/test
+ * that DOES call `.css()` sees a real spotlight template) — see
+ * `ShellTheme::css`'s own doc comment for why that gap between "what the
+ * manifest models" and "what breadbar actually renders" is pre-existing,
+ * not new to this file.
+ *
+ * Source: bos-ui-demos/04-spotlight.html's <style> block. No trail overlay
+ * (dots never call `WorkspaceTrail::place`/`stretch`, same as pill) and no
+ * per-digit flip (`style = "none"` — no clock label markup at all).
+ */
+
+window.breadbar {
+  background-color: alpha(@bg, {bg_alpha});
+  color: @on-bg;
+  border-radius: {radius_bar}px;
+  border: 1px solid alpha(@on-bg, 0.08);
+}
+window.breadbar > box > centerbox { padding: 0 {pad}px; }
+window.breadbar button { min-height: 0; min-width: 0; }
+
+/* Dots: colour/opacity/radius only — width is per-instance data
+ * (`modules.workspaces.dot_widths`), set directly via `set_size_request` in
+ * Rust (`bar::workspaces::make_dot_button`), since GTK CSS has no
+ * per-instance variable width the way the demo's `[data-n]` attribute
+ * selectors do.
+ */
+.workspace-dot {
+  background-color: alpha(@on-bg, 0.35);
+  border-radius: {radius_pill}px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-height: 6px;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.25s {spring_settle}, opacity 0.25s {spring_settle};
+}
+.workspace-dot:hover { background-color: alpha(@on-bg, 0.55); }
+.workspace-dot:not(.occupied):not(.active) { opacity: 0.35; }
+.workspace-dot.active {
+  background-color: @{accent_from};
+  opacity: 1;
+}
+.workspace-dot.active:hover { background-color: @{accent_from}; }
+
+window.breadbar-osd {
+  background-color: alpha(@bg, 0.72);
+  color: @on-bg;
+  border-radius: {radius_pill}px;
+  border: 1px solid alpha(@on-bg, 0.10);
+}
+
+window.breadbar-panel {
+  background-color: alpha(@bg, 0.86);
+  color: @on-bg;
+  border-radius: {radius_card}px;
+  border: 1px solid alpha(@on-bg, 0.12);
+}
+
+window.breadbar-dismiss {
+  background-color: alpha(#000000, 0.02);
+}
+
+.bread-widget-slot { margin-right: {pad}px; }

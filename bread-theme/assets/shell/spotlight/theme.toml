@@ -1,0 +1,183 @@
+# The third compiled-in builtin (bread-theme/src/shell/builtin.rs), demo 04
+# in THEME_SYSTEM_PLAN.md — "Spotlight": breadbar's bar IS the launcher, a
+# centred capsule that expands into results (plan §7). Values are taken from
+# bos-ui-demos/04-spotlight.html's <style> block; where the demo is silent
+# (satellite offsets, bar-adjacent chip sizing) this file re-derives from the
+# capsule's own top edge the same way glass-workbench re-derives from its
+# flush bar's edge — see that file's header comment for the method.
+#
+# Two exceptions, same shape as glass-workbench's: font (Outfit is not
+# installed on the dev machine, so this renders in fallback until the user
+# installs ttf-outfit — same gap liquid-motion already has) and colour (the
+# demo's #e87898 pink is a *flat* accent — `--accent` doubling as both the
+# capsule's dot fill and its only gradient stop — so it maps to the
+# palette's `pink` token for both accent_from and accent_to, never a literal
+# hex value).
+#
+# What this builtin does NOT model (THEME_SYSTEM_PLAN.md phase 6 scope, task
+# "OUT OF SCOPE" list — deferred to phase 6c): query modes (`=` calc, `>`
+# command, `.` url) and result sections ("recent"/"apps") — `modes` stays
+# `["apps"]` and `sections` stays `false`, same trivial values every other
+# builtin already carries. The demo's `.searching .capsule { border-radius:
+# 20px }` (22px collapsed, 20px while actively searching) also has no
+# corresponding schema key — `[launcher].radius` is a single value, so this
+# builtin uses the collapsed 22px; the 2px searching-state shrink is an
+# unmodeled gap, not an oversight (see breadbar's launcher_entry/results
+# task notes for where this is implemented in Rust instead).
+
+name = "Spotlight"
+id   = "spotlight"
+
+[tokens]
+font_family    = "Outfit"
+font_fallback  = "Varela Round, sans-serif"
+font_size_base = 13
+radius_bar     = 22
+radius_card    = 12
+radius_sm      = 8
+radius_pill    = 999
+pad            = 14
+# Demo: `background: color-mix(in oklab, var(--glass) 82%, transparent)`.
+bg_alpha       = 0.82
+# The demo's one curve (`--spring: cubic-bezier(.22,1.35,.36,1)`) — the same
+# overshoot liquid-motion calls `spring`. No separate flatter "settle" curve
+# is defined in 04's stylesheet, so both accessors point at it, same
+# reasoning as glass-workbench's single-curve tokens.
+spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
+spring_settle  = "cubic-bezier(0.22, 1.35, 0.36, 1)"
+# Palette token NAMES, not hex — #e87898 is this palette's `pink`. Equal
+# from/to because the demo's accent here is flat, not liquid-motion's
+# accent→teal gradient.
+accent_from    = "pink"
+accent_to      = "pink"
+# Demo: `.barrow { height: 36px }` with no separate workspace-chip height —
+# the dots (`.dots button`) are sized entirely by `dot_widths` below, not by
+# chip_height, but this token still feeds any other chip-shaped element
+# (e.g. a future result-row affordance) at the bar's own row height.
+chip_height    = 36
+# Demo: `.ico { width: 30px; height: 30px }` for a result row's icon
+# swatch — the icon glyph itself sits inside that box with implicit
+# padding, so the icon_px passed to bread-launcher's `ResultsList` is sized
+# a little under the swatch box, same margin glass-workbench leaves between
+# its 18px icon_px and larger chip_height.
+icon_px        = 22
+# Floating centred capsule, full rounded border on every edge — same
+# reasoning as liquid-motion's island, not glass-workbench's flush bar.
+bar_border     = "full"
+
+[bar.window]
+# Anchored top ONLY: gtk4-layer-shell centres a surface anchored to
+# neither left nor right (THEME_SYSTEM_PLAN.md §7) — this is what makes the
+# capsule float centred instead of spanning the screen width.
+anchors   = ["top"]
+width     = 480
+height    = 36
+margin    = { top = 16 }
+# No exclusive zone: tiled clients run full-height behind the capsule,
+# unlike Island/Edge's reserved strip — the capsule floats over content.
+exclusive = "none"
+# Hands keyboard focus over only while `launcher_entry` holds it (plan §7)
+# — Island/Edge themes keep "none", unchanged.
+keyboard  = "on_demand"
+layer     = "top"
+
+[bar.slots]
+left   = ["workspaces"]
+centre = ["launcher_entry"]
+right  = ["battery"]
+drawer = ["launcher_results"]
+
+[modules.workspaces]
+style      = "dots"
+show_empty = true
+# 0/1/2/3-or-more open windows → dot width in px
+# (`04-spotlight.html`'s `.dots button[data-n="N"]` rules).
+dot_widths = [6, 10, 14, 18]
+
+[modules.clock]
+# No clock label at all — `launcher_entry`'s placeholder IS the clock
+# (`04-spotlight.html`: `q.placeholder = t` in `clock()`, replaced by the
+# search prompt only once focused/open).
+style             = "none"
+format            = "%H:%M"
+show_date         = false
+placeholder_clock = true
+
+[launcher]
+mode     = "embedded"
+# Unread by an embedded launcher (breadbar's launcher_entry/launcher_results
+# read [bar.window].width and this table's radius/icon_px instead of
+# width/top — those two fields exist only for LauncherMode::Overlay, which
+# breadbox's own window still uses). Kept at the bar's own width/22px radius
+# for consistency with a reader who expects [launcher] to describe the
+# launcher's shape regardless of mode.
+width    = 480
+top      = "16px"
+radius   = 22
+icon_px  = 22
+row_anim = "none"
+rule     = "none"
+footer   = "count_apps"
+sections = false
+modes    = ["apps"]
+
+# Same five satellite namespaces as liquid-motion/glass-workbench, keyed
+# identically. This bar's edge sits at margin.top(16) + height(36) = 52px —
+# re-deriving glass-workbench's own edge+8/edge relationship (44 = 36+8,
+# 36 = 36) against 52 gives 60 (52+8) and 52.
+[surfaces."breadbar-notif"]
+anchor = "top_right"
+offset = [16, 60]
+width  = 320
+layer  = "overlay"
+
+[surfaces."breadbar-osd"]
+# Independent of bar height — unchanged from liquid-motion/glass-workbench.
+anchor = "bottom_centre"
+offset = 80
+width  = 180
+layer  = "overlay"
+
+[surfaces."breadbar-panel"]
+anchor = "top_right"
+offset = [16, 60]
+width  = "auto"
+layer  = "overlay"
+
+[surfaces."breadbar-dismiss"]
+anchor = "fill"
+offset = 52
+width  = "fill"
+layer  = "overlay"
+
+# Appearance-only, identical in shape to liquid-motion/glass-workbench's
+# rules — blur strength is still global (plan §9 known limit).
+[compositor."breadbar"]
+blur         = true
+ignore_alpha = 0.18
+blur_popups  = true
+animation    = "slide top"
+
+[compositor."breadbar-osd"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide bottom"
+
+[compositor."breadbar-notif"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-panel"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-dismiss"]
+no_anim = true
+
+[compositor."breadbox"]
+blur         = true
+ignore_alpha = 0.2
+
+# No `css = "..."` overlay — compiled-in builtin, same as its two siblings.

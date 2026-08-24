@@ -1,6 +1,8 @@
 #[cfg(feature = "adw")]
 pub mod adw;
 #[cfg(feature = "gtk")]
+pub mod anim;
+#[cfg(feature = "gtk")]
 pub mod gtk;
 mod layerrules;
 mod output;
