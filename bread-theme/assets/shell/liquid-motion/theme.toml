@@ -8,8 +8,10 @@
 # breadbar/src/theme.rs (load_css's radius/pad/spring locals and the actual
 # CSS selectors), breadbar/src/{panel,osd}.rs and
 # breadbar/src/notifications/{popup,history}.rs (satellite window anchors,
-# margins, namespaces), breadbox/breadbox/src/main.rs:341-344 (launcher
-# geometry), ~/.config/hypr/scripts/ui/rules.lua (compositor rules).
+# margins, namespaces), breadbox/breadbox/src/main.rs:341-346 (launcher
+# margin/size), :151 (build_css's .launcher-bg radius), :174-193 (make_icon's
+# set_pixel_size calls), ~/.config/hypr/scripts/ui/rules.lua (compositor
+# rules).
 
 name = "Liquid Motion"
 id   = "liquid-motion"
@@ -85,8 +87,24 @@ show_date = false
 mode     = "overlay"
 width    = 600
 top      = "120px"
-radius   = 20
-icon_px  = 36
+# .launcher-bg { border-radius: 8px } (build_css, main.rs:151) — corrected
+# from an earlier demo-derived 20px; breadbox does not implement the demo's
+# 20px rounding.
+radius   = 8
+# make_icon() (main.rs:174-193) calls img.set_pixel_size(32) on both the
+# cached-texture (gio::File/gdk::Texture) path and the GTK icon-theme
+# fallback path — corrected from a demo-derived 36px.
+icon_px  = 32
+# Declared-but-not-yet-consumed: breadbox's Phase 4b-i wiring reads only
+# mode/width/top/radius/icon_px above; it does not read any of the five keys
+# below. row_anim/rule/footer are demo-derived aspirations breadbox
+# implements not at all today (no row entrance/exit animation, no
+# rule/divider element between the search entry and the list, no footer
+# widget summarizing app count). sections/modes happen to already describe
+# today's actual (trivial) behaviour — one flat unsectioned list, plain app
+# search with no calc/command/url modes — but are likewise unread by any
+# code path; a real sections/modes implementation is Phase 5/6, same as the
+# other three.
 row_anim = "flip"
 rule     = "gradient"
 footer   = "count_apps"

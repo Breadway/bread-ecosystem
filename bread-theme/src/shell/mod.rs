@@ -564,6 +564,21 @@ mod tests {
     }
 
     #[test]
+    fn builtin_launcher_matches_current_breadbox_geometry() {
+        // breadbox/breadbox/src/main.rs:341-346 (margin/size), :151
+        // (build_css's .launcher-bg radius), :174-193 (make_icon's
+        // set_pixel_size calls). radius=8 and icon_px=32 are current CODE
+        // values, not the demo's 20/36 — see Phase 4b-i's manifest audit.
+        let theme = resolve_builtin();
+        let l = theme.launcher();
+        assert!(matches!(l.mode, LauncherMode::Overlay));
+        assert_eq!(l.width, 600);
+        assert_eq!(l.top, "120px");
+        assert_eq!(l.radius, 8);
+        assert_eq!(l.icon_px, 32);
+    }
+
+    #[test]
     fn builtin_css_substitutes_tokens_and_leaves_palette_names_untouched() {
         let theme = resolve_builtin();
         let css = theme.css(&crate::Palette::default());
