@@ -1,5 +1,5 @@
 [workspace]
-members = ["bakery", "bread-theme", "bread-utils", "bread-onnx", "bread-screenshots", "bread-capture", "bread-app", "bread-polkit"]
+members = ["bakery", "bread-theme", "bread-utils", "bread-onnx", "bread-screenshots", "bread-capture", "bread-app", "bread-polkit", "bread-launcher"]
 resolver = "2"
 
 [workspace.package]

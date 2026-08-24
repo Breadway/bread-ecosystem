@@ -203,6 +203,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bread-launcher"
+version = "0.7.4"
+dependencies = [
+ "bread-utils",
+ "gtk4",
+ "serde_json",
+]
+
+[[package]]
 name = "bread-onnx"
 version = "0.7.4"
 dependencies = [

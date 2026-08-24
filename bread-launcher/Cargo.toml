@@ -1,0 +1,26 @@
+[package]
+name = "bread-launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Headless app-launcher core (desktop-entry discovery, fuzzy matching/ranking, launch history, launching) plus an optional GTK4 results-list widget — the shared logic behind breadbox's overlay window and breadbar's embedded capsule"
+repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
+keywords = ["launcher", "desktop-entry", "gtk4", "wayland"]
+
+[dependencies]
+serde_json = { workspace = true }
+# `do_launch`/`emit_launched` publish a `bread.<app>.launched` event over
+# breadd's IPC socket after a successful spawn, fire-and-forget — this was
+# already breadbox's behaviour (`BreadClient::emit` never blocks or errors
+# the launching caller), just relocated. Not optional: launching is core,
+# headless functionality, unlike the GTK widget below.
+bread-utils = { path = "../bread-utils", features = ["bread-client"] }
+gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
+
+[features]
+# Enable the GTK4 results-list widget (`gtk` module): row building, fuzzy
+# filtering, match/history sorting, and keyboard-style selection movement.
+# Optional so a headless consumer of the matching/ranking/launch core (or a
+# future non-GTK host) doesn't have to pull in GTK4.
+gtk = ["dep:gtk4"]
