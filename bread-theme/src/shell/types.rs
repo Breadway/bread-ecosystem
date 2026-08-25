@@ -200,6 +200,13 @@ pub struct Launcher {
 /// one lookup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Surface {
+    /// One of `top_right`/`bottom_centre`/`fill` — validated in
+    /// `manifest.rs::resolve_surfaces` against the shapes
+    /// `breadbar/src/surface.rs::apply` actually implements, the same
+    /// "typo'd key is a hard error" policy this field's siblings
+    /// (`width`, `layer`) already got. Required, not defaulted: a surface
+    /// entry with no anchor at all is as much a hard `theme.toml` error as
+    /// an unrecognized one.
     pub anchor: String,
     pub offset: Vec<f64>,
     pub width: SurfaceWidth,

@@ -1035,6 +1035,67 @@ mod tests {
         assert!(format!("{err:#}").contains("hexagon"));
     }
 
+    #[test]
+    fn unknown_surface_anchor_is_a_hard_error_not_a_silent_default() {
+        // Before the fix, `surfaces.*.anchor` was the one enum-shaped
+        // field in the whole schema that skipped manifest-time validation
+        // entirely (`unwrap_or_default()`), unlike its siblings `width` and
+        // `layer` which both `bail!`. A typo here must fail exactly like
+        // any other typo'd enum value.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "badanchor",
+            r#"
+                id = "badanchor"
+                [surfaces."breadbar-notif"]
+                anchor = "top_lft"
+                width  = 320
+                layer  = "overlay"
+            "#,
+        );
+        let err = load_named("badanchor").expect_err("unknown anchor must be a hard error");
+        assert!(format!("{err:#}").contains("top_lft"));
+    }
+
+    #[test]
+    fn missing_surface_anchor_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "noanchor",
+            r#"
+                id = "noanchor"
+                [surfaces."breadbar-notif"]
+                width  = 320
+                layer  = "overlay"
+            "#,
+        );
+        let err = load_named("noanchor").expect_err("missing anchor must be a hard error");
+        assert!(format!("{err:#}").contains("no anchor set"));
+    }
+
+    #[test]
+    fn every_known_surface_anchor_shape_resolves() {
+        for anchor in ["top_right", "bottom_centre", "fill"] {
+            let xdg = isolated_xdg();
+            write_theme(
+                &xdg,
+                "okanchor",
+                &format!(
+                    r#"
+                        id = "okanchor"
+                        [surfaces."breadbar-notif"]
+                        anchor = "{anchor}"
+                    "#
+                ),
+            );
+            let theme = load_named("okanchor")
+                .unwrap_or_else(|e| panic!("anchor {anchor} should resolve: {e:#}"));
+            assert_eq!(theme.surfaces()["breadbar-notif"].anchor, anchor);
+        }
+    }
+
     // ---- fallback on broken theme -----------------------------------------
 
     #[test]
