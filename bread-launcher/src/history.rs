@@ -30,4 +30,16 @@ impl LaunchHistory {
             let _ = fs::write(&self.path, json);
         }
     }
+
+    /// In-memory history with no backing file — [`save`](Self::save) is a
+    /// silent no-op (an empty `path`). Lets a test (or a future in-memory
+    /// host) control counts directly instead of writing through
+    /// `~/.cache/<app>/history.json`.
+    #[cfg(test)]
+    pub(crate) fn from_counts(counts: HashMap<String, u32>) -> Self {
+        LaunchHistory {
+            counts,
+            path: PathBuf::new(),
+        }
+    }
 }

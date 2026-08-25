@@ -20,6 +20,7 @@ mod icon;
 mod launch;
 mod matching;
 mod paths;
+mod query;
 
 #[cfg(feature = "gtk")]
 pub mod gtk;
@@ -28,8 +29,11 @@ pub use desktop::{load_all_desktop_entries, parse_desktop, strip_exec_codes, Des
 pub use history::LaunchHistory;
 pub use icon::IconCache;
 pub use launch::{do_launch, emit_launched};
-pub use matching::{fuzzy_matches, fuzzy_score, load_sorted_entries, matches_term, priority_rank};
+pub use matching::{
+    fuzzy_matches, fuzzy_score, load_sorted_entries, matches_term, priority_rank, split_sections,
+};
 pub use paths::{app_dirs, cache_dir, config_dir, home_dir};
+pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Command, ParsedQuery, QueryKind};
 
 /// The launcher's one shared identity, passed to [`cache_dir`]/[`config_dir`]/
 /// [`IconCache::new`]/[`LaunchHistory::load`] by every host that embeds this

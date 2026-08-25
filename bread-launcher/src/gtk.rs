@@ -17,7 +17,7 @@ use gtk4::{
 
 use crate::desktop::DesktopEntry;
 use crate::history::LaunchHistory;
-use crate::matching::{fuzzy_matches, fuzzy_score};
+use crate::matching::{fuzzy_matches, fuzzy_score, split_sections};
 
 fn make_icon(icon_name: &str, icon_path: Option<&Path>, icon_px: i32) -> Image {
     // Try loading from resolved cached path via gio::File
@@ -71,6 +71,24 @@ fn build_row(entry: &DesktopEntry, idx: u32, icon_px: i32) -> ListBoxRow {
     row
 }
 
+/// A non-selectable, non-activatable "Recent"/"Apps" label row (plan phase
+/// 6c, `[launcher].sections`) — deliberately carries no `"entry"` row data,
+/// which is exactly what [`row_entry`] (and everything downstream of it:
+/// `set_query`'s filter, `select_next`/`select_prev`'s traversal) already
+/// uses to tell a header apart from a real app row.
+fn build_header_row(label: &str, idx: u32) -> ListBoxRow {
+    let row = ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+    row.add_css_class("bread-drawer-section-header");
+    let lbl = Label::new(Some(label));
+    lbl.add_css_class("section-header-label");
+    lbl.set_xalign(0.0);
+    row.set_child(Some(&lbl));
+    unsafe { row.set_data("initial_order", idx) };
+    row
+}
+
 /// Reads the [`DesktopEntry`] a row was built from — e.g. from a
 /// `ListBox::connect_row_activated` handler, which hands back a row
 /// reference rather than going through [`ResultsList::selected_entry`].
@@ -99,12 +117,48 @@ impl ResultsList {
     /// Builds one row per entry (in `entries`' given order — that order is
     /// also the fallback sort when the query is empty) and wires up sorting
     /// against `history`'s launch counts.
-    pub fn new(entries: &[DesktopEntry], icon_px: i32, history: Rc<RefCell<LaunchHistory>>) -> Self {
+    ///
+    /// `sections` (`[launcher].sections`, plan phase 6c): when true, the
+    /// idle (empty-query) view groups `entries` into "Recent"/"Apps"
+    /// [`build_header_row`]s via [`split_sections`] instead of one flat
+    /// list. Sections disappear the moment a query is typed — `set_query`
+    /// falls back to the same flat fuzzy-ranked list either way — so this
+    /// only changes the initial build order and the header rows' presence,
+    /// never the (unchanged) search behaviour. `false` reproduces the
+    /// exact pre-phase-6c flat list breadbox's own overlay still uses.
+    pub fn new(
+        entries: &[DesktopEntry],
+        icon_px: i32,
+        history: Rc<RefCell<LaunchHistory>>,
+        sections: bool,
+    ) -> Self {
         let list = ListBox::new();
         list.set_selection_mode(SelectionMode::Browse);
 
-        for (idx, entry) in entries.iter().enumerate() {
-            list.append(&build_row(entry, idx as u32, icon_px));
+        let mut idx = 0u32;
+        if sections {
+            let (recent, apps) = split_sections(entries.to_vec(), &history.borrow());
+            if !recent.is_empty() {
+                list.append(&build_header_row("Recent", idx));
+                idx += 1;
+                for entry in &recent {
+                    list.append(&build_row(entry, idx, icon_px));
+                    idx += 1;
+                }
+            }
+            if !apps.is_empty() {
+                list.append(&build_header_row("Apps", idx));
+                idx += 1;
+                for entry in &apps {
+                    list.append(&build_row(entry, idx, icon_px));
+                    idx += 1;
+                }
+            }
+        } else {
+            for entry in entries {
+                list.append(&build_row(entry, idx, icon_px));
+                idx += 1;
+            }
         }
 
         let query: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
@@ -122,22 +176,34 @@ impl ResultsList {
                     };
                     return oa.cmp(&ob).into();
                 }
-                let (Some(ea), Some(eb)) = (row_entry(row_a), row_entry(row_b)) else {
-                    return std::cmp::Ordering::Equal.into();
-                };
-                let sa = fuzzy_score(&query, &ea);
-                let sb = fuzzy_score(&query, &eb);
-                let history = history.borrow();
-                let ca = history.count(&ea.name);
-                let cb = history.count(&eb.name);
-                sa.cmp(&sb)
-                    .then(cb.cmp(&ca))
-                    .then(ea.name.to_lowercase().cmp(&eb.name.to_lowercase()))
-                    .into()
+                // A header row carries no "entry" data — sort it after any
+                // real row rather than treating the comparison as `Equal`,
+                // though `set_query` also hides every header outright once
+                // a query is non-empty, so this only matters for the
+                // underlying (invisible) list order, never what's shown.
+                match (row_entry(row_a), row_entry(row_b)) {
+                    (Some(ea), Some(eb)) => {
+                        let sa = fuzzy_score(&query, &ea);
+                        let sb = fuzzy_score(&query, &eb);
+                        let history = history.borrow();
+                        let ca = history.count(&ea.name);
+                        let cb = history.count(&eb.name);
+                        sa.cmp(&sb)
+                            .then(cb.cmp(&ca))
+                            .then(ea.name.to_lowercase().cmp(&eb.name.to_lowercase()))
+                            .into()
+                    }
+                    (None, Some(_)) => std::cmp::Ordering::Greater.into(),
+                    (Some(_), None) => std::cmp::Ordering::Less.into(),
+                    (None, None) => std::cmp::Ordering::Equal.into(),
+                }
             });
         }
 
-        if let Some(first) = list.row_at_index(0) {
+        let first_real = (0i32..)
+            .map_while(|i| list.row_at_index(i))
+            .find(|r| row_entry(r).is_some());
+        if let Some(first) = first_real {
             list.select_row(Some(&first));
         }
 
@@ -151,23 +217,29 @@ impl ResultsList {
     }
 
     /// Re-filters (fuzzy match against name, `wm_class`, and `exec`) and
-    /// re-sorts by `query`, then selects the first visible row.
+    /// re-sorts by `query`, then selects the first visible row. A header
+    /// row (see [`build_header_row`]) only ever shows in the idle
+    /// (empty-query) browse view — it has no name/`wm_class`/`exec` of its
+    /// own to filter against.
     pub fn set_query(&self, query: &str) {
         *self.query.borrow_mut() = query.to_string();
         let mut i = 0i32;
         while let Some(row) = self.list.row_at_index(i) {
-            let vis = row_entry(&row)
-                .map(|e| {
+            let vis = match row_entry(&row) {
+                Some(e) => {
                     fuzzy_matches(query, &e.name)
                         || e.wm_class.as_deref().is_some_and(|w| fuzzy_matches(query, w))
                         || fuzzy_matches(query, &e.exec)
-                })
-                .unwrap_or(false);
+                }
+                None => query.is_empty(),
+            };
             row.set_visible(vis);
             i += 1;
         }
         self.list.invalidate_sort();
-        let first_vis = (0i32..).find_map(|j| self.list.row_at_index(j).filter(|r| r.is_visible()));
+        let first_vis = (0i32..)
+            .map_while(|j| self.list.row_at_index(j))
+            .find(|r| r.is_visible() && row_entry(r).is_some());
         self.list.select_row(first_vis.as_ref());
     }
 
@@ -175,13 +247,16 @@ impl ResultsList {
         self.list.selected_row().and_then(|r| row_entry(&r))
     }
 
-    /// Moves the selection to the next visible row, if any.
+    /// Moves the selection to the next visible row, if any. Skips header
+    /// rows even though they may be visible (the idle browse view) —
+    /// `set_selectable(false)` alone doesn't stop a programmatic
+    /// `select_row` call from landing on one.
     pub fn select_next(&self) {
         let cur = self.list.selected_row().map(|r| r.index()).unwrap_or(-1);
         let mut i = cur + 1;
         loop {
             match self.list.row_at_index(i) {
-                Some(r) if r.is_visible() => {
+                Some(r) if r.is_visible() && row_entry(&r).is_some() => {
                     self.list.select_row(Some(&r));
                     break;
                 }
@@ -191,7 +266,8 @@ impl ResultsList {
         }
     }
 
-    /// Moves the selection to the previous visible row, if any.
+    /// Moves the selection to the previous visible row, if any. See
+    /// [`select_next`](Self::select_next) on skipping header rows.
     pub fn select_prev(&self) {
         let cur = self.list.selected_row().map(|r| r.index()).unwrap_or(0);
         let mut i = cur - 1;
@@ -200,7 +276,7 @@ impl ResultsList {
                 break;
             }
             match self.list.row_at_index(i) {
-                Some(r) if r.is_visible() => {
+                Some(r) if r.is_visible() && row_entry(&r).is_some() => {
                     self.list.select_row(Some(&r));
                     break;
                 }

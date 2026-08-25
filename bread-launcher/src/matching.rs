@@ -132,6 +132,39 @@ pub fn load_sorted_entries(
     entries
 }
 
+/// The demo's own cap (`BOS.pushRecent`'s `.slice(0, 4)`) on how many
+/// entries the "Recent" section shows.
+pub const MAX_RECENT: usize = 4;
+
+/// Splits `entries` (already ordered by [`load_sorted_entries`]) into a
+/// "recent" section — the entries `history` has any launch count for, most-
+/// launched first, capped at [`MAX_RECENT`] — and an "apps" section: every
+/// other entry, in its existing relative order. No new tracking beyond
+/// `LaunchHistory`'s existing counts (THEME_SYSTEM_PLAN.md phase 6c task
+/// notes: "`LaunchHistory` already tracks counts for a recents list").
+///
+/// Only meaningful when `entries` has no priority-ranked prefix (breadbar's
+/// capsule calls [`load_sorted_entries`] with an empty `priority` list) —
+/// with a non-empty priority list, priority-ranked entries still sort first
+/// and would be treated as "apps" here even if launched often, since this
+/// function has no way to tell "sorted first because launched a lot" from
+/// "sorted first because priority-ranked" apart from the count itself.
+pub fn split_sections(
+    entries: Vec<DesktopEntry>,
+    history: &LaunchHistory,
+) -> (Vec<DesktopEntry>, Vec<DesktopEntry>) {
+    let mut recent = Vec::new();
+    let mut apps = Vec::new();
+    for entry in entries {
+        if recent.len() < MAX_RECENT && history.count(&entry.name) > 0 {
+            recent.push(entry);
+        } else {
+            apps.push(entry);
+        }
+    }
+    (recent, apps)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +301,64 @@ mod tests {
         let e = entry("VSCodium", None);
         let priority = vec!["code".to_string()];
         assert_eq!(priority_rank(&e, &priority), None);
+    }
+
+    // ---- split_sections --------------------------------------------------
+
+    #[test]
+    fn split_sections_no_history_is_all_apps() {
+        let entries = vec![entry("Firefox", None), entry("GoLand", None)];
+        let history = LaunchHistory::from_counts(HashMap::new());
+        let (recent, apps) = split_sections(entries, &history);
+        assert!(recent.is_empty());
+        assert_eq!(apps.len(), 2);
+    }
+
+    #[test]
+    fn split_sections_launched_entries_go_to_recent() {
+        let entries = vec![
+            entry("Firefox", None),
+            entry("GoLand", None),
+            entry("Steam", None),
+        ];
+        let mut counts = HashMap::new();
+        counts.insert("Firefox".to_string(), 5);
+        let history = LaunchHistory::from_counts(counts);
+        let (recent, apps) = split_sections(entries, &history);
+        assert_eq!(recent.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["Firefox"]);
+        assert_eq!(
+            apps.iter().map(|e| &e.name).collect::<Vec<_>>(),
+            vec!["GoLand", "Steam"]
+        );
+    }
+
+    #[test]
+    fn split_sections_caps_recent_at_max() {
+        let entries: Vec<DesktopEntry> = (0..(MAX_RECENT + 2))
+            .map(|i| entry(&format!("App{i}"), None))
+            .collect();
+        let counts = entries
+            .iter()
+            .map(|e| (e.name.clone(), 1))
+            .collect::<HashMap<_, _>>();
+        let history = LaunchHistory::from_counts(counts);
+        let (recent, apps) = split_sections(entries, &history);
+        assert_eq!(recent.len(), MAX_RECENT);
+        assert_eq!(apps.len(), 2);
+    }
+
+    #[test]
+    fn split_sections_preserves_relative_order_within_each_group() {
+        let mut counts = HashMap::new();
+        counts.insert("A".to_string(), 1);
+        counts.insert("C".to_string(), 3);
+        let history = LaunchHistory::from_counts(counts);
+        // load_sorted_entries would already have ordered these by count
+        // desc before calling split_sections; split_sections itself just
+        // partitions in whatever order it's handed, so feed it pre-sorted.
+        let pre_sorted = vec![entry("C", None), entry("A", None), entry("B", None)];
+        let (recent, apps) = split_sections(pre_sorted, &history);
+        assert_eq!(recent.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["C", "A"]);
+        assert_eq!(apps.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["B"]);
     }
 }
