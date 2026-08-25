@@ -71,7 +71,15 @@ pub fn matches_term(field: &str, term: &str) -> bool {
         if before_ok && after_ok {
             return true;
         }
-        start = i + 1;
+        // Advance past the WHOLE match, not one byte past its start. Both `i`
+        // (a match start) and `i + tlen` (its end) are guaranteed char
+        // boundaries; `i + 1` is not, so a multi-byte term that failed the
+        // word-boundary check left `start` inside a character and the next
+        // `field[start..]` slice panicked outright. `matches_term("café", "é")`
+        // reproduced it: "byte index 4 is not a char boundary". Reached via
+        // priority_rank over real .desktop `Name=` values, so any non-ASCII
+        // app name could crash the launcher's sort.
+        start = i + tlen;
         if start >= field.len() {
             break;
         }
@@ -167,6 +175,21 @@ pub fn split_sections(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn multibyte_term_that_fails_word_boundary_does_not_panic() {
+        // "é" occurs in "café" but is preceded by an alphanumeric, so the
+        // whole-word check fails and the scan must continue — landing mid
+        // character before the fix.
+        assert!(!super::matches_term("café", "é"));
+        assert!(!super::matches_term("naïve café", "ï"));
+    }
+
+    #[test]
+    fn multibyte_whole_word_still_matches() {
+        assert!(super::matches_term("café bar", "café"));
+        assert!(super::matches_term("día", "día"));
+    }
+
     use super::*;
 
     fn entry(name: &str, wm_class: Option<&str>) -> DesktopEntry {
