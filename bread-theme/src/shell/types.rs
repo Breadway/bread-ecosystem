@@ -178,6 +178,19 @@ pub struct Launcher {
     pub footer: String,
     pub sections: bool,
     pub modes: Vec<String>,
+    /// `LauncherMode::Embedded` only (theme 04/spotlight, plan §7 phase 6c):
+    /// the capsule's own width while a search is in progress
+    /// (`04-spotlight.html`: `.searching .capsule { width: 520px }` vs the
+    /// idle 480px). Defaults to `width` (no widen) for a theme that omits
+    /// it, so an `Overlay`-mode theme — which never reads this field at all
+    /// — and an `Embedded` theme that just doesn't want the widen both fall
+    /// back to "no change" rather than a hardcoded magic number.
+    pub search_width: i32,
+    /// `LauncherMode::Embedded` only: `border-radius` while searching
+    /// (`04-spotlight.html`: `.searching .capsule { border-radius: 20px }`
+    /// vs the collapsed 22px `radius`). Same default-to-`radius` fallback
+    /// reasoning as `search_width`.
+    pub search_radius: i32,
 }
 
 /// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]` —

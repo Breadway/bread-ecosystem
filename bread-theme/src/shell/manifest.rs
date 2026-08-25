@@ -185,6 +185,8 @@ pub(super) struct RawLauncher {
     pub(super) footer: Option<String>,
     pub(super) sections: Option<bool>,
     pub(super) modes: Option<Vec<String>>,
+    pub(super) search_width: Option<i64>,
+    pub(super) search_radius: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -374,13 +376,15 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
             bail!("theme '{theme_id}': launcher.mode = \"{other}\" is not overlay|embedded")
         }
     };
+    let width = l.and_then(|l| l.width).unwrap_or(540) as i32;
+    let radius = l.and_then(|l| l.radius).unwrap_or(20) as i32;
     Ok(Launcher {
         mode,
-        width: l.and_then(|l| l.width).unwrap_or(540) as i32,
+        width,
         top: l
             .and_then(|l| l.top.clone())
             .unwrap_or_else(|| "16%".to_string()),
-        radius: l.and_then(|l| l.radius).unwrap_or(20) as i32,
+        radius,
         icon_px: l.and_then(|l| l.icon_px).unwrap_or(36) as i32,
         row_anim: l
             .and_then(|l| l.row_anim.clone())
@@ -395,6 +399,11 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         modes: l
             .and_then(|l| l.modes.clone())
             .unwrap_or_else(|| vec!["apps".to_string()]),
+        // Default to the idle value — a theme that never sets these gets
+        // "no change while searching", not a hardcoded widen/shrink it
+        // never asked for (see the field docs on `Launcher`).
+        search_width: l.and_then(|l| l.search_width).map(|v| v as i32).unwrap_or(width),
+        search_radius: l.and_then(|l| l.search_radius).map(|v| v as i32).unwrap_or(radius),
     })
 }
 

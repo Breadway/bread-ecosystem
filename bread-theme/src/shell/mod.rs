@@ -784,6 +784,56 @@ mod tests {
     }
 
     #[test]
+    fn spotlight_launcher_widget_slot_gives_left_of_stats_widgets_a_home() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        assert!(
+            theme
+                .slots()
+                .right
+                .iter()
+                .any(|s| s == "widget:left_of_stats"),
+            "a Lua widget requesting WidgetPlacement::LeftOfStats (e.g. \
+             git-branch-widget.lua) must have a home under spotlight: {:?}",
+            theme.slots().right
+        );
+    }
+
+    #[test]
+    fn spotlight_query_modes_and_sections_are_enabled_phase_6c() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let l = theme.launcher();
+        assert!(l.sections, "phase 6c: recent/apps headers are implemented");
+        for mode in ["apps", "calc", "cmd", "url"] {
+            assert!(
+                l.modes.iter().any(|m| m == mode),
+                "spotlight.modes should list \"{mode}\": {:?}",
+                l.modes
+            );
+        }
+    }
+
+    #[test]
+    fn spotlight_launcher_search_state_geometry_differs_from_idle() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let l = theme.launcher();
+        assert_eq!(l.width, 480);
+        assert_eq!(l.search_width, 520);
+        assert_eq!(l.radius, 22);
+        assert_eq!(l.search_radius, 20);
+    }
+
+    #[test]
+    fn launcher_search_geometry_defaults_to_idle_values_when_unset() {
+        // liquid-motion's own [launcher] table never sets search_width/
+        // search_radius — a theme that omits them must fall back to "no
+        // change while searching", not some hardcoded magic number.
+        let theme = resolve_builtin();
+        let l = theme.launcher();
+        assert_eq!(l.search_width, l.width);
+        assert_eq!(l.search_radius, l.radius);
+    }
+
+    #[test]
     fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
         assert!(matches!(theme.modules().workspaces.style, WorkspaceStyle::Dots));

@@ -14,16 +14,13 @@
 # palette's `pink` token for both accent_from and accent_to, never a literal
 # hex value).
 #
-# What this builtin does NOT model (THEME_SYSTEM_PLAN.md phase 6 scope, task
-# "OUT OF SCOPE" list — deferred to phase 6c): query modes (`=` calc, `>`
-# command, `.` url) and result sections ("recent"/"apps") — `modes` stays
-# `["apps"]` and `sections` stays `false`, same trivial values every other
-# builtin already carries. The demo's `.searching .capsule { border-radius:
-# 20px }` (22px collapsed, 20px while actively searching) also has no
-# corresponding schema key — `[launcher].radius` is a single value, so this
-# builtin uses the collapsed 22px; the 2px searching-state shrink is an
-# unmodeled gap, not an oversight (see breadbar's launcher_entry/results
-# task notes for where this is implemented in Rust instead).
+# Phase 6c (this pass): query modes (`=` calc, `>` command, `.` url) and
+# result sections ("recent"/"apps") are now implemented — `modes` lists all
+# four and `sections` is `true`. The demo's `.searching .capsule` state
+# (480px -> 520px width, 22px -> 20px radius) is modeled via two new
+# `[launcher]` keys, `search_width`/`search_radius`, read only by
+# `LauncherMode::Embedded` hosts (breadbar's capsule; unread by breadbox's
+# overlay window, which stays `mode = "overlay"`).
 
 name = "Spotlight"
 id   = "spotlight"
@@ -84,7 +81,19 @@ layer     = "top"
 [bar.slots]
 left   = ["workspaces"]
 centre = ["launcher_entry"]
-right  = ["battery"]
+# `widget:left_of_stats` (Phase 6c decision, see task notes): a Lua widget
+# that requests this same placement (`bread-shared`'s `WidgetPlacement::
+# LeftOfStats`, e.g. a real user's `git-branch-widget.lua`) would otherwise
+# be silently undeliverable under spotlight — no `[bar.slots]` entry named
+# any `widget:*` key at all, so `reconcile_widgets` drops it every time
+# (quietly, since the Phase 6b fix, but still dropped). Deliberately just
+# this one alias, not all five liquid-motion carries: spotlight has no
+# clock module to anchor `left_of_clock`/`right_of_clock` against and no
+# workspace-adjacent affordance next to its compact dots, so adding those
+# would clutter a launcher-focused capsule with slots nothing here asks
+# for. `left_of_stats` sits right where `battery` already does, matching
+# liquid-motion's own ordering (`widget:left_of_stats` before its module).
+right  = ["widget:left_of_stats", "battery"]
 drawer = ["launcher_results"]
 
 [modules.workspaces]
@@ -118,8 +127,21 @@ icon_px  = 22
 row_anim = "none"
 rule     = "none"
 footer   = "count_apps"
-sections = false
-modes    = ["apps"]
+# Phase 6c: "recent" / "apps" headers in the idle (empty-query) drawer view
+# — `bread_launcher::split_sections` groups the same already-loaded/sorted
+# entries `LaunchHistory`'s counts already rank, no new tracking needed.
+sections = true
+# `04-spotlight.html`'s three prefixes: `=` calc, `>` command, `.` url —
+# `bread_launcher::parse_query`/`eval_calc`/`filter_commands` implement the
+# pure logic; breadbar's capsule wiring (main.rs) gates on this list so an
+# unlisted prefix character just falls through to a literal "apps" query.
+modes    = ["apps", "calc", "cmd", "url"]
+# `04-spotlight.html`: `.searching .capsule { width: 520px; border-radius:
+# 20px }` vs the idle 480px/22px above — animated via
+# `bread_theme::anim::spring_to` (width) and a `.searching` CSS class
+# (radius) in breadbar's capsule wiring.
+search_width  = 520
+search_radius = 20
 
 # Same five satellite namespaces as liquid-motion/glass-workbench, keyed
 # identically. This bar's edge sits at margin.top(16) + height(36) = 52px —
