@@ -53,4 +53,11 @@ pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Comma
 /// this constant — that reads exactly like an unfixed bug (breadbar naming
 /// another app's identity) and invites a later "fix" that would quietly
 /// break the shared history this constant exists to guarantee.
+///
+/// **Not** the `app_id` for [`do_launch`]/[`emit_launched`]: those publish
+/// bread-bus events, which must be namespaced under the caller's *own*
+/// identity (breadbox's is `"box"`, not `"breadbox"`) or
+/// `BreadClient::emit`'s namespace check silently drops them. This constant
+/// is scoped to the cache/history path family only — see [`do_launch`]'s
+/// doc comment for the concrete failure mode if the two get swapped.
 pub const LAUNCHER_APP: &str = "breadbox";
