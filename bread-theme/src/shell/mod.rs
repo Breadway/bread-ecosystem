@@ -17,10 +17,19 @@
 //! 3. the compiled-in builtin (currently only `liquid-motion`)
 //!
 //! The *active* id comes from `~/.config/bread/shell.toml`'s `active = "..."`
-//! key, overridden by `$BREAD_SHELL_THEME` (the `--theme` CLI flag mentioned
-//! in the plan is a consumer-side concern — breadbar/breadbox would set
-//! `$BREAD_SHELL_THEME` themselves before calling [`load`], rather than this
-//! crate parsing argv).
+//! key — this is the **primary, shared selector**: every host reads the same
+//! file, so it's the only mechanism that can coordinate two already-running
+//! processes (breadbar and breadbox) onto the same theme. It can be
+//! overridden by `$BREAD_SHELL_THEME`, but that override is a
+//! **single-process convenience for testing/development only** — it's read
+//! once per process (`active_theme_id`), so setting it in one shell before
+//! launching breadbar has no effect on a separately-launched breadbox unless
+//! both processes' launch environments happen to inherit it from the same
+//! place (e.g. a compositor-wide `exec-once environment` directive). Do not
+//! rely on it to switch themes for a running system; edit `shell.toml`
+//! instead (the `--theme` CLI flag mentioned in the plan is a consumer-side
+//! concern — breadbar/breadbox would set `$BREAD_SHELL_THEME` themselves
+//! before calling [`load`], rather than this crate parsing argv).
 //!
 //! ## `extends` (plan §4/§11)
 //!
@@ -330,6 +339,11 @@ pub fn load() -> ShellTheme {
     }
 }
 
+/// `$BREAD_SHELL_THEME`, else `shell.toml`'s `active` key, else the builtin
+/// default — see the module doc's "Discovery" section for which of these is
+/// the primary/shared selector (`shell.toml`) versus a per-process testing
+/// override (`$BREAD_SHELL_THEME`) that cannot coordinate more than one
+/// already-running process.
 fn active_theme_id() -> String {
     if let Ok(v) = std::env::var("BREAD_SHELL_THEME") {
         if !v.trim().is_empty() {
