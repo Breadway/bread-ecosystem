@@ -45,7 +45,7 @@ mod types;
 #[cfg(feature = "gtk")]
 mod hotreload;
 #[cfg(feature = "gtk")]
-pub use hotreload::watch;
+pub use hotreload::{watch, ThemeWatch};
 
 pub use types::*;
 
