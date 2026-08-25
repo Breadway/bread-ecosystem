@@ -85,7 +85,12 @@ pub(super) struct RawManifest {
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
     /// Overlay CSS path, resolved relative to the theme file's own
-    /// directory, appended last by `ShellTheme::css`. (Schema note: plan §4
+    /// directory, appended last by `ShellTheme::css`. Declared-but-not-yet-
+    /// consumed in production: `ShellTheme::css` (the only reader of this
+    /// field's resolved `extra_css`) is not called by breadbar or breadbox
+    /// today — see that method's doc comment. Setting this key is currently
+    /// a no-op for a real running shell (it IS exercised by this crate's own
+    /// tests). (Schema note: plan §4
     /// shows `css = "extra.css"` textually after the `[compositor]` table
     /// with no table header of its own between them, which in real TOML
     /// would nest it *inside* `[compositor]`. Treated here as a top-level
@@ -132,6 +137,8 @@ pub(super) struct RawMargin {
     pub(super) top: i64,
     pub(super) left: i64,
     pub(super) right: i64,
+    /// See [`super::types::Margin::bottom`] — accepted and resolved, but
+    /// breadbar never applies it.
     pub(super) bottom: i64,
 }
 

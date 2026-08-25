@@ -88,6 +88,14 @@ pub struct Margin {
     pub top: i32,
     pub left: i32,
     pub right: i32,
+    /// Declared-but-not-yet-consumed: parsed and carried all the way
+    /// through resolution, but breadbar only calls
+    /// `gtk4_layer_shell::LayerShell::set_margin` for
+    /// `Edge::{Top,Left,Right}` (`breadbar/src/main.rs`) — there is no
+    /// `Edge::Bottom` call anywhere in that crate. All three built-in
+    /// themes happen to omit `margin.bottom` (defaulting to 0, this
+    /// struct's own `Default`), which is exactly why the gap has stayed
+    /// invisible: a theme author who *does* set it would see no effect.
     pub bottom: i32,
 }
 
@@ -150,7 +158,22 @@ pub struct WorkspacesModule {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClockModule {
     pub style: ClockStyle,
+    /// Consumed only by `ClockStyle::Plain` (`breadbar::bar::clock`'s
+    /// `formatted()`, called from `main.rs` only in the `Plain` arm) —
+    /// `Flip` and `None` never read it; `Flip`'s own `time()` hardcodes a
+    /// 24h `HH:MM` layout regardless of this field. All three built-in
+    /// themes set `format = "%H:%M"` (which happens to match `Flip`'s
+    /// hardcoded layout, masking the gap for two of the three styles); see
+    /// each `theme.toml`'s own note next to it for which styles actually
+    /// honour this.
     pub format: String,
+    /// Consumed only by `ClockStyle::Plain`, same scoping as
+    /// [`Self::format`] — `date_lbl` is only ever attached under the
+    /// `Plain` arm's box, so this value can never be observed under
+    /// `Flip`/`None`. Currently harmless in practice (every built-in theme
+    /// that isn't `Plain` sets this `false`, so there's nothing to ignore),
+    /// but the same "declared, scoped to one style" caveat as `format`
+    /// applies.
     pub show_date: bool,
     /// `style = "none"` + this `true`: no module renders a clock label of
     /// its own — `launcher_entry`'s placeholder text becomes the time
@@ -327,12 +350,27 @@ impl Tokens {
         }
     }
 
+    /// Declared-but-not-yet-consumed in production: neither breadbar nor
+    /// breadbox calls this accessor. Both get their actual rendered font
+    /// from [`crate::stylesheet`]'s own hardcoded `crate::tokens::FONT_FAMILY`
+    /// constant — a completely separate, ecosystem-wide font system shared
+    /// by every bread GUI (not just shell-themed ones), unrelated to this
+    /// per-theme manifest field. Setting `[tokens] font_family = "..."` in a
+    /// theme.toml today has zero effect on what actually renders; every
+    /// built-in theme sets this key anyway (see the "not yet consumed" note
+    /// next to it in each `theme.toml`), preserved as an honest declaration
+    /// of the demo's intended font pending someone deciding how (or
+    /// whether) a per-shell-theme font should override the ecosystem-wide
+    /// one — that's a design decision for whoever owns `stylesheet()`, not
+    /// a mechanical wire-up this crate can do to itself.
     pub fn font_family(&self) -> String {
         self.str_or("font_family", crate::tokens::FONT_FAMILY)
     }
+    /// See [`Self::font_family`] — same "declared but never read" status.
     pub fn font_fallback(&self) -> String {
         self.str_or("font_fallback", "sans-serif")
     }
+    /// See [`Self::font_family`] — same "declared but never read" status.
     pub fn font_size_base(&self) -> i64 {
         self.int_or("font_size_base", crate::tokens::FONT_SIZE_BASE as i64)
     }
@@ -372,6 +410,20 @@ impl Tokens {
     pub fn accent_from(&self) -> String {
         self.str_or("accent_from", "accent")
     }
+    /// Declared-but-not-yet-consumed in production, for a subtler reason
+    /// than most of this file's other "never read" fields: this crate's own
+    /// CSS templates DO read `{accent_to}` (the `WorkspaceStyle::Trail`
+    /// gradient stop in `assets/shell/liquid-motion/liquid-motion.css`,
+    /// exercised by `super::ShellTheme::css` and this module's own tests),
+    /// but breadbar
+    /// never calls that method — its hand-rolled Trail CSS
+    /// (`breadbar::theme::load_css`) hardcodes the literal gradient
+    /// `linear-gradient(90deg, @accent, @teal)` instead of substituting
+    /// `accent_from`/`accent_to`, so a theme that set a *different*
+    /// `accent_to` than liquid-motion's "teal" would see no change in the
+    /// running bar. Every built-in theme still sets this key so the
+    /// manifest states its actual design intent; see each `theme.toml`'s
+    /// own note next to it.
     pub fn accent_to(&self) -> String {
         let from = self.accent_from();
         self.str_or("accent_to", &from)

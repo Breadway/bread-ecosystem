@@ -17,6 +17,11 @@ name = "Liquid Motion"
 id   = "liquid-motion"
 
 [tokens]
+# Declared-but-not-yet-consumed: neither breadbar nor breadbox reads
+# font_family/font_fallback/font_size_base. Both get the font that actually
+# renders from bread_theme::stylesheet()'s own hardcoded FONT_FAMILY
+# constant — a separate, ecosystem-wide system shared by every bread GUI,
+# not this per-theme manifest. See Tokens::font_family's doc comment.
 font_family    = "Varela Round, sans-serif"
 font_fallback  = "sans-serif"
 font_size_base = 14
@@ -37,6 +42,12 @@ spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 # "accent" flows through as @accent (the workspace-trail gradient's start);
 # these are palette token NAMES, not hex - pywal still drives colour.
+# Declared-but-not-yet-consumed (accent_to only): breadbar's Trail-style CSS
+# hardcodes the literal gradient `linear-gradient(90deg, @accent, @teal)`
+# instead of substituting these two tokens (it never calls
+# ShellTheme::css(), the only thing that does the substitution) — this
+# theme's "teal" is what the demo intends, not what actually renders if a
+# future theme changed it. See Tokens::accent_to's doc comment.
 accent_from    = "accent"
 accent_to      = "teal"
 # Not in the plan's §4 schema list, but breadbar::CHIP_HEIGHT / ::ICON_PX
@@ -48,6 +59,9 @@ icon_px        = 24
 anchors   = ["top", "left", "right"]
 width     = "fill"
 height    = 44
+# No `bottom` set here (or by either sibling builtin) — it's accepted by the
+# schema but breadbar never applies it (no set_margin(Edge::Bottom, ...)
+# call exists). See Margin::bottom's doc comment before relying on it.
 margin    = { top = 12, left = 16, right = 16 }
 exclusive = "auto"
 # breadbar never calls gtk4-layer-shell's set_keyboard_mode today, which
@@ -77,6 +91,11 @@ show_empty = true
 
 [modules.clock]
 style     = "flip"
+# Declared-but-not-yet-consumed under style = "flip": bar::clock::time()
+# hardcodes a 24h HH:MM layout regardless of `format`; only style = "plain"
+# ever calls formatted(&format). Set here to state the layout this clock
+# actually draws, not because anything reads it. Same for show_date — only
+# ever attached to the Plain style's box.
 format    = "%H:%M"
 show_date = false
 

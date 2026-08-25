@@ -26,6 +26,8 @@ name = "Spotlight"
 id   = "spotlight"
 
 [tokens]
+# Declared-but-not-yet-consumed: see liquid-motion/theme.toml's identical
+# note next to these three keys — neither breadbar nor breadbox reads them.
 font_family    = "Outfit"
 font_fallback  = "Varela Round, sans-serif"
 font_size_base = 13
@@ -44,7 +46,9 @@ spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.35, 0.36, 1)"
 # Palette token NAMES, not hex — #e87898 is this palette's `pink`. Equal
 # from/to because the demo's accent here is flat, not liquid-motion's
-# accent→teal gradient.
+# accent→teal gradient. accent_from IS read (the dots' active fill,
+# theme.rs); accent_to is declared-but-not-yet-consumed, same as every
+# other theme's — see Tokens::accent_to's doc comment.
 accent_from    = "pink"
 accent_to      = "pink"
 # Demo: `.barrow { height: 36px }` with no separate workspace-chip height —
@@ -108,6 +112,10 @@ dot_widths = [6, 10, 14, 18]
 # (`04-spotlight.html`: `q.placeholder = t` in `clock()`, replaced by the
 # search prompt only once focused/open).
 style             = "none"
+# Declared-but-not-yet-consumed under style = "none": no clock module is
+# built at all, so there's no format/date to apply this to — see
+# ClockModule::format's doc comment. Kept for the same "state actual design
+# intent" reason as liquid-motion's Flip-style note.
 format            = "%H:%M"
 show_date         = false
 placeholder_clock = true

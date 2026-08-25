@@ -19,6 +19,10 @@ name = "Glass Workbench"
 id   = "glass-workbench"
 
 [tokens]
+# Declared-but-not-yet-consumed: see liquid-motion/theme.toml's identical
+# note next to these three keys — neither breadbar nor breadbox reads them;
+# the font that actually renders comes from bread_theme::stylesheet()'s own
+# hardcoded constant instead.
 font_family    = "IBM Plex Sans"
 font_fallback  = "Inter, Noto Sans, sans-serif"
 font_size_base = 13
@@ -36,7 +40,12 @@ bg_alpha       = 0.72
 spring         = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 # Palette token NAMES, not hex — #7a9a88 is this palette's `green`. Equal
-# from/to because the demo's accent is flat, not a gradient.
+# from/to because the demo's accent is flat, not a gradient. accent_from IS
+# read (Pill-style workspace fill, theme.rs); accent_to is declared-but-
+# not-yet-consumed regardless of style — nothing reads it outside the
+# breadbar Trail gradient this theme doesn't use, and even Trail hardcodes
+# its own literal gradient rather than substituting it. See
+# Tokens::accent_to's doc comment.
 accent_from    = "green"
 accent_to      = "green"
 # Demo: `.ws button { height: 20px }`. Liquid-motion's chip_height (32) is

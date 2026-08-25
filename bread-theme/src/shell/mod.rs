@@ -115,6 +115,24 @@ impl ShellTheme {
     /// Token substitution into the theme's CSS template, plus the optional
     /// `extra.css` overlay appended last — plan §5.
     ///
+    /// **Declared-but-not-yet-consumed in production**, as of this writing:
+    /// neither breadbar nor breadbox calls this method. Both hand-roll their
+    /// own CSS instead (`breadbar::theme::load_css` reads individual
+    /// `Tokens::xxx()` accessors and `format!`s a literal stylesheet;
+    /// `breadbox::main::build_css` reads only `launcher.radius`). That means
+    /// the compiled-in `assets/shell/*/*.css` templates this method
+    /// substitutes into render nothing a user ever sees, and a theme's
+    /// `css = "extra.css"` overlay (parsed, path-resolved, read from disk,
+    /// token-substituted into [`Self::extra_css`] below) is fully
+    /// implemented and then never applied. This method itself is correct
+    /// and covered by this crate's own tests
+    /// (`builtin_css_substitutes_tokens_and_leaves_palette_names_untouched`,
+    /// `extra_css_overlay_is_appended_and_token_substituted`) — the gap is
+    /// entirely on the consumer side, in breadbar/breadbox, not here. Wiring
+    /// either app onto this method (replacing their own hand-rolled builders)
+    /// is out of scope for this crate to do unilaterally, since it's a
+    /// behavior change to code this crate doesn't own.
+    ///
     /// `palette` is accepted to match the plan §5 signature and for parity
     /// with [`crate::stylesheet_resolved`]-style consumers in the future,
     /// but is deliberately unused today: per this task's brief, `@accent` /
