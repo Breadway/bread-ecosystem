@@ -55,7 +55,7 @@ accent_from    = "accent"
 accent_to      = "teal"
 # Not in the plan's §4 schema list, but breadbar::CHIP_HEIGHT / ::ICON_PX
 # today.
-chip_height    = 32
+chip_height    = 26
 icon_px        = 24
 
 [bar.window]

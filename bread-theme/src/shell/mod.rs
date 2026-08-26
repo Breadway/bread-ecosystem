@@ -530,7 +530,9 @@ mod tests {
         assert!(matches!(w.keyboard, Keyboard::None));
         assert_eq!(w.layer, "top");
 
-        assert_eq!(theme.tokens().chip_height(), 32);
+        // 26, not breadbar's historical 32: the user approved a single 26px chip
+        // highlight height on the interactive reference (bos-ui-demos/proposed/).
+        assert_eq!(theme.tokens().chip_height(), 26);
         assert_eq!(theme.tokens().icon_px(), 24);
     }
 
@@ -905,7 +907,7 @@ mod tests {
     fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
         assert!(matches!(theme.modules().workspaces.style, WorkspaceStyle::Dots));
-        assert_eq!(theme.modules().workspaces.dot_widths, [6, 10, 14, 18]);
+        assert_eq!(theme.modules().workspaces.dot_widths, [8, 13, 17, 22]);
     }
 
     #[test]

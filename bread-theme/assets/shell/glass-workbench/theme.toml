@@ -56,7 +56,7 @@ accent_to      = "green"
 # workspace pills, and is reused for the bar's other small chips (cpu/ram/
 # wifi/battery/control) so they all sit at the same height on the thinner
 # 36px flush bar.
-chip_height    = 20
+chip_height    = 22
 # No demo number for bar-icon size; scaled from liquid-motion's 24px by the
 # same 36/44 bar-height ratio liquid-motion itself uses for its 44px bar.
 icon_px        = 18

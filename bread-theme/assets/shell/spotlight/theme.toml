@@ -55,7 +55,7 @@ accent_to      = "pink"
 # the dots (`.dots button`) are sized entirely by `dot_widths` below, not by
 # chip_height, but this token still feeds any other chip-shaped element
 # (e.g. a future result-row affordance) at the bar's own row height.
-chip_height    = 36
+chip_height    = 22
 # Demo: `.ico { width: 30px; height: 30px }` for a result row's icon
 # swatch — the icon glyph itself sits inside that box with implicit
 # padding, so the icon_px passed to bread-launcher's `ResultsList` is sized
@@ -105,7 +105,7 @@ style      = "dots"
 show_empty = true
 # 0/1/2/3-or-more open windows → dot width in px
 # (`04-spotlight.html`'s `.dots button[data-n="N"]` rules).
-dot_widths = [6, 10, 14, 18]
+dot_widths = [8, 13, 17, 22]
 
 [modules.clock]
 # No clock label at all — `launcher_entry`'s placeholder IS the clock
