@@ -194,6 +194,15 @@ pub(super) struct RawLauncher {
     pub(super) modes: Option<Vec<String>>,
     pub(super) search_width: Option<i64>,
     pub(super) search_radius: Option<i64>,
+    pub(super) row_radius: Option<i64>,
+    pub(super) row_inset: Option<i64>,
+    pub(super) row_padding_v: Option<i64>,
+    pub(super) row_padding_h: Option<i64>,
+    pub(super) icon_radius: Option<i64>,
+    pub(super) search_font_size: Option<i64>,
+    pub(super) search_padding_v: Option<i64>,
+    pub(super) search_padding_h: Option<i64>,
+    pub(super) selection_alpha: Option<f64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -411,6 +420,22 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         // never asked for (see the field docs on `Launcher`).
         search_width: l.and_then(|l| l.search_width).map(|v| v as i32).unwrap_or(width),
         search_radius: l.and_then(|l| l.search_radius).map(|v| v as i32).unwrap_or(radius),
+        // Defaults below reproduce breadbox's pre-redesign hardcoded CSS
+        // literals (`row { padding: 8px 12px; border-radius: 6px; }`,
+        // `listbox { padding: 4px; }`, no icon swatch, a solid — not
+        // alpha-blended — selection fill), so a theme that omits this whole
+        // block of new keys (spotlight does; its capsule doesn't read them
+        // at all) renders the same as before this change, not a jump to
+        // either built-in's specific numbers.
+        row_radius: l.and_then(|l| l.row_radius).unwrap_or(6) as i32,
+        row_inset: l.and_then(|l| l.row_inset).unwrap_or(4) as i32,
+        row_padding_v: l.and_then(|l| l.row_padding_v).unwrap_or(8) as i32,
+        row_padding_h: l.and_then(|l| l.row_padding_h).unwrap_or(12) as i32,
+        icon_radius: l.and_then(|l| l.icon_radius).unwrap_or(0) as i32,
+        search_font_size: l.and_then(|l| l.search_font_size).unwrap_or(16) as i32,
+        search_padding_v: l.and_then(|l| l.search_padding_v).unwrap_or(12) as i32,
+        search_padding_h: l.and_then(|l| l.search_padding_h).unwrap_or(16) as i32,
+        selection_alpha: l.and_then(|l| l.selection_alpha).unwrap_or(0.24),
     })
 }
 

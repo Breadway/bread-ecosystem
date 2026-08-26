@@ -119,8 +119,14 @@ impl ShellTheme {
     /// neither breadbar nor breadbox calls this method. Both hand-roll their
     /// own CSS instead (`breadbar::theme::load_css` reads individual
     /// `Tokens::xxx()` accessors and `format!`s a literal stylesheet;
-    /// `breadbox::main::build_css` reads only `launcher.radius`). That means
-    /// the compiled-in `assets/shell/*/*.css` templates this method
+    /// `breadbox::main::build_css` reads a growing set of individual
+    /// `Launcher`/`Tokens` accessors — `radius`, `width`, `icon_px`,
+    /// `row_radius`, `row_inset`, `row_padding_v/h`, `icon_radius`,
+    /// `search_font_size`, `search_padding_v/h`, `selection_alpha`,
+    /// `sections`, `footer`, `font_family`, `font_fallback`,
+    /// `font_size_base` as of the liquid-motion/glass-workbench redesign —
+    /// and still never calls this method or its template substitution).
+    /// That means the compiled-in `assets/shell/*/*.css` templates this method
     /// substitutes into render nothing a user ever sees, and a theme's
     /// `css = "extra.css"` overlay (parsed, path-resolved, read from disk,
     /// token-substituted into [`Self::extra_css`] below) is fully
@@ -606,18 +612,48 @@ mod tests {
     }
 
     #[test]
-    fn builtin_launcher_matches_current_breadbox_geometry() {
-        // breadbox/breadbox/src/main.rs:341-346 (margin/size), :151
-        // (build_css's .launcher-bg radius), :174-193 (make_icon's
-        // set_pixel_size calls). radius=8 and icon_px=32 are current CODE
-        // values, not the demo's 20/36 — see Phase 4b-i's manifest audit.
+    fn builtin_launcher_matches_liquid_motion_demo_geometry() {
+        // bos-ui-demos/proposed/liquid-motion.html's `.bx` block is the spec
+        // as of the launcher-core redesign — radius=20/icon_px=28, not the
+        // old pre-redesign hardcoded CSS's 8/32 (see git history for that
+        // era's `builtin_launcher_matches_current_breadbox_geometry`).
         let theme = resolve_builtin();
         let l = theme.launcher();
         assert!(matches!(l.mode, LauncherMode::Overlay));
         assert_eq!(l.width, 600);
         assert_eq!(l.top, "120px");
-        assert_eq!(l.radius, 8);
-        assert_eq!(l.icon_px, 32);
+        assert_eq!(l.radius, 20);
+        assert_eq!(l.icon_px, 28);
+        assert!(l.sections, "liquid-motion shows Recent/Apps section headers");
+        assert_eq!(l.row_radius, 12);
+        assert_eq!(l.row_inset, 8);
+        assert_eq!((l.row_padding_v, l.row_padding_h), (10, 12));
+        assert_eq!(l.icon_radius, 9);
+        assert_eq!(l.search_font_size, 16);
+        assert_eq!((l.search_padding_v, l.search_padding_h), (16, 18));
+        assert!((l.selection_alpha - 0.22).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn glass_workbench_launcher_matches_demo_geometry_and_differs_from_liquid_motion() {
+        let theme = load_named(builtin::GLASS_WORKBENCH_ID)
+            .expect("glass-workbench should resolve");
+        let l = theme.launcher();
+        assert_eq!(l.width, 560);
+        assert_eq!(l.top, "64px");
+        assert_eq!(l.radius, 10);
+        assert_eq!(l.icon_px, 22);
+        assert!(
+            !l.sections,
+            "glass-workbench is a flat list — no Recent/Apps headers"
+        );
+        assert_eq!(l.row_radius, 6);
+        assert_eq!(l.row_inset, 6);
+        assert_eq!((l.row_padding_v, l.row_padding_h), (8, 10));
+        assert_eq!(l.icon_radius, 5);
+        assert_eq!(l.search_font_size, 14);
+        assert_eq!((l.search_padding_v, l.search_padding_h), (12, 15));
+        assert!((l.selection_alpha - 0.28).abs() < f64::EPSILON);
     }
 
     #[test]

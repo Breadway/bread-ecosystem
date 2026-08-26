@@ -189,7 +189,8 @@ pub struct Modules {
     pub clock: ClockModule,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// No `Eq`: `selection_alpha` is an `f64`, which doesn't implement it.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Launcher {
     pub mode: LauncherMode,
     pub width: i32,
@@ -198,7 +199,20 @@ pub struct Launcher {
     pub icon_px: i32,
     pub row_anim: String,
     pub rule: String,
+    /// Selects the footer label's noun — `"count_apps"` renders
+    /// `"{n} applications"`, anything else (`"count_results"` included)
+    /// renders `"{n} results"`. Consumed by `breadbox::main`'s footer label
+    /// (appended below `ResultsList::scroller`, updated on every
+    /// `set_query` call alongside the visible-row count).
     pub footer: String,
+    /// Consumed by breadbar's embedded capsule (`breadbar::main::run_ui`,
+    /// passed straight to `ResultsList::new`) for every theme, and by
+    /// breadbox's own overlay (`breadbox::main::run_ui`) as of the
+    /// liquid-motion/glass-workbench redesign — `true` groups the idle
+    /// (empty-query) view into "Recent"/"Apps" headers via
+    /// `bread_launcher::gtk::split_sections`, `false` reproduces the flat
+    /// list. breadbox no longer hardcodes `false` at its `ResultsList::new`
+    /// call site; it reads this field.
     pub sections: bool,
     pub modes: Vec<String>,
     /// `LauncherMode::Embedded` only (theme 04/spotlight, plan §7 phase 6c):
@@ -214,6 +228,38 @@ pub struct Launcher {
     /// vs the collapsed 22px `radius`). Same default-to-`radius` fallback
     /// reasoning as `search_width`.
     pub search_radius: i32,
+    /// Result row `border-radius` (px) — `breadbox::main::build_css`'s
+    /// `row { border-radius: ... }`. Liquid Motion's soft 12px vs Glass
+    /// Workbench's dense 6px is the clearest single signal that the two
+    /// themes are different instruments, not one launcher recoloured.
+    pub row_radius: i32,
+    /// Result row horizontal inset (px) from the panel's edge —
+    /// `row { margin: 0 {row_inset}px; }`. Mirrors the demos' `.bx .r`
+    /// `margin: 0 Npx` rule (liquid-motion 8px, glass-workbench 6px).
+    pub row_inset: i32,
+    /// Result row vertical padding (px) — `row { padding: {row_padding_v}px
+    /// {row_padding_h}px; }`'s first component.
+    pub row_padding_v: i32,
+    /// Result row horizontal padding (px) — same rule's second component.
+    pub row_padding_h: i32,
+    /// Row icon `border-radius` (px) — `breadbox::main::build_css`'s
+    /// `image { border-radius: ...; }`, paired with `icon_px` for the
+    /// swatch's size. Liquid Motion's rounder 9px vs Glass Workbench's
+    /// tighter 5px.
+    pub icon_radius: i32,
+    /// Search entry font-size (px) — distinct from `tokens.font_size_base`
+    /// (which sizes the result rows): both demos give the search field a
+    /// larger face than its rows (liquid-motion 16 vs its rows' 14,
+    /// glass-workbench 14 vs its rows' 13).
+    pub search_font_size: i32,
+    /// Search entry vertical padding (px).
+    pub search_padding_v: i32,
+    /// Search entry horizontal padding (px).
+    pub search_padding_h: i32,
+    /// Selected/hovered row background: `alpha(@accent, selection_alpha)`.
+    /// Liquid Motion's softer 0.22 vs Glass Workbench's denser 0.28 — see
+    /// each demo's `.bx .r.sel` rule.
+    pub selection_alpha: f64,
 }
 
 /// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]` —
@@ -350,27 +396,28 @@ impl Tokens {
         }
     }
 
-    /// Declared-but-not-yet-consumed in production: neither breadbar nor
-    /// breadbox calls this accessor. Both get their actual rendered font
-    /// from [`crate::stylesheet`]'s own hardcoded `crate::tokens::FONT_FAMILY`
-    /// constant — a completely separate, ecosystem-wide font system shared
-    /// by every bread GUI (not just shell-themed ones), unrelated to this
-    /// per-theme manifest field. Setting `[tokens] font_family = "..."` in a
-    /// theme.toml today has zero effect on what actually renders; every
-    /// built-in theme sets this key anyway (see the "not yet consumed" note
-    /// next to it in each `theme.toml`), preserved as an honest declaration
-    /// of the demo's intended font pending someone deciding how (or
-    /// whether) a per-shell-theme font should override the ecosystem-wide
-    /// one — that's a design decision for whoever owns `stylesheet()`, not
-    /// a mechanical wire-up this crate can do to itself.
+    /// Consumed by `breadbox::main::build_css` for the launcher panel's
+    /// `font-family` (the `entry.search`/`row` rule) as of the
+    /// liquid-motion/glass-workbench redesign — combined with
+    /// [`Self::font_fallback`] into a CSS font stack. Still NOT consumed by
+    /// `breadbar` (bar/chip/clock text) or by [`crate::stylesheet`]'s
+    /// ecosystem-wide base rule, which still hardcodes
+    /// `crate::tokens::FONT_FAMILY` for every non-launcher widget — this is
+    /// a scoped, launcher-only wire-up, not the full "per-shell-theme font
+    /// everywhere" replacement a `stylesheet()` owner would need to decide
+    /// on separately.
     pub fn font_family(&self) -> String {
         self.str_or("font_family", crate::tokens::FONT_FAMILY)
     }
-    /// See [`Self::font_family`] — same "declared but never read" status.
+    /// See [`Self::font_family`] — same scoped (launcher-only) consumption,
+    /// appended after `font_family` in the CSS font stack breadbox builds.
     pub fn font_fallback(&self) -> String {
         self.str_or("font_fallback", "sans-serif")
     }
-    /// See [`Self::font_family`] — same "declared but never read" status.
+    /// Consumed by `breadbox::main::build_css` for the result rows'
+    /// `font-size` (the search entry uses `[launcher].search_font_size`
+    /// instead — both demos give the search field a larger face than its
+    /// rows). Still not read by `breadbar`.
     pub fn font_size_base(&self) -> i64 {
         self.int_or("font_size_base", crate::tokens::FONT_SIZE_BASE as i64)
     }
