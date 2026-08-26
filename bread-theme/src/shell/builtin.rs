@@ -47,6 +47,18 @@ const SPOTLIGHT_CSS: &str = include_str!(concat!(
     "/assets/shell/spotlight/spotlight.css"
 ));
 
+pub const DAYLIGHT_ID: &str = "daylight";
+
+const DAYLIGHT_TOML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/daylight/theme.toml"
+));
+
+const DAYLIGHT_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/daylight/daylight.css"
+));
+
 /// One compiled-in theme's identity plus its two `include_str!`ed assets.
 /// `id`/`name` are also duplicated inside `toml`'s own `id =`/`name =`
 /// fields — kept here too so [`all`]/[`find`] can list/look up a builtin
@@ -85,6 +97,12 @@ pub const ALL: &[BuiltinTheme] = &[
         name: "Spotlight",
         toml: SPOTLIGHT_TOML,
         css: SPOTLIGHT_CSS,
+    },
+    BuiltinTheme {
+        id: DAYLIGHT_ID,
+        name: "Daylight",
+        toml: DAYLIGHT_TOML,
+        css: DAYLIGHT_CSS,
     },
 ];
 

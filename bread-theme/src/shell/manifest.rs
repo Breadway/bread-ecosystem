@@ -451,11 +451,11 @@ fn resolve_surfaces(
     let Some(raw) = raw else { return Ok(out) };
     for (namespace, s) in raw {
         let anchor = match s.anchor.as_deref() {
-            Some(a @ ("top_right" | "bottom_centre" | "fill")) => a.to_string(),
+            Some(a @ ("top_right" | "bottom_right" | "bottom_centre" | "fill")) => a.to_string(),
             Some(other) => bail!(
                 "theme '{theme_id}': surfaces.{namespace}.anchor = \"{other}\" is not \
-                 top_right|bottom_centre|fill (the only shapes breadbar's satellite \
-                 windows implement — see breadbar/src/surface.rs)"
+                 top_right|bottom_right|bottom_centre|fill (the only shapes breadbar's \
+                 satellite windows implement — see breadbar/src/surface.rs)"
             ),
             None => bail!(
                 "theme '{theme_id}': surfaces.{namespace} has no anchor set \

@@ -938,6 +938,166 @@ mod tests {
         );
     }
 
+    // ---- daylight builtin (plan §11 phase 7) -------------------------
+
+    #[test]
+    fn daylight_loads_and_appears_in_list_alongside_the_other_three() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight builtin should resolve");
+        assert_eq!(theme.id(), "daylight");
+        assert_eq!(theme.name(), "Daylight");
+
+        let summaries = list();
+        assert!(
+            summaries
+                .iter()
+                .any(|s| s.id == "daylight" && s.source == ThemeSource::Builtin),
+            "daylight missing from list(): {summaries:?}"
+        );
+        // All four builtins must be listed side by side.
+        for id in ["liquid-motion", "glass-workbench", "spotlight"] {
+            assert!(
+                summaries
+                    .iter()
+                    .any(|s| s.id == id && s.source == ThemeSource::Builtin),
+                "{id} missing from list() after adding daylight: {summaries:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn daylight_is_bottom_anchored_unlike_every_other_builtin() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
+        let w = theme.window();
+        assert_eq!(
+            w.anchors,
+            vec!["bottom", "left", "right"],
+            "daylight must anchor bottom, not top like its three siblings"
+        );
+        assert_eq!(w.height, 40);
+        assert_eq!(
+            w.margin,
+            Margin {
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 12,
+            },
+            "the floating gap must be a BOTTOM margin, not a top one"
+        );
+        assert!(matches!(w.width, Width::Fill));
+        assert!(matches!(w.exclusive, Exclusive::Auto));
+    }
+
+    #[test]
+    fn daylight_compositor_rules_disable_blur_everywhere() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
+        let rules = theme.compositor_rules();
+        for ns in [
+            "breadbar",
+            "breadbar-osd",
+            "breadbar-notif",
+            "breadbar-panel",
+            "breadbox",
+        ] {
+            assert!(
+                !rules[ns].blur,
+                "compositor.{ns}.blur must be false under daylight — a theme must be able \
+                 to DISABLE a compositor rule, not just tune it"
+            );
+        }
+        assert!(!rules["breadbar"].blur_popups);
+        assert_eq!(rules["breadbar"].animation.as_deref(), Some("slide bottom"));
+        // No ignore_alpha anywhere: that key only means something to a
+        // blurred surface, and setting it on an unblurred one would be a
+        // never-consumed value.
+        for ns in ["breadbar", "breadbar-osd", "breadbar-notif", "breadbar-panel"] {
+            assert!(
+                rules[ns].ignore_alpha.is_none(),
+                "compositor.{ns}.ignore_alpha should be unset when blur is off"
+            );
+        }
+    }
+
+    #[test]
+    fn daylight_satellites_anchor_bottom_right_not_top_right() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
+        let surfaces = theme.surfaces();
+        for ns in ["breadbar-notif", "breadbar-panel"] {
+            assert_eq!(
+                surfaces[ns].anchor, "bottom_right",
+                "{ns} must sit near the bottom-anchored dock, not the top-right corner \
+                 every top-anchored sibling theme uses"
+            );
+        }
+        assert_eq!(surfaces["breadbar-osd"].anchor, "bottom_centre");
+        // "fill" (breadbar-dismiss) now carries a [top, bottom] pair: 0 at
+        // the top (nothing to clear there) and 52 at the bottom (the dock's
+        // own edge), the inverse of every top-anchored sibling's single
+        // top-only offset.
+        assert_eq!(surfaces["breadbar-dismiss"].offset, vec![0.0, 52.0]);
+    }
+
+    #[test]
+    fn daylight_is_light_and_segmented() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
+        assert!(theme.tokens().light(), "daylight must set tokens.light = true");
+        assert_eq!(theme.tokens().bar_border(), "segmented");
+    }
+
+    #[test]
+    fn daylight_accent_is_teal_and_a_palette_token_not_hex_with_a_distinct_amber_accent2() {
+        let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.accent_from(), "teal");
+        assert_eq!(t.accent_to(), "teal");
+        assert_eq!(t.accent2(), "yellow");
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("@teal"),
+            "accent_from/accent_to must resolve to the @teal palette token, not a hex literal:\n{css}"
+        );
+        assert!(
+            css.contains("@yellow"),
+            "accent2 must resolve to the @yellow palette token, not a hex literal:\n{css}"
+        );
+        assert!(
+            !css.contains("#2f6d7a") && !css.contains("#c2683c"),
+            "the demo's teal/amber hex must never leak into the manifest — pywal theming \
+             depends on this staying palette token names:\n{css}"
+        );
+    }
+
+    #[test]
+    fn light_token_defaults_false_for_every_other_builtin() {
+        // The other three builtins must render unchanged — this flag must
+        // not flip anything unless a theme explicitly opts in.
+        for id in [
+            builtin::LIQUID_MOTION_ID,
+            builtin::GLASS_WORKBENCH_ID,
+            builtin::SPOTLIGHT_ID,
+        ] {
+            let theme = load_named(id).unwrap_or_else(|e| panic!("{id} should resolve: {e:#}"));
+            assert!(!theme.tokens().light(), "{id} must default tokens.light to false");
+        }
+    }
+
+    #[test]
+    fn bottom_right_surface_anchor_resolves_like_its_siblings() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "bottomright",
+            r#"
+                id = "bottomright"
+                [surfaces."breadbar-notif"]
+                anchor = "bottom_right"
+                offset = [16, 64]
+            "#,
+        );
+        let theme = load_named("bottomright").expect("bottom_right anchor should resolve");
+        assert_eq!(theme.surfaces()["breadbar-notif"].anchor, "bottom_right");
+    }
+
     // ---- extends merge ------------------------------------------------
 
     #[test]
@@ -1147,7 +1307,7 @@ mod tests {
 
     #[test]
     fn every_known_surface_anchor_shape_resolves() {
-        for anchor in ["top_right", "bottom_centre", "fill"] {
+        for anchor in ["top_right", "bottom_right", "bottom_centre", "fill"] {
             let xdg = isolated_xdg();
             write_theme(
                 &xdg,

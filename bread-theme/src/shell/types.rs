@@ -277,13 +277,23 @@ pub struct Launcher {
 /// one lookup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Surface {
-    /// One of `top_right`/`bottom_centre`/`fill` — validated in
-    /// `manifest.rs::resolve_surfaces` against the shapes
+    /// One of `top_right`/`bottom_right`/`bottom_centre`/`fill` — validated
+    /// in `manifest.rs::resolve_surfaces` against the shapes
     /// `breadbar/src/surface.rs::apply` actually implements, the same
     /// "typo'd key is a hard error" policy this field's siblings
     /// (`width`, `layer`) already got. Required, not defaulted: a surface
     /// entry with no anchor at all is as much a hard `theme.toml` error as
     /// an unrecognized one.
+    ///
+    /// `bottom_right` (daylight, plan §11 phase 7) added alongside the
+    /// original three: every built-in theme before it anchored its bar to
+    /// the TOP, so `breadbar-notif`/`breadbar-panel` popping up from
+    /// `top_right` always sat naturally close to the bar. A bottom-anchored
+    /// bar has no shape in the original three that keeps those satellites
+    /// near it — `top_right` would put them at the opposite corner of the
+    /// screen from the dock they visually belong to. `offset` is
+    /// `[right, bottom]` for this anchor, the same two-element convention
+    /// `top_right`'s `[right, top]` already uses.
     pub anchor: String,
     pub offset: Vec<f64>,
     pub width: SurfaceWidth,
@@ -404,6 +414,19 @@ impl Tokens {
         }
     }
 
+    /// Same fallback shape as [`Self::str_or`]/[`Self::int_or`]/
+    /// [`Self::float_or`] for a `TokenValue::Bool`. First consumer: `light`
+    /// below (theme 05/daylight, plan §11 phase 7) — every existing token is
+    /// a string/number, this is the first bool-shaped one, hence the new
+    /// helper rather than reusing one of the three above.
+    fn bool_or(&self, key: &str, default: bool) -> bool {
+        match self.map.get(key) {
+            Some(TokenValue::Bool(b)) => *b,
+            Some(TokenValue::Str(s)) => s.parse().unwrap_or(default),
+            _ => default,
+        }
+    }
+
     /// Consumed by `breadbox::main::build_css` for the launcher panel's
     /// `font-family` (the `entry.search`/`row` rule) as of the
     /// liquid-motion/glass-workbench redesign — combined with
@@ -465,23 +488,61 @@ impl Tokens {
     pub fn accent_from(&self) -> String {
         self.str_or("accent_from", "accent")
     }
-    /// Declared-but-not-yet-consumed in production, for a subtler reason
-    /// than most of this file's other "never read" fields: this crate's own
-    /// CSS templates DO read `{accent_to}` (the `WorkspaceStyle::Trail`
-    /// gradient stop in `assets/shell/liquid-motion/liquid-motion.css`,
-    /// exercised by `super::ShellTheme::css` and this module's own tests),
-    /// but breadbar
-    /// never calls that method — its hand-rolled Trail CSS
-    /// (`breadbar::theme::load_css`) hardcodes the literal gradient
-    /// `linear-gradient(90deg, @accent, @teal)` instead of substituting
-    /// `accent_from`/`accent_to`, so a theme that set a *different*
-    /// `accent_to` than liquid-motion's "teal" would see no change in the
-    /// running bar. Every built-in theme still sets this key so the
-    /// manifest states its actual design intent; see each `theme.toml`'s
-    /// own note next to it.
+    /// Was declared-but-not-yet-consumed in production through theme 04
+    /// (spotlight): breadbar's hand-rolled Trail CSS hardcoded the literal
+    /// gradient `linear-gradient(90deg, @accent, @teal)` instead of
+    /// substituting `accent_from`/`accent_to`, silently correct only because
+    /// liquid-motion's own `accent_from`/`accent_to` happened to be
+    /// `"accent"`/`"teal"` — the exact two names the hardcode already spelled
+    /// out. Theme 05 (daylight, plan §11 phase 7) is the first Trail-style
+    /// theme to set a *different* pair (`accent_from = accent_to = "teal"`,
+    /// a flat fill, not a gradient), which is what finally forced
+    /// `breadbar::theme::load_css`'s Trail branch to read this method for
+    /// real instead of the two literal names — see that function's own note
+    /// next to `.workspace-trail`.
     pub fn accent_to(&self) -> String {
         let from = self.accent_from();
         self.str_or("accent_to", &from)
+    }
+    /// A second, independent accent for chrome that shouldn't track the
+    /// primary `accent_from`/`accent_to` pair — daylight (plan §11 phase 7)
+    /// is the first theme that needs one: its media-widget equaliser bars
+    /// are warm amber while the workspace trail/active-fill accent is deep
+    /// teal, so one `accent_from` value can no longer describe both.
+    /// Defaults to `accent_from` itself, which reproduces every earlier
+    /// theme's actual rendering byte-for-byte (liquid-motion/glass-
+    /// workbench/spotlight all paint their equaliser with the same accent
+    /// as everything else, and none of them sets this key). Consumed by
+    /// `breadbar::theme::load_css`'s `.media-eq-bar` rule.
+    pub fn accent2(&self) -> String {
+        let from = self.accent_from();
+        self.str_or("accent2", &from)
+    }
+    /// Whether this theme's surfaces are painted ink-on-paper (near-opaque
+    /// LIGHT fills with dark ink) rather than the glass-on-dark look every
+    /// earlier theme assumed — daylight (plan §11 phase 7) is the first
+    /// theme to set this `true`. Defaults `false`, reproducing every
+    /// existing theme's rendering unchanged.
+    ///
+    /// Exists because the palette's `bg`/`surface`/`overlay`/`fg` slots are
+    /// NEVER pywal-derived (`bread_theme::palette`'s `FIXED_*` constants —
+    /// deliberately, so a bright wallpaper can't turn the whole UI an
+    /// unreadable light colour by accident) — only the six accent slots
+    /// vary. That means there is no palette token whose value is a light
+    /// "paper" surface for a theme to reference by name; `@bg` is always
+    /// dark, `@on-bg` is always its computed-legible near-white ink.
+    /// `breadbar::theme::load_css` reads this flag to swap which of those
+    /// two *fixed, anti-correlated* tokens plays "surface fill" versus
+    /// "ink" for every translucent card/panel/hover-wash in the stylesheet
+    /// (`@on-bg` as the near-white fill, `@bg` as the near-black ink,
+    /// otherwise the reverse) — see that function's own `panel`/`ink`
+    /// locals. This works only because `@bg`/`@on-bg` are pinned opposite
+    /// constants by construction; it is not a general "pick any light
+    /// surface colour" mechanism, and this doc comment is the canonical
+    /// place that fact is written down (see the task report for the full
+    /// reasoning: the palette schema has no dedicated light-surface token).
+    pub fn light(&self) -> bool {
+        self.bool_or("light", false)
     }
     /// Workspace-pill / chip height. Not in the plan §4 schema, but
     /// `breadbar::CHIP_HEIGHT` (32) today. See [`Tokens`] doc.
@@ -498,8 +559,14 @@ impl Tokens {
     /// edge-to-edge bar, plan §1) draws only the bottom hairline the demo's
     /// `.bar { border-bottom: 1px solid #ffffff12 }` calls for — a floating
     /// island's full border would otherwise render as a stray top/side line
-    /// flush against the screen edge. See [`Tokens`] doc; consumed by
-    /// `breadbar::theme::load_css`, not by [`crate::shell::ShellTheme::css`].
+    /// flush against the screen edge. `"segmented"` (daylight, plan §11
+    /// phase 7) is a third value: `window.breadbar` itself gets NO fill,
+    /// border, or radius at all (fully transparent), and the bar's three
+    /// slot-group containers each carry their own pill surface instead (see
+    /// `breadbar::theme::load_css`'s `segmented`/`.bar-segment` locals) —
+    /// this is what lets one bar surface look like three detached floating
+    /// pills rather than one continuous strip. See [`Tokens`] doc; consumed
+    /// by `breadbar::theme::load_css`, not by [`crate::shell::ShellTheme::css`].
     pub fn bar_border(&self) -> String {
         self.str_or("bar_border", "full")
     }
