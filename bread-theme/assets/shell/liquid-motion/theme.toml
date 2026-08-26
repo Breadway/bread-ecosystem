@@ -130,6 +130,10 @@ search_font_size = 16
 search_padding_v = 16
 search_padding_h = 18
 # `.bx .r.sel { background: rgba(accent, .22) }`
+# Panel opacity, separate from tokens.bg_alpha (the bar). Matches the
+# approved reference: demo `.bx.lm{background:rgba(21,14,23,.93)}`. breadbox hardcoded 0.60, which washed the
+# panel out over a bright wallpaper.
+panel_alpha      = 0.93
 selection_alpha  = 0.22
 
 # Keyed by layer-shell namespace, matching [compositor.*] below, so the two

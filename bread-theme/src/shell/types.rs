@@ -256,6 +256,14 @@ pub struct Launcher {
     pub search_padding_v: i32,
     /// Search entry horizontal padding (px).
     pub search_padding_h: i32,
+    /// Opacity of the launcher PANEL itself, distinct from `tokens.bg_alpha`
+    /// (which governs the thin bar). A bar can be very translucent and stay
+    /// readable because it is 36-44px tall over a small slice of wallpaper; a
+    /// full launcher panel at the same alpha washes out badly over a bright
+    /// wallpaper and its text becomes hard to read. The approved reference
+    /// uses 0.95 (glass-workbench) and 0.93 (liquid-motion); breadbox
+    /// previously hardcoded 0.60, which is what made it look washed out.
+    pub panel_alpha: f64,
     /// Selected/hovered row background: `alpha(@accent, selection_alpha)`.
     /// Liquid Motion's softer 0.22 vs Glass Workbench's denser 0.28 — see
     /// each demo's `.bx .r.sel` rule.

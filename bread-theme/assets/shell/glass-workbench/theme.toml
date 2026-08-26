@@ -121,6 +121,10 @@ search_font_size = 14
 search_padding_v = 12
 search_padding_h = 15
 # `.bx .r.sel { background: rgba(accent, .28) }`
+# Panel opacity, separate from tokens.bg_alpha (the bar). Matches the
+# approved reference: demo `.bx.gw{background:rgba(16,20,18,.95)}`. breadbox hardcoded 0.60, which washed the
+# panel out over a bright wallpaper.
+panel_alpha      = 0.95
 selection_alpha  = 0.28
 
 # Same four satellite namespaces as liquid-motion, keyed identically so the

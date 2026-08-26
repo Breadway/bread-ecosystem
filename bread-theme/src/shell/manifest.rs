@@ -202,6 +202,7 @@ pub(super) struct RawLauncher {
     pub(super) search_font_size: Option<i64>,
     pub(super) search_padding_v: Option<i64>,
     pub(super) search_padding_h: Option<i64>,
+    pub(super) panel_alpha: Option<f64>,
     pub(super) selection_alpha: Option<f64>,
 }
 
@@ -435,6 +436,9 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         search_font_size: l.and_then(|l| l.search_font_size).unwrap_or(16) as i32,
         search_padding_v: l.and_then(|l| l.search_padding_v).unwrap_or(12) as i32,
         search_padding_h: l.and_then(|l| l.search_padding_h).unwrap_or(16) as i32,
+        // 0.93 default, not breadbox's historical 0.60: a launcher panel needs
+        // near-opacity to stay legible over a bright wallpaper.
+        panel_alpha: l.and_then(|l| l.panel_alpha).unwrap_or(0.93),
         selection_alpha: l.and_then(|l| l.selection_alpha).unwrap_or(0.24),
     })
 }
