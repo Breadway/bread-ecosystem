@@ -90,6 +90,7 @@ impl Agent {
         let username = pick_user(&users, current_uid())
             .map(|u| u.name.clone())
             .ok_or_else(|| AgentError::Failed("no unix-user identity".into()))?;
+        let allowed_users: Vec<String> = users.iter().map(|u| u.name.clone()).collect();
 
         let (tx, mut rx) = mpsc::channel(4);
         *self.pending.lock().await = Some(tx.clone());
@@ -107,7 +108,7 @@ impl Agent {
             }
         });
 
-        let result = self.drive_prompt(&cookie, &username, &mut rx).await;
+        let result = self.drive_prompt(&cookie, &username, &allowed_users, &mut rx).await;
 
         *self.pending.lock().await = None;
         let cookie_close = cookie.clone();
@@ -129,6 +130,7 @@ impl Agent {
         &self,
         cookie: &str,
         default_user: &str,
+        allowed_users: &[String],
         rx: &mut mpsc::Receiver<UserAction>,
     ) -> Result<(), AgentError> {
         loop {
@@ -140,12 +142,17 @@ impl Agent {
                     return Err(AgentError::Cancelled("user cancelled".into()));
                 }
                 Some(UserAction::Submit { username, password }) => {
-                    let user = if username.is_empty() {
-                        default_user
-                    } else {
-                        username.as_str()
+                    // The username field is user-editable; only accept it when
+                    // it's one of the identities polkit offered (empty falls
+                    // back to the prefilled user). Anything else is rejected
+                    // and the prompt re-shown rather than starting a PAM
+                    // conversation for an account the request never offered.
+                    let Some(user) = resolve_user(default_user, allowed_users, &username) else {
+                        let cookie = cookie.to_string();
+                        invoke_ui(move || ui::show_retry(&cookie, INVALID_USER_MESSAGE));
+                        continue;
                     };
-                    match auth::authenticate(&self.transport, user, cookie, &password).await {
+                    match auth::authenticate(&self.transport, &user, cookie, &password).await {
                         Ok(Outcome::Success) => return Ok(()),
                         Ok(Outcome::Failure { message }) => {
                             let text = message
@@ -164,6 +171,30 @@ impl Agent {
             }
         }
     }
+}
+
+const INVALID_USER_MESSAGE: &str =
+    "That user is not one of the identities this request offered — use the prefilled user.";
+
+/// Choose the username to authenticate as from the prompt input.
+///
+/// Empty input falls back to `default`. Non-empty input must be one of
+/// `allowed` — the `unix-user` identities polkit actually offered in
+/// `BeginAuthentication` — otherwise it returns `None`. Without this, a
+/// request scoped to specific accounts (say, `root` only) could have its
+/// editable username field redirected to an arbitrary local user, kicking
+/// off a PAM conversation for an account the request never offered.
+/// (`auth::authenticate`'s PAM result still has to clear polkit's own
+/// authorization, but this closes the obvious foot-gun at the agent — the
+/// one place the identity list is actually known.)
+fn resolve_user(default: &str, allowed: &[String], input: &str) -> Option<String> {
+    if input.is_empty() {
+        return Some(default.to_string());
+    }
+    if allowed.iter().any(|u| u.as_str() == input) {
+        return Some(input.to_string());
+    }
+    None
 }
 
 fn unix_users(identities: &[Identity]) -> Vec<UnixUser> {
@@ -298,3 +329,42 @@ async fn run() -> Result<()> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowed() -> Vec<String> {
+        vec!["root".to_string(), "1000".to_string()]
+    }
+
+    #[test]
+    fn resolve_user_falls_back_to_default_on_empty_input() {
+        assert_eq!(
+            resolve_user("root", &allowed(), ""),
+            Some("root".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_user_accepts_an_offered_identity() {
+        assert_eq!(
+            resolve_user("root", &allowed(), "1000"),
+            Some("1000".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_user_rejects_a_user_polkit_did_not_offer() {
+        assert_eq!(resolve_user("root", &allowed(), "alice"), None);
+        assert_eq!(resolve_user("root", &allowed(), "daemon"), None);
+    }
+
+    #[test]
+    fn resolve_user_is_case_exact() {
+        // Usernames are case-significant; "ROOT" is a different principle
+        // than the offered "root", so it must be rejected.
+        assert_eq!(resolve_user("root", &allowed(), "ROOT"), None);
+    }
+}
+

@@ -50,8 +50,13 @@ fn main() {
             std::process::exit(0);
         }
         Err(e) => {
-            eprintln!("bread-polkit: singleton lock unavailable ({e}); continuing");
-            None
+            // Don't keep running without the single-instance lock: a second
+            // copy would attempt to `serve_at` the same PolicyKit agent
+            // object path on the system bus, and a password prompt held by a
+            // process whose lock couldn't be taken is ambiguous state. Fail
+            // fast and let a wrapper/autostart retry.
+            eprintln!("bread-polkit: singleton lock unavailable ({e}); exiting");
+            std::process::exit(1);
         }
     };
 
