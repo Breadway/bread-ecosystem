@@ -37,7 +37,7 @@ pub fn users_from_uids(uids: &[u32], passwd: &str) -> Vec<UnixUser> {
 }
 
 /// Prefer the process's own uid when it is in `users`, otherwise the first.
-pub fn pick_user<'a>(users: &'a [UnixUser], current_uid: Option<u32>) -> Option<&'a UnixUser> {
+pub fn pick_user(users: &[UnixUser], current_uid: Option<u32>) -> Option<&UnixUser> {
     if let Some(uid) = current_uid {
         if let Some(user) = users.iter().find(|u| u.uid == uid) {
             return Some(user);

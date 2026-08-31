@@ -185,10 +185,7 @@ pub fn palette_from_image(path: &Path) -> std::io::Result<Palette> {
         Ok(s) => s,
     };
     if !status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("wal failed with {status}"),
-        ));
+        return Err(std::io::Error::other(format!("wal failed with {status}")));
     }
 
     let json_path = [
@@ -299,9 +296,11 @@ mod tests {
     #[test]
     fn write_output_palette_roundtrips_color4() {
         with_runtime_dir(|_| {
-            let mut p = Palette::default();
-            p.color4 = "#7aa2f7".into();
-            p.background = "#ffffff".into();
+            let p = Palette {
+                color4: "#7aa2f7".into(),
+                background: "#ffffff".into(),
+                ..Default::default()
+            };
             write_output_palette("HDMI-A-1", &p).unwrap();
             let loaded = load_palette_for("HDMI-A-1");
             assert_eq!(loaded.color4, "#7aa2f7");
