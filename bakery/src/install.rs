@@ -523,8 +523,17 @@ fn fetch_extract_archive(
         .into_temp_path();
 
     fetch_verify_write(pkg, filename, sha256, &tmp_archive, "data archive")?;
-    if !tmp_archive.exists() {
-        // fetch_verify_write already warned (download/checksum failure).
+    // `fetch_verify_write` treats a download/checksum/missing-sha failure
+    // as a soft warning and returns `Ok` *without writing* — but the
+    // `NamedTempFile` above is already created (0 bytes), so gating on
+    // mere `exists()` would let an empty file through to `tar tvf`, which
+    // then bails with a confusing "not in gzip format" error that masks
+    // the real cause and aborts the whole install. Gate on *non-empty*.
+    if std::fs::metadata(&tmp_archive)
+        .map(|m| m.len())
+        .unwrap_or(0)
+        == 0
+    {
         return Ok(());
     }
 
@@ -1034,6 +1043,34 @@ mod tests {
         let err = fetch_extract_archive(&pkg, "evil.tar.gz", &Some(sha256_hex), dest_dir.path())
             .unwrap_err();
         assert!(err.to_string().contains("unsafe path"));
+    }
+
+    #[test]
+    fn fetch_extract_archive_download_failure_is_non_fatal() {
+        // A checksum mismatch makes `fetch_verify_write` warn-and-return
+        // Ok without writing, leaving the (already created) NamedTempFile
+        // empty. The pre-extraction `tar tvf` must be skipped for an empty
+        // file rather than bailing, so a failed archive download degrades
+        // gracefully and does NOT abort the package install (regression
+        // for the empty-temp-file bug).
+        let base_url = serve_once(b"definitely not a tar.gz");
+        let pkg = test_package(&base_url);
+
+        let dest_dir = tempdir().unwrap();
+        let res = fetch_extract_archive(
+            &pkg,
+            "content.tar.gz",
+            &Some("0".repeat(64)), // will not match the served bytes
+            dest_dir.path(),
+        );
+        assert!(
+            res.is_ok(),
+            "a data-archive download/checksum failure must be non-fatal"
+        );
+        assert!(
+            std::fs::read_dir(dest_dir.path()).unwrap().next().is_none(),
+            "nothing should be extracted into dest_dir"
+        );
     }
 
     #[test]
