@@ -11,6 +11,8 @@
 //!   bread-theme print      # render to stdout (no write)
 //!   bread-theme generate-output <OUTPUT> --image <PATH> [--shared]
 //!   bread-theme generate-output <OUTPUT> --from-json <PATH> [--shared]
+//!   bread-theme layerrules  # write the active theme's [compositor] table
+//!                           # to ~/.config/hypr/layerrules.json (plan §9)
 
 use std::process::ExitCode;
 
@@ -27,11 +29,12 @@ fn write_and_report(verb: &str) -> ExitCode {
     }
 }
 
-fn print_help() {
-    eprintln!(
+fn print_help_to(mut w: impl std::io::Write) {
+    let _ = write!(
+        &mut w,
         "bread-theme — shared stylesheet generator\n\n\
          USAGE:\n\
-         \x20 bread-theme [generate|reload|path|print]\n\
+         \x20 bread-theme [generate|reload|path|print|layerrules]\n\
          \x20 bread-theme generate-output <OUTPUT> --image <PATH> [--shared]\n\
          \x20 bread-theme generate-output <OUTPUT> --from-json <WAL-OR-PALETTE.json> [--shared]\n\n\
          generate          render the pywal palette to the shared stylesheet (default)\n\
@@ -41,24 +44,40 @@ fn print_help() {
          generate-output   write palettes/<OUTPUT>.json and themes/<OUTPUT>.css\n\
          \x20                --image      isolated `wal -i` (does not touch ~/.cache/wal)\n\
          \x20                --from-json  wal colors.json or a color1-6 object\n\
-         \x20                --shared     also write the session-global theme.css",
-        bread_theme::shared_css_path().display()
+         \x20                --shared     also write the session-global theme.css\n\
+         layerrules        write the active shell theme's [compositor] table to\n\
+         \x20                {} —\n\
+         \x20                scripts/ui/rules.lua reads it for per-namespace blur/\n\
+         \x20                animation, falling back to its hardcoded rules if this\n\
+         \x20                is missing or malformed",
+        bread_theme::shared_css_path().display(),
+        bread_theme::layerrules_path().display()
     );
+}
+
+/// Usage/help text. Explicitly requested help (`--help`/`-h`) goes to
+/// **stdout** so it can be piped/grepped; the same text on an error path
+/// (e.g. `generate-output` with no args) goes to stderr via
+/// [`print_help_err`].
+fn print_help() {
+    print_help_to(std::io::stdout());
+}
+
+fn print_help_err() {
+    print_help_to(std::io::stderr());
 }
 
 fn generate_output_cmd() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(2).collect();
-    if args.is_empty()
-        || args
-            .iter()
-            .any(|a| matches!(a.as_str(), "-h" | "--help" | "help"))
-    {
+    if args.iter().any(|a| matches!(a.as_str(), "-h" | "--help" | "help")) {
         print_help();
-        return if args.is_empty() {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
-        };
+        return ExitCode::SUCCESS;
+    }
+    if args.is_empty() {
+        // Missing arguments is an error, not a help request — usage goes to
+        // stderr.
+        print_help_err();
+        return ExitCode::FAILURE;
     }
 
     let output = args[0].as_str();
@@ -170,6 +189,19 @@ fn finish_generate_output(output: &str, css: std::path::PathBuf, shared: bool) -
     }
 }
 
+fn layerrules_cmd() -> ExitCode {
+    match bread_theme::write_layerrules_active() {
+        Ok(path) => {
+            eprintln!("bread-theme: wrote {}", path.display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("bread-theme: failed to write layer rules: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cmd = std::env::args().nth(1).unwrap_or_else(|| "generate".into());
     match cmd.as_str() {
@@ -188,13 +220,14 @@ fn main() -> ExitCode {
         // palette and recolour live — shared widgets *and* each app's own rules.
         "reload" => write_and_report("reloaded"),
         "generate-output" => generate_output_cmd(),
+        "layerrules" => layerrules_cmd(),
         "-h" | "--help" | "help" => {
             print_help();
             ExitCode::SUCCESS
         }
         other => {
             eprintln!(
-                "bread-theme: unknown command '{other}' (try generate|reload|path|print|generate-output)"
+                "bread-theme: unknown command '{other}' (try generate|reload|path|print|generate-output|layerrules)"
             );
             ExitCode::FAILURE
         }

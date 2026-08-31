@@ -10,6 +10,10 @@ use std::rc::Rc;
 
 use crate::Palette;
 
+/// Per-widget app-CSS builder: given the resolved palette for the widget's
+/// monitor, produce the app stylesheet to layer on top of the theme CSS.
+type AppCssBuilder = Rc<dyn Fn(&Palette) -> String>;
+
 /// Above APPLICATION (600) so we beat [`apply_shared`], below USER (800)
 /// so `apply_user_css` still wins.
 const BIND_PRIORITY: u32 = gtk4::STYLE_PROVIDER_PRIORITY_USER - 10;
@@ -162,7 +166,7 @@ struct WidgetBind {
     output: String,
     theme: CssProvider,
     app: Option<CssProvider>,
-    app_build: Option<Rc<dyn Fn(&Palette) -> String>>,
+    app_build: Option<AppCssBuilder>,
     /// Keep the directory monitor + child model alive for this widget.
     _watch: Option<gio::ListModel>,
 }
@@ -284,7 +288,7 @@ fn watch_root_children(widget: &gtk4::Widget) -> gio::ListModel {
 fn bind_window_inner(
     widget: &gtk4::Widget,
     output: &str,
-    app_build: Option<Rc<dyn Fn(&Palette) -> String>>,
+    app_build: Option<AppCssBuilder>,
 ) {
     let key = widget_key(widget);
     let palette = crate::load_palette_for(output);
@@ -387,7 +391,7 @@ where
     bind_window_inner(widget.as_ref(), output, Some(Rc::new(build)));
 }
 
-fn attach_enter_monitor(widget: &gtk4::Widget, build: Option<Rc<dyn Fn(&Palette) -> String>>) {
+fn attach_enter_monitor(widget: &gtk4::Widget, build: Option<AppCssBuilder>) {
     let Some(native) = widget.native() else {
         return;
     };
@@ -408,7 +412,7 @@ fn attach_enter_monitor(widget: &gtk4::Widget, build: Option<Rc<dyn Fn(&Palette)
     });
 }
 
-fn bind_auto(native: &gtk4::Native, build: Option<Rc<dyn Fn(&Palette) -> String>>) {
+fn bind_auto(native: &gtk4::Native, build: Option<AppCssBuilder>) {
     let widget = native.upcast_ref::<gtk4::Widget>().clone();
 
     let apply = {

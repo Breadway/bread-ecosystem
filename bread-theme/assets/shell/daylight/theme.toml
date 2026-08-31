@@ -1,0 +1,281 @@
+# The fourth compiled-in builtin (bread-theme/src/shell/builtin.rs), demo
+# "Daylight" in bos-ui-demos/proposed/daylight.html — a bottom-anchored dock
+# split into three DETACHED pills (workspaces | clock+media | stats)
+# floating on an otherwise fully transparent bar, ink-on-paper: near-opaque
+# white surfaces, soft drop shadows (blur is OFF — see [compositor] below),
+# deep teal accent, warm amber equaliser. This is the first built-in that is
+# LIGHT, the first anchored BOTTOM, the first SEGMENTED (three pills instead
+# of one bar surface), and the first with blur deliberately disabled — see
+# the task report for what each of those four axes required.
+#
+# Values are taken from bos-ui-demos/proposed/daylight.html's <style> block;
+# where the demo is silent (satellite offsets, bar-adjacent chip sizing)
+# this file re-derives from the dock's own edge, same method every sibling
+# theme.toml already documents.
+#
+# Font (Outfit is not installed on the dev machine, same gap liquid-motion/
+# spotlight already have — renders in fallback until ttf-outfit is
+# installed) and colour (the demo's #2f6d7a teal / #c2683c amber are *flat*
+# accents — mapped to this palette's `teal` / `yellow` tokens, see [tokens]'s
+# own note — never a literal hex value, or pywal theming breaks).
+
+name = "Daylight"
+id   = "daylight"
+
+[tokens]
+font_family    = "Outfit, sans-serif"
+font_fallback  = "sans-serif"
+font_size_base = 14
+# `.bar-segment`'s radius (see `bar_border = "segmented"` below) — the
+# window itself (`window.breadbar`) draws no radius at all, since it draws
+# no fill/border either. Demo: `.seg { border-radius: 14px }`.
+radius_bar     = 14
+# Notification/history card radius. Demo has no explicit `.note` radius of
+# its own (its override block only touches background/border/shadow/colour
+# — see shared.css's `.note { border-radius: 12px }` default) — 14px keeps
+# it a close, deliberate match to this theme's own popover/segment radius
+# instead of inheriting an unrelated demo's 12px.
+radius_card    = 14
+# Chip/workspace-pill radius. Demo: `.chip`/`.wp`/`.trail` all draw a 9px
+# pill (concentric inside the 14px segment with a 7px inset, per the demo's
+# own comment next to `.chip`).
+radius_sm      = 9
+radius_pill    = 999
+# Demo: `.pop { padding: 13px }`.
+pad            = 13
+# `.bar-segment` fill alpha — demo: `.seg { background: rgba(255,255,255,.94) }`,
+# a near-OPAQUE paper pill, not liquid-motion/glass-workbench's translucent
+# glass (0.72). Also reused for the notification/OSD/panel surfaces below
+# (the same `bg_alpha` token every sibling theme already reuses for more
+# than just the bar).
+bg_alpha       = 0.94
+# The demo defines both curves distinctly (`--spring`/`--settle`), like
+# liquid-motion — not glass-workbench/spotlight's single shared curve.
+spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
+spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+# Palette token NAMES, not hex — #2f6d7a is this palette's `teal`. Equal
+# from/to because the demo's workspace-trail fill is flat
+# (`.trail { background: var(--accent) }`), not a gradient — same reasoning
+# as glass-workbench/spotlight's own flat accents. accent_from IS read (the
+# Trail gradient's start stop, and now — this theme is the reason — its end
+# stop too, see accent_to's own doc comment in types.rs).
+accent_from    = "teal"
+accent_to      = "teal"
+# A SECOND accent, independent of accent_from/accent_to: the demo's media
+# equaliser bars are warm amber (`--accent2: #c2683c`), not the workspace
+# trail's deep teal — one accent value can no longer describe both, which is
+# why this key exists at all (see Tokens::accent2's doc comment). Mapped to
+# `yellow` (pywal ANSI color3): the demo's amber reads warmer/more orange
+# than a pure hue, and `yellow` is the only remaining named accent slot not
+# already claimed by `accent`/`teal`/`green`/`pink` across the four built-in
+# themes that reads plausibly warm regardless of wallpaper. Consumed by
+# breadbar::theme::load_css's `.media-eq-bar` rule.
+accent2        = "yellow"
+# Demo: `.chip { height: 26px }` / `.wp { height: 26px }` on the 40px dock —
+# the same 26px liquid-motion's own Trail-style bar already uses (see
+# `breadbar::theme::approved_chip_height`, which is what actually governs
+# this in practice — see that function's own note on why this token is
+# otherwise a restated truth, not a live input).
+chip_height    = 26
+# No single demo number for bar-icon glyph size (the demo's `.gl` box is
+# 16x16, but that is the icon's *swatch*, not the glyph-drawing size other
+# themes' icon_px models) — chosen proportionally between liquid-motion's
+# 24px (44px bar) and glass-workbench's 18px (36px bar) for this theme's
+# 40px dock.
+icon_px        = 20
+# THE axis-3 (segmented) knob: `window.breadbar` itself gets no fill/
+# border/radius at all (drawn fully transparent); the bar's three slot-group
+# containers each get their own `.bar-segment` pill surface instead. See
+# Tokens::bar_border's doc comment and breadbar::theme::load_css's
+# `segmented` local for exactly what this changes.
+bar_border     = "segmented"
+# THE axis-1 (light) knob — see Tokens::light's doc comment for why this
+# exists and exactly what it swaps. Every dark-assuming hardcode this flag
+# fixes is listed in the task report.
+light          = true
+
+[bar.window]
+# THE axis-2 (bottom-anchored) knob. Full-bleed left/right (`window.
+# breadbar`'s own bounds touch both screen edges, like every sibling
+# theme's top-anchored bar), with `bottom_margin` floating it 12px off the
+# bottom edge — the demo's own `.dock { left: 0; right: 0; bottom: 12px }`.
+# The 14px horizontal inset the demo's `.dock` draws via CSS `padding`
+# (not a window margin) is reproduced the same way: see `centerbox_padding`
+# in breadbar::theme::load_css, keyed off `bar_border == "segmented"`
+# exactly like glass-workbench's flush bar already keys its own padding off
+# `bar_border == "bottom"`.
+anchors   = ["bottom", "left", "right"]
+width     = "fill"
+height    = 40
+margin    = { top = 0, left = 0, right = 0, bottom = 12 }
+exclusive = "auto"
+keyboard  = "none"
+layer     = "top"
+
+[bar.slots]
+# Same widget-alias shape as liquid-motion (plan §11 phase 1's fixed
+# interleave points), even though the demo itself shows no extra Lua
+# widget — so a widget requesting one of these placements has a home under
+# Daylight too, the same reasoning spotlight's own `widget:left_of_stats`
+# documents for its slimmer slot set.
+left   = ["workspaces", "widget:right_of_workspaces"]
+centre = ["media", "widget:left_of_clock", "clock", "widget:right_of_clock"]
+right  = ["widget:left_of_stats", "volume", "wifi", "battery", "control"]
+drawer = []
+
+[modules.workspaces]
+style      = "trail"
+show_empty = true
+
+[modules.clock]
+# Demo: one time label + one date label (`.clock`/`.date`), not liquid-
+# motion's per-digit flip — same reasoning as glass-workbench's own "plain"
+# choice.
+style     = "plain"
+format    = "%H:%M"
+show_date = true
+
+[launcher]
+mode     = "overlay"
+# Demo: `.bx { width: min(430px, 90%) }`.
+width    = 430
+# NOTE — known gap, see task report: `breadbox` (the process that actually
+# reads this field) is not one of this task's two repos, and `Launcher` has
+# no "anchor from bottom" concept at all — `top` is unconditionally a
+# distance from the TOP of the screen in every existing consumer. The demo's
+# launcher rises from just above the dock (`.bx { bottom: 62px }`), which
+# this schema/consumer pairing cannot express without a breadbox-side change
+# this task cannot make. 55% is a best-effort placement (roughly the lower
+# half of the screen, not flush against either edge) documented here as a
+# stopgap, not a real fix.
+top      = "55%"
+# Demo: `.bx { border-radius: 18px }`.
+radius   = 18
+# Demo: `.bx .ico { width: 26px; height: 26px }`.
+icon_px  = 26
+# Demo's rows all fade/slide in together with a small per-index stagger
+# (`animation-delay: min(i,10)*20ms`) — closest existing `row_anim` value is
+# glass-workbench's "stagger" (the CSS classes it reuses are already 28ms
+# apart, not 20ms, but this schema has no numeric stagger-interval knob of
+# its own to match the demo's exactly).
+row_anim = "stagger"
+# Demo: a plain 1px hairline under the search field
+# (`.bx .q { border-bottom: 1px solid rgba(26,29,34,.09) }`), not liquid-
+# motion's gradient rule.
+rule     = "hairline"
+footer   = "count_apps"
+sections = true
+# Demo supports all four query prefixes (bare/`=`/`>`/`.`), same as
+# spotlight — its `<script>` reuses the identical shared.js query parser.
+modes    = ["apps", "calc", "cmd", "url"]
+# `.bx .r { border-radius: 10px; margin: 0 7px; padding: 9px 11px }`
+row_radius       = 10
+row_inset        = 7
+row_padding_v    = 9
+row_padding_h    = 11
+# `.bx .ico { border-radius: 8px }` (paired with icon_px = 26 above)
+icon_radius      = 8
+# `.bx .q { padding: 15px 17px; font-size: 15px }`
+search_font_size = 15
+search_padding_v = 15
+search_padding_h = 17
+# Demo: `.bx { background: var(--paper) }` — fully OPAQUE white, not
+# liquid-motion/glass-workbench's translucent glass. 0.97, not a bare 1.0,
+# to read as a deliberate "near-opaque paper" choice rather than a rounding
+# accident, matching this theme's own `bg_alpha`/pill-surface language.
+panel_alpha      = 0.97
+# Demo: `.bx .r.sel { background: rgba(47,109,122,.15) }` — teal at 15%.
+selection_alpha  = 0.15
+
+# Keyed by layer-shell namespace, matching [compositor.*] below.
+#
+# `bottom_right`, not `top_right`: THE OTHER axis-2 gap this theme exposed
+# and fixed. Every sibling theme's bar sits at the TOP, so `top_right`
+# always put breadbar-notif/breadbar-panel naturally close to the bar; a
+# bottom-anchored dock has nothing in the original three-shape anchor set
+# that keeps its satellites near it. `bottom_right` is a new fourth anchor
+# shape (bread-theme/src/shell/manifest.rs + breadbar/src/surface.rs),
+# validated the same "typo'd key is a hard error" way as its siblings.
+# `offset` is `[right, bottom]`, mirroring `top_right`'s `[right, top]`
+# convention. This bar's own bottom edge sits at margin.bottom(12) +
+# height(40) = 52px, so 64 (52 + a 12px gap, the same gap-beyond-the-bar-
+# edge relationship every sibling theme's own top_right offset already
+# uses) keeps the popup just clear of the dock.
+[surfaces."breadbar-notif"]
+anchor = "bottom_right"
+offset = [16, 64]
+# 320, not the demo's own shared.css `.notifs { width: 250px }` — every
+# sibling theme's breadbar-notif width already follows breadbar's real
+# `set_default_width(320)` live-toast constant instead of the demo markup's
+# arbitrary number (see liquid-motion/theme.toml's own note on this), and
+# this theme follows that same real-app-fidelity precedent rather than the
+# demo's number.
+width  = 320
+layer  = "overlay"
+
+[surfaces."breadbar-osd"]
+# Demo: `.osd { bottom: 64px }` — independent of `anchor`, this already
+# matches the notif/panel offset above (both landed on 64 from the same
+# "12px clear of the dock's 52px edge" reasoning, coincidentally the same
+# number as the notif/panel `offset[1]`).
+anchor = "bottom_centre"
+offset = 64
+width  = 180
+layer  = "overlay"
+
+[surfaces."breadbar-panel"]
+anchor = "bottom_right"
+offset = [16, 64]
+width  = "auto"
+layer  = "overlay"
+
+[surfaces."breadbar-dismiss"]
+# THE THIRD axis-2 consequence: `fill`'s `offset` was single-value
+# (top-margin-only) before this theme — a bottom-anchored bar needs the
+# scrim's GAP at the BOTTOM instead, so `breadbar/src/surface.rs::apply`'s
+# "fill" arm now reads a `[top, bottom]` pair (falling back to `[value, 0]`
+# for every existing single-value theme, so liquid-motion/glass-workbench/
+# spotlight are unaffected). `0` here means the scrim covers all the way to
+# the true top of the screen (nothing to clear up there); `52` is this bar's
+# own edge (margin.bottom(12) + height(40)), leaving the dock's own
+# footprint click-through the way every sibling theme's single top offset
+# already leaves its own bar's footprint alone.
+anchor = "fill"
+offset = [0, 52]
+width  = "fill"
+layer  = "overlay"
+
+# Appearance-only, never placement/workspace/focus (plan §12 Layer B
+# boundary). THE axis-4 knob: `blur = false` everywhere, and `blur_popups`
+# dropped too — the demo draws depth with `box-shadow`, not
+# `backdrop-filter`, and per the task brief this also sidesteps the
+# shadow-halo trap a blurred `ignore_alpha` surface has (fixed in breadbox
+# by removing the shadow entirely — see that fix's history) since there is
+# no blur here for a shadow to get caught inside. No `ignore_alpha`
+# anywhere below either: that key only means anything to a BLURRED surface,
+# and setting it on an unblurred one would be exactly the kind of
+# never-consumed key this project's rules forbid.
+[compositor."breadbar"]
+blur        = false
+blur_popups = false
+animation   = "slide bottom"
+
+[compositor."breadbar-osd"]
+blur      = false
+animation = "slide bottom"
+
+[compositor."breadbar-notif"]
+blur      = false
+animation = "slide right"
+
+[compositor."breadbar-panel"]
+blur      = false
+animation = "slide right"
+
+[compositor."breadbar-dismiss"]
+no_anim = true
+
+[compositor."breadbox"]
+blur = false
+
+# No `css = "..."` overlay — compiled-in builtin, same as its three siblings.

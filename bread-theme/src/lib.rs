@@ -1,16 +1,34 @@
 #[cfg(feature = "adw")]
 pub mod adw;
 #[cfg(feature = "gtk")]
+pub mod anim;
+#[cfg(feature = "gtk")]
 pub mod gtk;
+mod layerrules;
 mod output;
 pub mod palette;
+pub mod shell;
 
+pub use layerrules::{layerrules_json, layerrules_path, write_layerrules, write_layerrules_active};
 pub use output::{
     generate_output, load_palette_for, output_css_path, output_palette_path, palette_from_image,
     palette_from_json, palettes_dir, sanitize_output, themes_dir, write_output_css,
     write_output_palette, write_shared_css_from,
 };
 pub use palette::{load_palette, Palette};
+
+/// Env-var locks shared by any test module that mutates process-global
+/// state (`std::env::set_var`) — `cargo test` runs a crate's tests in
+/// parallel by default, so every module touching the *same* env var must
+/// serialize through the *same* lock or their mutations race each other's
+/// reads. `bread_theme::output`'s own `XDG_ENV_LOCK` guards `XDG_RUNTIME_DIR`
+/// specifically and stays where it is; `XDG_CONFIG_HOME_LOCK` here is the
+/// one shared by `shell::tests` and `layerrules::tests`, which both point
+/// `XDG_CONFIG_HOME` at an isolated temp dir.
+#[cfg(test)]
+pub(crate) mod test_support {
+    pub(crate) static XDG_CONFIG_HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+}
 
 /// Design tokens from BREAD_DESIGN_SYSTEM.md.
 pub mod tokens {
@@ -312,7 +330,8 @@ pub fn stylesheet_resolved(p: &Palette) -> String {
 /// named colors cannot leak the wrong monitor's accent.
 pub(crate) fn resolve_color_names(css: &str, p: &Palette) -> String {
     let mut pairs: Vec<(&str, String)> = color_pairs(p).into_iter().collect();
-    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    // Longest name first, so `@on-bg` is replaced before `@bg` can match its tail.
+    pairs.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
     let mut out = css.to_string();
     for (name, value) in pairs {
         out = out.replace(&format!("@{name}"), &value);
@@ -526,8 +545,10 @@ mod tests {
 
     #[test]
     fn stylesheet_resolved_inlines_color4_and_drops_named_refs_in_rules() {
-        let mut p = Palette::default();
-        p.color4 = "#7aa2f7".into();
+        let p = Palette {
+            color4: "#7aa2f7".into(),
+            ..Default::default()
+        };
         let css = stylesheet_resolved(&p);
         assert!(css.contains("#7aa2f7"), "color4 must appear as hex: {css}");
         // Rule bodies must not keep named colors — GTK display-global

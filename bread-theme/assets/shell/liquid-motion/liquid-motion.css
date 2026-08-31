@@ -1,0 +1,104 @@
+/* CSS template for the liquid-motion builtin (bread-theme/src/shell/builtin.rs).
+ *
+ * Curly-brace placeholders like {radius_bar} or {spring} are substituted
+ * from [tokens] by ShellTheme::css / Tokens::substitute; @-prefixed palette
+ * references (@accent, @on-bg, ...) pass through untouched, exactly like
+ * `bread_theme::stylesheet()` — GTK's own @define-color mechanism resolves
+ * them when the CSS provider is attached to a display/output.
+ *
+ * Scope: this is the window/workspace/clock chrome the manifest's own
+ * concepts (bar.window, modules.workspaces, modules.clock) actually model —
+ * not a byte-for-byte copy of breadbar/src/theme.rs::load_css's full ~250
+ * lines (notification cards, wifi popover, control panel, media widget, ...).
+ * Those stay hand-written in breadbar for now; migrating them behind this
+ * same token-substitution mechanism is Phase 2/3 work (plan §6), once
+ * breadbar actually consumes ShellTheme and can verify pixel parity itself
+ * via --screenshot. Phase 1's job is the mechanism, exercised end-to-end
+ * here with a representative slice, not the full port.
+ */
+
+@keyframes row-in {
+  from { opacity: 0; margin-top: 8px; }
+  to   { opacity: 1; margin-top: 0; }
+}
+@keyframes digit-flip {
+  from { opacity: 0; margin-top: 7px; }
+  to   { opacity: 1; margin-top: 0; }
+}
+
+window.breadbar {
+  background-color: alpha(@bg, {bg_alpha});
+  color: @on-bg;
+  border-radius: {radius_bar}px;
+  border: 1px solid alpha(@on-bg, 0.08);
+}
+window.breadbar > centerbox { padding: 0 8px 0 6px; }
+window.breadbar button { min-height: 0; min-width: 0; }
+
+.workspace-trail {
+  background-image: linear-gradient(90deg, @{accent_from}, @{accent_to});
+  background-color: @{accent_from};
+  border-radius: {radius_card}px;
+}
+.workspace-btn {
+  background: transparent;
+  opacity: 0.36;
+  color: @on-bg;
+  border-radius: {radius_card}px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 28px;
+  min-height: {chip_height}px;
+  margin: 0;
+  padding: 0 7px;
+  font-size: 22px;
+  font-weight: bold;
+  transition: opacity 0.22s {spring_settle}, background-color 0.22s {spring_settle};
+}
+.workspace-btn:hover { opacity: 0.85; background: alpha(@on-bg, 0.08); }
+.workspace-btn.occupied { opacity: 0.78; }
+.workspace-btn.active { background: transparent; color: @on-accent; opacity: 1; }
+.workspace-btn.active:hover { background: transparent; }
+.workspace-btn.ws-in { animation: row-in 0.32s {spring_settle} both; }
+
+.clock-box { padding: 0 4px; }
+.clock-label {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  min-height: 0;
+  padding: 0;
+  margin-top: 3px;
+}
+.clock-digit {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  min-width: 15px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
+.clock-colon { min-width: 10px; opacity: 0.7; }
+.clock-digit.flip { animation: digit-flip 0.45s {spring} both; }
+
+window.breadbar-osd {
+  background-color: alpha(@bg, 0.70);
+  color: @on-bg;
+  border-radius: {radius_pill}px;
+  border: 1px solid alpha(@on-bg, 0.10);
+}
+
+window.breadbar-panel {
+  background-color: alpha(@bg, {bg_alpha});
+  color: @on-bg;
+  border-radius: 14px;
+  border: 1px solid alpha(@on-bg, 0.12);
+}
+
+window.breadbar-dismiss {
+  background-color: alpha(#000000, 0.02);
+}
+
+.bread-widget-slot { margin-right: {pad}px; }

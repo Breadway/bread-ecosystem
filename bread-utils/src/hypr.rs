@@ -36,15 +36,37 @@ pub enum Socket {
 /// `HYPRLAND_INSTANCE_SIGNATURE` + `XDG_RUNTIME_DIR`. Returns `None` if
 /// `HYPRLAND_INSTANCE_SIGNATURE` isn't set (Hyprland isn't running, or we're
 /// not inside a Hyprland session) — `XDG_RUNTIME_DIR` falls back to
-/// `/run/user/1000` if unset, matching `breadmon`'s existing fallback.
+/// `/run/user/<uid>` (this process's real uid, or the historical
+/// `/run/user/1000` if that can't be read) when unset.
 pub fn socket_path(kind: Socket) -> Option<PathBuf> {
     let sig = env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
-    let rt = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+    // `XDG_RUNTIME_DIR` is normally `/run/user/<uid>`; when it's unset,
+    // reconstruct that from the process's real uid instead of assuming uid
+    // 1000, so the socket path is right for any account.
+    let rt = env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(fallback_runtime_dir);
     let file = match kind {
         Socket::Request => ".socket.sock",
         Socket::Events => ".socket2.sock",
     };
     Some(PathBuf::from(format!("{rt}/hypr/{sig}/{file}")))
+}
+
+/// `XDG_RUNTIME_DIR`'s conventional `/run/user/<uid>` value, derived from
+/// this process's real uid (`Uid:` line in `/proc/self/status`). Falls back
+/// to the historical `/run/user/1000` if that can't be read.
+fn fallback_runtime_dir() -> String {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("Uid:") {
+            if let Some(uid) = rest.split_whitespace().next() {
+                return format!("/run/user/{uid}");
+            }
+        }
+    }
+    "/run/user/1000".to_string()
 }
 
 /// Send `request` (e.g. `"j/activewindow"`, `"j/monitors"`) to the socket1
@@ -220,6 +242,17 @@ mod tests {
         let json = r#"{"class":"kitty","fullscreen":1,"at":[0,0],"size":[100,100]}"#;
         let win: ActiveWindow = serde_json::from_str(json).unwrap();
         assert!(win.fullscreen.is_fullscreen());
+    }
+
+    #[test]
+    fn fallback_runtime_dir_is_user_uid_shaped() {
+        let dir = fallback_runtime_dir();
+        assert!(dir.starts_with("/run/user/"), "got {dir}");
+        let uid = dir.trim_start_matches("/run/user/");
+        assert!(
+            !uid.is_empty() && uid.chars().all(|c| c.is_ascii_digit()),
+            "fallback uid is not numeric: {uid}"
+        );
     }
 
     // Both env-var-dependent cases share one test function: `set_var`/

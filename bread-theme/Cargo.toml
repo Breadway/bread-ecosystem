@@ -12,6 +12,11 @@ keywords = ["theming", "pywal", "gtk4", "wayland"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
+# bread_theme::shell manifest parsing (theme.toml) — gtk-free, so `bread`
+# (daemon) and `breadcrumbs` (CLI) can validate a theme without linking GTK.
+toml = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
 # Rust bindings for libadwaita (GNOME's widget library on top of GTK4) — the
 # actual source of the modern GNOME look (grouped preference rows, real

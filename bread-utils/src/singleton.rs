@@ -80,6 +80,9 @@ pub fn try_acquire(app: &str) -> std::io::Result<Acquire> {
         .read(true)
         .write(true)
         .create(true)
+        // Never truncate on open: an existing lock file may be held by a live
+        // instance. We only clear it (`set_len(0)`) *after* winning the lock.
+        .truncate(false)
         .open(&path)?;
 
     match file.try_lock() {

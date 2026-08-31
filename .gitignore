@@ -5,3 +5,9 @@
 # scripts/get.sh for how it's consumed via MINISIGN_SEC_KEY).
 *.minisign-sec
 minisign.key
+
+# Local tool caches — not build output, never belongs in the repo.
+# (breadbar already excludes graphify-out; this repo did not, and 111k lines
+# of it were swept in by a `git add -A`.)
+graphify-out/
+.grok/

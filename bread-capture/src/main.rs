@@ -50,6 +50,17 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("osd-volume", "osd-volume.png"),
             ("osd-brightness", "osd-brightness.png"),
             ("wifi-add-dialog", "wifi-add-dialog.png"),
+            // Theme 04/spotlight's embedded capsule (only rendered under
+            // `BREAD_SHELL_THEME=spotlight` — every other theme's [bar.slots]
+            // never places launcher_entry/launcher_results anywhere).
+            ("capsule-collapsed", "capsule-collapsed.png"),
+            ("capsule-expanded", "capsule-expanded.png"),
+            // Phase 6c: query sections (idle "Recent"/"Apps" headers) and
+            // the `=` calc mode — see breadbar's own `screenshot::KNOWN_VIEWS`
+            // doc comment for why the search-state width/radius change
+            // (item E) doesn't need a view of its own.
+            ("capsule-sections", "capsule-sections.png"),
+            ("capsule-calc", "capsule-calc.png"),
         ],
     ),
     ("breadbox", &[("launcher", "launcher.png")]),

@@ -1,0 +1,151 @@
+use std::{
+    fs::{self, File},
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+};
+
+use crate::paths::app_dirs;
+
+#[derive(Debug, Clone)]
+pub struct DesktopEntry {
+    /// Desktop file id (the `.desktop` filename, e.g. `firefox.desktop`).
+    /// Empty only if the path had no file name; callers fall back to `exec`.
+    pub id: String,
+    pub name: String,
+    pub exec: String,
+    pub icon_name: String,
+    pub icon_path: Option<PathBuf>, // resolved by caller from manifest
+    pub categories: Vec<String>,
+    pub wm_class: Option<String>,
+    pub terminal: bool,
+}
+
+pub fn strip_exec_codes(exec: &str) -> String {
+    let mut out = String::with_capacity(exec.len());
+    let mut chars = exec.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            match chars.peek().copied() {
+                Some('%') => {
+                    chars.next();
+                    out.push('%');
+                }
+                Some(n) if n.is_ascii_alphabetic() => {
+                    chars.next();
+                }
+                _ => out.push(c),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Returns `None` for entries that should not be shown (hidden, NoDisplay, non-Application type).
+pub fn parse_desktop(path: &Path) -> Option<DesktopEntry> {
+    let file = File::open(path).ok()?;
+    let mut in_entry = false;
+    let mut name: Option<String> = None;
+    let mut exec: Option<String> = None;
+    let mut icon: Option<String> = None;
+    let mut categories: Option<String> = None;
+    let mut wm_class: Option<String> = None;
+    let mut app_type: Option<String> = None;
+    let mut no_display = false;
+    let mut hidden = false;
+    let mut terminal = false;
+
+    for line in BufReader::new(file).lines() {
+        let Ok(raw) = line else { continue };
+        let s = raw.trim();
+        if s.starts_with('#') || s.is_empty() {
+            continue;
+        }
+        if s.starts_with('[') {
+            in_entry = s == "[Desktop Entry]";
+            continue;
+        }
+        if !in_entry {
+            continue;
+        }
+
+        if let Some(v) = s.strip_prefix("Name=") {
+            name.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("Exec=") {
+            exec.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("Icon=") {
+            icon.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("Categories=") {
+            categories.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("StartupWMClass=") {
+            wm_class.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("Type=") {
+            app_type.get_or_insert_with(|| v.to_string());
+        } else if let Some(v) = s.strip_prefix("NoDisplay=") {
+            no_display = v == "true";
+        } else if let Some(v) = s.strip_prefix("Hidden=") {
+            hidden = v == "true";
+        } else if let Some(v) = s.strip_prefix("Terminal=") {
+            terminal = v == "true" || v == "1";
+        }
+    }
+
+    if no_display || hidden {
+        return None;
+    }
+    if app_type.as_deref() != Some("Application") {
+        return None;
+    }
+
+    let name = name?.trim().to_string();
+    let exec = strip_exec_codes(exec?.trim()).trim().to_string();
+    if name.is_empty() || exec.is_empty() {
+        return None;
+    }
+
+    let icon_name = icon.unwrap_or_default().trim().to_string();
+    let cats = categories
+        .unwrap_or_default()
+        .split(';')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let id = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default();
+
+    Some(DesktopEntry {
+        id,
+        name,
+        exec,
+        icon_name,
+        icon_path: None,
+        categories: cats,
+        wm_class: wm_class.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        terminal,
+    })
+}
+
+/// Walk all configured application directories and return deduplicated entries.
+/// Entries from later directories (user-local) override those from earlier ones.
+pub fn load_all_desktop_entries() -> Vec<DesktopEntry> {
+    let mut seen: std::collections::HashMap<String, DesktopEntry> = std::collections::HashMap::new();
+    for dir in app_dirs() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                continue;
+            }
+            let key = entry.file_name().to_string_lossy().into_owned();
+            if let Some(app) = parse_desktop(&path) {
+                seen.insert(key, app);
+            }
+        }
+    }
+    seen.into_values().collect()
+}

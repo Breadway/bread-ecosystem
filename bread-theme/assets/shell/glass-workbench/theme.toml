@@ -1,0 +1,198 @@
+# The second compiled-in builtin (bread-theme/src/shell/builtin.rs), demo 02
+# in THEME_SYSTEM_PLAN.md — "Glass Workbench": a flush edge-to-edge bar with
+# plain pill workspaces, a plain date+time clock, and cpu/ram chips instead
+# of the media widget liquid-motion carries. Values are taken from
+# bos-ui-demos/02-glass-workbench.html's <style> block; where the demo is
+# silent on a number (bar-adjacent chip sizing, satellite offsets) this file
+# scales liquid-motion's own numbers down by the same 36/44 bar-height ratio
+# rather than inventing something unrelated to either source.
+#
+# Unlike liquid-motion, this builtin has no "as the code exists today" tether
+# — it is new, so demo fidelity is the only source of truth. See Phase 5's
+# task notes for the two exceptions: font (IBM Plex Sans is not installed on
+# the dev machine, so this renders in fallback until the user installs
+# ttf-ibm-plex — this now matters for real: breadbox's launcher panel
+# consumes font_family/font_fallback below, see [tokens]'s own note) and
+# colour (the demo's #7a9a88 sage is a *flat* accent, so it maps to the
+# palette's `green` token for both accent_from and accent_to — never a
+# literal hex value, or pywal theming breaks).
+
+name = "Glass Workbench"
+id   = "glass-workbench"
+
+[tokens]
+# font_family/font_fallback/font_size_base are consumed by breadbox's
+# launcher panel only (breadbox::main::build_css's entry.search/row rules —
+# see Tokens::font_family's doc comment for the exact scope); breadbar's
+# bar/chip/clock text still comes from bread_theme::stylesheet()'s own
+# hardcoded FONT_FAMILY constant, unaffected by this key.
+font_family    = "IBM Plex Sans"
+font_fallback  = "Inter, Noto Sans, sans-serif"
+font_size_base = 13
+radius_bar     = 0
+radius_card    = 10
+radius_sm      = 6
+radius_pill    = 999
+pad            = 12
+bg_alpha       = 0.72
+# The demo defines exactly one easing curve (`--spring: cubic-bezier(.22,
+# 1.2, .36, 1)`), not liquid-motion's overshoot/settle pair — there's no
+# digit-flip or trail-stretch here to want a bounce for. Both `spring` and
+# `spring_settle` point at the demo's one curve rather than inventing a
+# second value the demo never specifies.
+spring         = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+# Palette token NAMES, not hex — #7a9a88 is this palette's `green`. Equal
+# from/to because the demo's accent is flat, not a gradient. accent_from IS
+# read (Pill-style workspace fill, theme.rs); accent_to is declared-but-
+# not-yet-consumed regardless of style — nothing reads it outside the
+# breadbar Trail gradient this theme doesn't use, and even Trail hardcodes
+# its own literal gradient rather than substituting it. See
+# Tokens::accent_to's doc comment.
+accent_from    = "green"
+accent_to      = "green"
+# Demo: `.ws button { height: 20px }`. Liquid-motion's chip_height (32) is
+# tied to its 44px island; 20px is the demo's own number for this bar's
+# workspace pills, and is reused for the bar's other small chips (cpu/ram/
+# wifi/battery/control) so they all sit at the same height on the thinner
+# 36px flush bar.
+chip_height    = 22
+# No demo number for bar-icon size; scaled from liquid-motion's 24px by the
+# same 36/44 bar-height ratio liquid-motion itself uses for its 44px bar.
+icon_px        = 18
+# Flush edge-to-edge bar: a full border would draw a stray line along the
+# top/side screen edges a floating island doesn't have to worry about. See
+# Tokens::bar_border's doc comment.
+bar_border     = "bottom"
+
+[bar.window]
+anchors   = ["top", "left", "right"]
+width     = "fill"
+height    = 36
+margin    = { top = 0, left = 0, right = 0 }
+exclusive = "auto"
+keyboard  = "none"
+layer     = "top"
+
+[bar.slots]
+# No media module — demo 02 has no media widget at all (plan §1 table).
+# breadbar must tolerate the omission: `media_widget` is still built and
+# registered under the "media" module name (main.rs), it just never appears
+# in any of this theme's slot lists, so it's never appended anywhere.
+left   = ["workspaces"]
+centre = ["clock"]
+right  = ["cpu", "ram", "wifi", "battery", "control"]
+drawer = []
+
+[modules.workspaces]
+style      = "pill"
+show_empty = true
+
+[modules.clock]
+style     = "plain"
+format    = "%H:%M"
+show_date = true
+
+[launcher]
+# Glass Workbench — dense and technical, the deliberate opposite of Liquid
+# Motion's soft/roomy numbers: a tight panel radius, snug row insets/padding,
+# small 22px icons, a flat (no section headers) list, and a denser accent
+# selection fill. Spec: bos-ui-demos/proposed/glass-workbench.html's `.bx`
+# block. breadbox reads every key below now; see main.rs's build_css.
+mode     = "overlay"
+width    = 560
+top      = "64px"
+radius   = 10
+icon_px  = 22
+row_anim = "stagger"
+rule     = "hairline"
+footer   = "count_results"
+sections = false
+modes    = ["apps"]
+# `.bx .r { border-radius: 6px; margin: 0 6px; padding: 8px 10px }`
+row_radius       = 6
+row_inset        = 6
+row_padding_v    = 8
+row_padding_h    = 10
+# `.bx .ico { border-radius: 5px }` (paired with icon_px = 22 above)
+icon_radius      = 5
+# `.bx .q { padding: 12px 15px; font-size: 14px }`
+search_font_size = 14
+search_padding_v = 12
+search_padding_h = 15
+# `.bx .r.sel { background: rgba(accent, .28) }`
+# Panel opacity, separate from tokens.bg_alpha (the bar). Matches the
+# approved reference: demo `.bx.gw{background:rgba(16,20,18,.95)}`. breadbox hardcoded 0.60, which washed the
+# panel out over a bright wallpaper.
+panel_alpha      = 0.95
+selection_alpha  = 0.28
+
+# Same four satellite namespaces as liquid-motion, keyed identically so the
+# two manifests validate against the same [compositor.*] keyspace. Offsets
+# are liquid-motion's own numbers re-derived from this bar's actual edge
+# instead of the island's: liquid-motion's bar bottom edge sits at
+# margin.top(12) + height(44) = 56px, and its breadbar-notif/-panel top
+# offset (64) is that plus an 8px gap, while breadbar-dismiss (56) sits
+# flush against it with no gap. This bar's edge is margin.top(0) +
+# height(36) = 36px, so the same two relationships give 44 (36 + 8) and 36.
+[surfaces."breadbar-notif"]
+anchor = "top_right"
+offset = [16, 44]
+width  = 320
+layer  = "overlay"
+
+[surfaces."breadbar-osd"]
+# Independent of bar height (an OSD pill near the bottom of the screen) —
+# unchanged from liquid-motion.
+anchor = "bottom_centre"
+offset = 80
+width  = 180
+layer  = "overlay"
+
+[surfaces."breadbar-panel"]
+anchor = "top_right"
+offset = [16, 44]
+width  = "auto"
+layer  = "overlay"
+
+[surfaces."breadbar-dismiss"]
+anchor = "fill"
+offset = 36
+width  = "fill"
+layer  = "overlay"
+
+# Appearance-only, never placement/workspace/focus (plan §12 Layer B
+# boundary) — identical to liquid-motion's rules. Blur *strength* is global
+# (plan §9 known limit), so this theme cannot independently match the demo's
+# per-surface blur radii (20px bar / 16px launcher / 22px popovers / 6px
+# window borders); only on/off, ignore_alpha and slide direction are
+# per-namespace knobs this system actually has.
+[compositor."breadbar"]
+blur         = true
+ignore_alpha = 0.2
+blur_popups  = true
+animation    = "slide top"
+
+[compositor."breadbar-osd"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide bottom"
+
+[compositor."breadbar-notif"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-panel"]
+blur         = true
+ignore_alpha = 0.2
+animation    = "slide right"
+
+[compositor."breadbar-dismiss"]
+no_anim = true
+
+[compositor."breadbox"]
+blur         = true
+ignore_alpha = 0.2
+
+# No `css = "..."` overlay — compiled-in builtin, same as liquid-motion.
