@@ -16,9 +16,12 @@ use std::path::PathBuf;
 use crate::shell::ShellTheme;
 
 fn config_home() -> PathBuf {
+    // XDG spec: `XDG_CONFIG_HOME` is only honored when it's an *absolute*
+    // path; a relative value must be ignored (matches `bread_utils::xdg`).
     if let Ok(v) = std::env::var("XDG_CONFIG_HOME") {
-        if !v.is_empty() {
-            return PathBuf::from(v);
+        let p = PathBuf::from(&v);
+        if p.is_absolute() {
+            return p;
         }
     }
     dirs::home_dir()
@@ -110,6 +113,32 @@ mod tests {
         });
     }
 
+    /// True if any file under `dir` has a name containing `.tmp.` (a
+    /// leftover from `output::atomic_write`'s pid-suffixed temp files).
+    fn has_leftover_tmp(dir: &Path) -> bool {
+        fn walk(p: &Path) -> bool {
+            let Ok(entries) = std::fs::read_dir(p) else {
+                return false;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if walk(&path) {
+                        return true;
+                    }
+                } else if path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(".tmp."))
+                {
+                    return true;
+                }
+            }
+            false
+        }
+        walk(dir)
+    }
+
     /// `load_named("liquid-motion")` resolves through discovery (user dir,
     /// then system dir, then the compiled-in builtin) — isolate
     /// `XDG_CONFIG_HOME` to an empty dir so this can't pick up a real
@@ -166,7 +195,7 @@ mod tests {
             assert_eq!(path, dir.join("hypr").join("layerrules.json"));
             assert!(path.is_file());
             // No leftover .tmp file after the atomic rename.
-            assert!(!path.with_file_name("layerrules.json.tmp").exists());
+            assert!(!has_leftover_tmp(dir));
 
             let contents = std::fs::read_to_string(&path).unwrap();
             let value: serde_json::Value = serde_json::from_str(&contents).unwrap();
@@ -176,7 +205,7 @@ mod tests {
             // leave a stale temp file behind.
             let path2 = write_layerrules_active().unwrap();
             assert_eq!(path, path2);
-            assert!(!path.with_file_name("layerrules.json.tmp").exists());
+            assert!(!has_leftover_tmp(dir));
         });
     }
 }

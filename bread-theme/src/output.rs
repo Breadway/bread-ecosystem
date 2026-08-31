@@ -9,9 +9,12 @@ use crate::{load_palette, stylesheet};
 
 /// Session-scoped `$XDG_RUNTIME_DIR/bread`, same fallback as [`crate::shared_css_path`].
 pub(crate) fn runtime_bread_dir() -> PathBuf {
+    // XDG spec: `XDG_RUNTIME_DIR` is only honored when set to a non-empty,
+    // *absolute* path; a relative value must be ignored.
     if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
-        if !rt.is_empty() {
-            return PathBuf::from(rt).join("bread");
+        let p = PathBuf::from(&rt);
+        if !rt.is_empty() && p.is_absolute() {
+            return p.join("bread");
         }
     }
     dirs::cache_dir()
@@ -58,9 +61,13 @@ pub(crate) fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // Pad the temp name with the pid (matching `bread_utils::atomic`) so two
+    // concurrent writers for the same target can't race on one shared `.tmp`
+    // file — e.g. two `bread-theme generate-output` runs writing the same
+    // `themes/<output>.css` at once.
     let tmp = match path.file_name().and_then(|n| n.to_str()) {
-        Some(name) => path.with_file_name(format!("{name}.tmp")),
-        None => path.with_extension("tmp"),
+        Some(name) => path.with_file_name(format!(".{name}.tmp.{}", std::process::id())),
+        None => path.with_extension(format!("tmp.{}", std::process::id())),
     };
     std::fs::write(&tmp, contents)?;
     std::fs::rename(&tmp, path)?;

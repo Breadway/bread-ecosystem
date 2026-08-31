@@ -29,8 +29,9 @@ fn write_and_report(verb: &str) -> ExitCode {
     }
 }
 
-fn print_help() {
-    eprintln!(
+fn print_help_to(mut w: impl std::io::Write) {
+    let _ = write!(
+        &mut w,
         "bread-theme — shared stylesheet generator\n\n\
          USAGE:\n\
          \x20 bread-theme [generate|reload|path|print|layerrules]\n\
@@ -54,19 +55,29 @@ fn print_help() {
     );
 }
 
+/// Usage/help text. Explicitly requested help (`--help`/`-h`) goes to
+/// **stdout** so it can be piped/grepped; the same text on an error path
+/// (e.g. `generate-output` with no args) goes to stderr via
+/// [`print_help_err`].
+fn print_help() {
+    print_help_to(std::io::stdout());
+}
+
+fn print_help_err() {
+    print_help_to(std::io::stderr());
+}
+
 fn generate_output_cmd() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(2).collect();
-    if args.is_empty()
-        || args
-            .iter()
-            .any(|a| matches!(a.as_str(), "-h" | "--help" | "help"))
-    {
+    if args.iter().any(|a| matches!(a.as_str(), "-h" | "--help" | "help")) {
         print_help();
-        return if args.is_empty() {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
-        };
+        return ExitCode::SUCCESS;
+    }
+    if args.is_empty() {
+        // Missing arguments is an error, not a help request — usage goes to
+        // stderr.
+        print_help_err();
+        return ExitCode::FAILURE;
     }
 
     let output = args[0].as_str();
