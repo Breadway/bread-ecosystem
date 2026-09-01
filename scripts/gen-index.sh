@@ -15,7 +15,7 @@
 # product with no release dir under the selected track's tree is skipped
 # with a warning, same as an unreleased product is today — most products
 # won't have a beta/dev build for a while after this lands.
-# Requires: jq, python3 (tomllib, stdlib since 3.11), sha256sum
+# Requires: jq, python3 (tomllib, stdlib since 3.11), sha256sum, flock
 set -euo pipefail
 
 SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -33,6 +33,21 @@ else
     URL_ROOT="${DL_BASE}/${TRACK}"
     OUT="${DL_DIR}/${TRACK}/index.json"
 fi
+
+# Every repo's dev-release / beta-release workflow runs this after its own
+# build, so two merges landing close together (e.g. breadbar + breadbox from
+# one PR round) run it concurrently on the same self-hosted runner. Serialize
+# on a per-track lock: without it both write into the same output dir and the
+# second `mv` can fail with "No such file or directory" (the first already
+# consumed the tmp), which `set -e` turns into a red publish job even though
+# the index was written fine. Held for the whole run so the later invocation
+# also sees the earlier one's freshly-published `latest` symlink.
+_index_lock="${INDEX_LOCK:-$(dirname "${OUT}")/.gen-index.lock}"
+if ! { exec {_lock_fd}>"${_index_lock}"; } 2>/dev/null; then
+    _index_lock="${TMPDIR:-/tmp}/bread-gen-index-${TRACK}.lock"
+    exec {_lock_fd}>"${_index_lock}"
+fi
+flock "${_lock_fd}"
 
 # Read the product list from the registry TOML instead of a hardcoded array.
 mapfile -t products < <(python3 -c "
@@ -328,13 +343,14 @@ for entry in "${products[@]}"; do
     packages_json="$(jq -n --argjson m "${packages_json}" --arg k "${name}" --argjson v "${pkg}" '$m + {($k): $v}')"
 done
 
+_out_tmp="$(mktemp -u "${OUT}.XXXXXX")"
 jq -n \
     --arg version "1" \
     --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson packages "${packages_json}" \
     '{version: $version, generated_at: $generated_at, packages: $packages}' \
-    > "${OUT}.tmp"
-mv -f "${OUT}.tmp" "${OUT}"
+    > "${_out_tmp}"
+mv -f "${_out_tmp}" "${OUT}"
 
 echo "wrote ${OUT}"
 
@@ -361,7 +377,8 @@ if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
         echo "ERROR: MINISIGN_SEC_KEY is set but the 'minisign' binary is not installed" >&2
         exit 1
     fi
-    sign_args=(-S -s "${MINISIGN_SEC_KEY}" -m "${OUT}" -x "${OUT}.minisig.tmp")
+    _sig_tmp="$(mktemp -u "${OUT}.minisig.XXXXXX")"
+    sign_args=(-S -s "${MINISIGN_SEC_KEY}" -m "${OUT}" -x "${_sig_tmp}")
     if [[ -n "${MINISIGN_SEC_KEY_PASSWORD:-}" ]]; then
         MINISIGN_PASSWORD="${MINISIGN_SEC_KEY_PASSWORD}" minisign "${sign_args[@]}" </dev/null
     else
@@ -369,7 +386,7 @@ if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
         # normally generated, since there's no human to type a passphrase).
         minisign -W "${sign_args[@]}" </dev/null
     fi
-    mv -f "${OUT}.minisig.tmp" "${OUT}.minisig"
+    mv -f "${_sig_tmp}" "${OUT}.minisig"
     echo "signed ${OUT} -> ${OUT}.minisig"
 else
     echo "WARNING: MINISIGN_SEC_KEY not set — index.json was NOT signed." >&2
