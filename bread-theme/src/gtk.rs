@@ -1,12 +1,14 @@
 use gtk4::gdk::prelude::*;
 use gtk4::gio;
+use gtk4::glib;
 use gtk4::glib::object::ObjectType;
 use gtk4::prelude::*;
 use gtk4::CssProvider;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
+use std::thread::LocalKey;
 
 use crate::Palette;
 
@@ -21,10 +23,56 @@ const BIND_PRIORITY: u32 = gtk4::STYLE_PROVIDER_PRIORITY_USER - 10;
 thread_local! {
     static SHARED_PROVIDER: RefCell<Option<CssProvider>> = const { RefCell::new(None) };
     static SHARED_MONITOR:  RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static SHARED_RETRY:    Cell<bool> = const { Cell::new(false) };
     static APP_PROVIDER:    RefCell<Option<CssProvider>> = const { RefCell::new(None) };
     static APP_MONITOR:     RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static APP_RETRY:       Cell<bool> = const { Cell::new(false) };
     #[allow(clippy::type_complexity)]
     static APP_BUILDER:     RefCell<Option<Box<dyn Fn() -> String>>> = const { RefCell::new(None) };
+}
+
+/// Arm a directory `FileMonitor` into `slot`, and if `monitor_directory` fails
+/// (a dir race at login, a transient permissions hiccup) schedule a **bounded**
+/// lazy retry instead of giving up for the whole session.
+///
+/// The pre-fix code stored `None` on failure; the watch was only ever re-armed
+/// as a side effect of another `bind_window*` call, so a consumer that binds
+/// exactly once (e.g. `bread-polkit`) lost per-monitor reload permanently after
+/// a single failure. `guard` stops a burst of `bind_window*` calls from each
+/// spawning their own retry timer.
+fn arm_or_retry(
+    slot: &'static LocalKey<RefCell<Option<gio::FileMonitor>>>,
+    guard: &'static LocalKey<Cell<bool>>,
+    arm: fn() -> Option<gio::FileMonitor>,
+) {
+    if slot.with(|c| c.borrow().is_some()) {
+        return;
+    }
+    if let Some(m) = arm() {
+        slot.with(|c| *c.borrow_mut() = Some(m));
+        return;
+    }
+    if guard.with(|g| g.replace(true)) {
+        return; // a retry loop is already ticking
+    }
+    let mut attempts: u32 = 0;
+    gtk4::glib::timeout_add_seconds_local(2, move || {
+        attempts += 1;
+        let armed = slot.with(|c| c.borrow().is_some())
+            || match arm() {
+                Some(m) => {
+                    slot.with(|c| *c.borrow_mut() = Some(m));
+                    true
+                }
+                None => false,
+            };
+        if armed || attempts >= 5 {
+            guard.with(|g| g.set(false));
+            gtk4::glib::ControlFlow::Break
+        } else {
+            gtk4::glib::ControlFlow::Continue
+        }
+    });
 }
 
 fn reload_shared() {
@@ -83,12 +131,7 @@ fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
 pub fn apply_app_css<F: Fn() -> String + 'static>(build: F) {
     APP_BUILDER.with(|b| *b.borrow_mut() = Some(Box::new(build)));
     reload_app();
-    APP_MONITOR.with(|cell| {
-        if cell.borrow().is_some() {
-            return;
-        }
-        *cell.borrow_mut() = watch_theme_file(reload_app);
-    });
+    arm_or_retry(&APP_MONITOR, &APP_RETRY, || watch_theme_file(reload_app));
 }
 
 /// Load the ecosystem's shared stylesheet (the file written by
@@ -100,11 +143,8 @@ pub fn apply_app_css<F: Fn() -> String + 'static>(build: F) {
 /// app-specific rules win on equal specificity.
 pub fn apply_shared() {
     reload_shared();
-    SHARED_MONITOR.with(|cell| {
-        if cell.borrow().is_some() {
-            return;
-        }
-        *cell.borrow_mut() = watch_theme_file(reload_shared);
+    arm_or_retry(&SHARED_MONITOR, &SHARED_RETRY, || {
+        watch_theme_file(reload_shared)
     });
 }
 
@@ -162,21 +202,66 @@ pub fn output_for_widget(widget: &impl IsA<gtk4::Widget>) -> Option<String> {
     monitor.connector().map(|c| c.to_string())
 }
 
+/// Every `observe_children` model in a bound widget's current subtree, kept
+/// alive together (drop them all when the bind is forgotten). Shared so the
+/// recursive [`hook_subtree`] can push newly-discovered descendant containers
+/// in from inside an `items-changed` closure.
+type SubtreeWatches = Rc<RefCell<Vec<gio::ListModel>>>;
+
 struct WidgetBind {
     output: String,
     theme: CssProvider,
     app: Option<CssProvider>,
     app_build: Option<AppCssBuilder>,
-    /// Keep the directory monitor + child model alive for this widget.
-    _watch: Option<gio::ListModel>,
+    /// Keep every subtree child-model alive for this widget.
+    _watch: SubtreeWatches,
 }
 
 thread_local! {
     static BINDS: RefCell<HashMap<usize, WidgetBind>> = RefCell::new(HashMap::new());
     static THEMES_MONITOR: RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static THEMES_RETRY: Cell<bool> = const { Cell::new(false) };
+    static PALETTES_MONITOR: RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static PALETTES_RETRY: Cell<bool> = const { Cell::new(false) };
     static DESTROY_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     static AUTO_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+    static MAP_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+    /// Surfaces whose `enter-monitor` we've already hooked, keyed by
+    /// `GdkSurface` pointer (not widget pointer — a widget can be re-realized
+    /// onto a fresh surface).
     static ENTER_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+    /// widget pointer -> the surface pointer currently in [`ENTER_HOOKED`] for
+    /// it, so [`forget_bind`] can clear the enter hook by the right key when
+    /// the widget is destroyed.
+    static ENTER_SURFACE: RefCell<HashMap<usize, usize>> = RefCell::new(HashMap::new());
+}
+
+/// Drop every thread-local record for a destroyed bound widget.
+///
+/// `DESTROY_HOOKED`/`AUTO_HOOKED`/`MAP_HOOKED`/`BINDS` are keyed by the widget
+/// pointer; `ENTER_HOOKED` is keyed by the *surface* pointer, so we look the
+/// surface up via `ENTER_SURFACE`. Leaving the `ENTER_HOOKED` entry behind used
+/// to mean a later window whose surface was allocated at the same address would
+/// hit the `already` early-return in [`attach_enter_monitor`] and silently
+/// never re-theme when moved between monitors.
+fn forget_bind(key: usize) {
+    BINDS.with(|b| {
+        b.borrow_mut().remove(&key);
+    });
+    DESTROY_HOOKED.with(|s| {
+        s.borrow_mut().remove(&key);
+    });
+    AUTO_HOOKED.with(|s| {
+        s.borrow_mut().remove(&key);
+    });
+    MAP_HOOKED.with(|s| {
+        s.borrow_mut().remove(&key);
+    });
+    if let Some(surf_key) = ENTER_SURFACE.with(|m| m.borrow_mut().remove(&key)) {
+        ENTER_HOOKED.with(|s| {
+            s.borrow_mut().remove(&surf_key);
+        });
+    }
 }
 
 fn widget_key(widget: &gtk4::Widget) -> usize {
@@ -209,47 +294,59 @@ fn ensure_destroy_cleanup(widget: &gtk4::Widget) {
     if !inserted {
         return;
     }
-    widget.connect_destroy(move |w| {
-        let key = widget_key(w);
-        BINDS.with(|b| {
-            b.borrow_mut().remove(&key);
-        });
-        DESTROY_HOOKED.with(|s| {
-            s.borrow_mut().remove(&key);
-        });
-        AUTO_HOOKED.with(|s| {
-            s.borrow_mut().remove(&key);
-        });
-    });
+    widget.connect_destroy(move |w| forget_bind(widget_key(w)));
 }
 
-fn ensure_themes_watch() {
-    THEMES_MONITOR.with(|cell| {
-        if cell.borrow().is_some() {
+/// `themes/<stem>.<ext>` (or `palettes/<stem>.<ext>`) → the file stem, iff the
+/// event path actually carries `want_ext`. Factored out so the reload-routing
+/// logic is unit-testable without a `FileMonitor`.
+fn reload_stem_for_event(path: &Path, want_ext: &str) -> Option<String> {
+    if path.extension().and_then(|e| e.to_str()) != Some(want_ext) {
+        return None;
+    }
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+}
+
+fn arm_dir_reload_watch(dir: std::path::PathBuf, want_ext: &'static str) -> Option<gio::FileMonitor> {
+    let _ = std::fs::create_dir_all(&dir);
+    let monitor = gio::File::for_path(&dir)
+        .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+        .ok()?;
+    monitor.connect_changed(move |_, file, other, _event| {
+        let path = file.path().or_else(|| other.and_then(|f| f.path()));
+        let Some(stem) = path.as_deref().and_then(|p| reload_stem_for_event(p, want_ext)) else {
             return;
-        }
-        let dir = crate::themes_dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let monitor = gio::File::for_path(&dir)
-            .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
-            .ok();
-        if let Some(ref m) = monitor {
-            m.connect_changed(move |_, file, other, _event| {
-                let path = file.path().or_else(|| other.and_then(|f| f.path()));
-                let Some(path) = path else {
-                    return;
-                };
-                if path.extension().and_then(|e| e.to_str()) != Some("css") {
-                    return;
-                }
-                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                    return;
-                };
-                reload_binds_for_sanitized(stem);
-            });
-        }
-        *cell.borrow_mut() = monitor;
+        };
+        reload_binds_for_sanitized(&stem);
     });
+    Some(monitor)
+}
+
+fn try_arm_themes_watch() -> Option<gio::FileMonitor> {
+    arm_dir_reload_watch(crate::themes_dir(), "css")
+}
+
+/// Watch `themes/<output>.css` so a per-output pywal regenerate recolours every
+/// window bound to that output in place. Bounded lazy retry: a transient
+/// `monitor_directory` failure no longer kills per-monitor reload for the
+/// session (findings #5).
+fn ensure_themes_watch() {
+    arm_or_retry(&THEMES_MONITOR, &THEMES_RETRY, try_arm_themes_watch);
+}
+
+fn try_arm_palettes_watch() -> Option<gio::FileMonitor> {
+    arm_dir_reload_watch(crate::palettes_dir(), "json")
+}
+
+/// Also watch `palettes/<output>.json` (finding #6): the CLI writes the `.json`
+/// and the `.css` together, but third-party tooling that only rewrites the
+/// palette JSON would otherwise leave every bound window stale — the reload
+/// path re-reads the JSON via `load_palette_for` regardless, so reacting to
+/// either file is correct (a paired write just reloads twice, harmlessly).
+fn ensure_palettes_watch() {
+    arm_or_retry(&PALETTES_MONITOR, &PALETTES_RETRY, try_arm_palettes_watch);
 }
 
 fn reload_binds_for_sanitized(sanitized: &str) {
@@ -268,21 +365,56 @@ fn reload_binds_for_sanitized(sanitized: &str) {
     });
 }
 
-fn watch_root_children(widget: &gtk4::Widget) -> gio::ListModel {
+/// Re-run [`attach_tree`] over the whole bound subtree of `root`.
+fn reattach_bound_tree(root: &gtk4::Widget) {
+    let key = widget_key(root);
+    BINDS.with(|binds| {
+        if let Some(bind) = binds.borrow().get(&key) {
+            attach_tree(root, &bind.theme, bind.app.as_ref());
+        }
+    });
+}
+
+/// Recursively hook `observe_children` on `widget` *and every current
+/// descendant container*, so a subtree added lazily at **any** depth after the
+/// bind — a popover's contents, menu items, rows appended into an existing box
+/// — gets the per-output provider too (finding #3).
+///
+/// The pre-fix code only watched the root's *direct* children, so anything
+/// deeper than one level that appeared after bind/map silently rendered with
+/// the display-wide shared sheet (the wrong monitor's colours). Every model is
+/// parked in `watches` (which the `WidgetBind` owns) so the whole set is
+/// dropped together when the bind is forgotten; newly-appeared containers are
+/// hooked in from inside the `items-changed` closure.
+fn hook_subtree(widget: &gtk4::Widget, root: &glib::WeakRef<gtk4::Widget>, watches: &SubtreeWatches) {
     let model = widget.observe_children();
-    let root = widget.downgrade();
-    model.connect_items_changed(move |_, _, _, _| {
-        let Some(root) = root.upgrade() else {
-            return;
-        };
-        let key = widget_key(&root);
-        BINDS.with(|binds| {
-            if let Some(bind) = binds.borrow().get(&key) {
-                attach_tree(&root, &bind.theme, bind.app.as_ref());
+    {
+        let root = root.clone();
+        let watches = watches.clone();
+        model.connect_items_changed(move |model, pos, _removed, added| {
+            let Some(root_w) = root.upgrade() else {
+                return;
+            };
+            reattach_bound_tree(&root_w);
+            for i in pos..pos + added {
+                if let Some(child) = model.item(i).and_downcast::<gtk4::Widget>() {
+                    hook_subtree(&child, &root, &watches);
+                }
             }
         });
-    });
-    model
+    }
+    watches.borrow_mut().push(model);
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        hook_subtree(&c, root, watches);
+        child = c.next_sibling();
+    }
+}
+
+fn watch_subtree(widget: &gtk4::Widget) -> SubtreeWatches {
+    let watches: SubtreeWatches = Rc::new(RefCell::new(Vec::new()));
+    hook_subtree(widget, &widget.downgrade(), &watches);
+    watches
 }
 
 fn bind_window_inner(
@@ -331,7 +463,7 @@ fn bind_window_inner(
 
         attach_tree(widget, &theme, app.as_ref());
 
-        let child_model = watch_root_children(widget);
+        let watches = watch_subtree(widget);
         map.insert(
             key,
             WidgetBind {
@@ -339,38 +471,27 @@ fn bind_window_inner(
                 theme,
                 app,
                 app_build,
-                _watch: Some(child_model),
+                _watch: watches,
             },
         );
     });
 
     ensure_destroy_cleanup(widget);
     ensure_themes_watch();
+    ensure_palettes_watch();
     ensure_map_reattach(widget);
 }
 
 fn ensure_map_reattach(widget: &gtk4::Widget) {
-    // `connect_map` once per widget — re-bind already lives in BINDS.
-    thread_local! {
-        static MAP_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
-    }
+    // `connect_map` once per widget — re-bind already lives in BINDS. Covers the
+    // whole-window-remapped case; `watch_subtree` covers lazily-grown subtrees.
+    // `MAP_HOOKED` is cleared by `forget_bind` on destroy.
     let key = widget_key(widget);
     let inserted = MAP_HOOKED.with(|s| s.borrow_mut().insert(key));
     if !inserted {
         return;
     }
-    widget.connect_map(|w| {
-        BINDS.with(|binds| {
-            if let Some(bind) = binds.borrow().get(&widget_key(w)) {
-                attach_tree(w, &bind.theme, bind.app.as_ref());
-            }
-        });
-    });
-    widget.connect_destroy(move |_| {
-        MAP_HOOKED.with(|s| {
-            s.borrow_mut().remove(&key);
-        });
-    });
+    widget.connect_map(reattach_bound_tree);
 }
 
 /// Attach a widget-level `CssProvider` with
@@ -399,6 +520,10 @@ fn attach_enter_monitor(widget: &gtk4::Widget, build: Option<AppCssBuilder>) {
         return;
     };
     let surf_key = surface.as_ptr() as usize;
+    // Record widget -> surface *before* the dedupe check so `forget_bind` can
+    // always clear the right `ENTER_HOOKED` key on destroy, even when this call
+    // early-returns because the surface was already hooked.
+    ENTER_SURFACE.with(|m| m.borrow_mut().insert(widget_key(widget), surf_key));
     let already = ENTER_HOOKED.with(|s| !s.borrow_mut().insert(surf_key));
     if already {
         return;
@@ -491,5 +616,168 @@ pub fn apply_user_css(path: &Path, provider: &RefCell<Option<CssProvider>>) {
                 p.load_from_string("");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nanos() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    }
+
+    // ---- pure logic (no display needed) --------------------------------------
+
+    #[test]
+    fn reload_stem_for_event_requires_the_right_extension() {
+        assert_eq!(
+            reload_stem_for_event(Path::new("/run/user/1/bread/themes/eDP-1.css"), "css")
+                .as_deref(),
+            Some("eDP-1")
+        );
+        assert_eq!(
+            reload_stem_for_event(Path::new("/x/palettes/HDMI-A-1.json"), "json").as_deref(),
+            Some("HDMI-A-1")
+        );
+        // wrong extension → no reload (this is the finding #6 seam: the palettes
+        // watch must accept `.json`, the themes watch only `.css`)
+        assert_eq!(
+            reload_stem_for_event(Path::new("/x/themes/eDP-1.json"), "css"),
+            None
+        );
+        assert_eq!(
+            reload_stem_for_event(Path::new("/x/themes/.eDP-1.css.tmp.42"), "css"),
+            None
+        );
+    }
+
+    #[test]
+    fn forget_bind_clears_every_record_including_the_surface_keyed_enter_hook() {
+        // Regression for finding #2: `ENTER_HOOKED` is keyed by surface pointer,
+        // the rest by widget pointer. A destroyed window used to leave its
+        // `ENTER_HOOKED` entry behind forever, so a later window landing on the
+        // same surface address never re-themed on a monitor move.
+        let wkey = 0x1234_5678_usize;
+        let skey = 0x8765_4321_usize;
+        ENTER_SURFACE.with(|m| {
+            m.borrow_mut().insert(wkey, skey);
+        });
+        ENTER_HOOKED.with(|s| {
+            s.borrow_mut().insert(skey);
+        });
+        DESTROY_HOOKED.with(|s| {
+            s.borrow_mut().insert(wkey);
+        });
+        AUTO_HOOKED.with(|s| {
+            s.borrow_mut().insert(wkey);
+        });
+        MAP_HOOKED.with(|s| {
+            s.borrow_mut().insert(wkey);
+        });
+
+        forget_bind(wkey);
+
+        assert!(
+            ENTER_HOOKED.with(|s| !s.borrow().contains(&skey)),
+            "ENTER_HOOKED entry leaked past destroy"
+        );
+        assert!(ENTER_SURFACE.with(|m| !m.borrow().contains_key(&wkey)));
+        assert!(DESTROY_HOOKED.with(|s| !s.borrow().contains(&wkey)));
+        assert!(AUTO_HOOKED.with(|s| !s.borrow().contains(&wkey)));
+        assert!(MAP_HOOKED.with(|s| !s.borrow().contains(&wkey)));
+    }
+
+    #[test]
+    fn dir_reload_watches_arm_and_create_their_directories() {
+        // Finding #5: arming must actually succeed in a writable runtime dir,
+        // and `arm_or_retry` only falls back to its bounded timer when it
+        // genuinely can't.
+        let _lock = crate::output::XDG_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("bt-gtk-watch-{}-{}", std::process::id(), nanos()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = std::env::var("XDG_RUNTIME_DIR").ok();
+        std::env::set_var("XDG_RUNTIME_DIR", &dir);
+
+        let themes = try_arm_themes_watch();
+        let palettes = try_arm_palettes_watch();
+
+        let themes_dir_made = crate::themes_dir().is_dir();
+        let palettes_dir_made = crate::palettes_dir().is_dir();
+
+        match old {
+            Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
+            None => std::env::remove_var("XDG_RUNTIME_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(themes_dir_made && palettes_dir_made, "watch arming must mkdir -p its dir");
+        assert!(themes.is_some(), "themes watch failed to arm in a writable dir");
+        assert!(palettes.is_some(), "palettes watch failed to arm in a writable dir");
+    }
+
+    // ---- widget lifecycle --------------------------------------------------
+    //
+    // These need a real GDK display *and* call `gtk4::init()`, which acquires
+    // the thread-default glib main context — running them alongside the rest of
+    // the suite (where `shell::hotreload` tests pump that context to receive
+    // `FileMonitor` events) deadlocks those. So they're `#[ignore]`d by default
+    // and the `--features gtk` CI/pre-push command skips them; run them on
+    // their own:
+    //
+    //   cargo test -p bread-theme --features gtk -- --ignored --test-threads=1
+    //
+    // They still compile with every build, so they can't silently rot.
+
+    // One test only: `gtk4::init()` binds GTK to the calling thread for the
+    // life of the process and panics ("two different threads") if any *other*
+    // test thread calls it afterwards — so all the widget-level assertions
+    // share a single init here.
+    #[test]
+    #[ignore = "needs a GDK display + exclusive glib main context; run alone (see module note)"]
+    fn gtk_widget_lifecycle_and_deep_subtree_reattach() {
+        if gtk4::init().is_err() {
+            return; // headless
+        }
+
+        // Finding #3a: watch_subtree hooks every container, not just the root.
+        let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let mid = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let leaf = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        root.append(&mid);
+        mid.append(&leaf);
+        let watches = watch_subtree(root.upcast_ref());
+        assert!(
+            watches.borrow().len() >= 3,
+            "expected a child-model per container (root/mid/leaf), got {}",
+            watches.borrow().len()
+        );
+        drop(watches);
+
+        // Finding #3b: a grandchild appended *after* the bind must trigger the
+        // recursive items-changed hook on `mid` and get re-walked.
+        let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let mid = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        root.append(&mid);
+        bind_window(&root, "eDP-1");
+        let key = widget_key(root.upcast_ref());
+        assert!(BINDS.with(|b| b.borrow().contains_key(&key)));
+
+        let before = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        mid.append(&gtk4::Label::new(Some("added late")));
+        let after = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        assert!(
+            after > before,
+            "a widget added two levels below the bound root never triggered re-attach ({before} -> {after})"
+        );
+
+        // Finding #2 sibling: forget_bind drops the record.
+        forget_bind(key);
+        assert!(BINDS.with(|b| !b.borrow().contains_key(&key)));
     }
 }
