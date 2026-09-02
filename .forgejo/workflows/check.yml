@@ -1,0 +1,38 @@
+name: check
+
+# Lint + test on short-lived work branches AND on `main` — a push to `main`
+# triggers a dev-track publish (dev-bakery.yml / dev-bread-theme.yml), and
+# those only run `cargo build --bin`, so without this nothing here is ever
+# clippy'd or tested in CI. The `--features gtk` pass matters: the entire
+# per-monitor GTK bind module in bread-theme is gated behind it and would
+# otherwise never compile in CI, let alone run its tests.
+#
+# fmt is deliberately NOT gated yet — the tree isn't `cargo fmt` clean and a
+# mass reformat mid-review would collide with every open PR. Add a fmt step
+# once the tree has been normalised in its own change.
+on:
+  push:
+    branches: ['feature/**', 'fix/**', 'main']
+
+jobs:
+  check:
+    runs-on: [self-hosted, hestia]
+    steps:
+      - name: checkout
+        run: |
+          set -euo pipefail
+          rm -rf src && mkdir src
+          git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
+            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+
+      - name: clippy
+        run: cd src && cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: clippy (gtk)
+        run: cd src && cargo clippy --workspace --all-targets --locked --features gtk -- -D warnings
+
+      - name: test
+        run: cd src && cargo test --workspace --locked
+
+      - name: test (gtk)
+        run: cd src && cargo test --workspace --locked --features gtk
