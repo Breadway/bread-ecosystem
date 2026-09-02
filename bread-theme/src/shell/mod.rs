@@ -1456,4 +1456,56 @@ mod tests {
         );
         assert_eq!(matches[0].source, ThemeSource::User);
     }
+
+    // ---- every shipped theme actually loads --------------------------------
+    // The regression this guards against: a builtin theme.toml that parses in
+    // isolation but fails `resolve_theme` at runtime (bad slot name, an
+    // unrecognized field after a schema change, a broken `extends`), so
+    // `load()` silently falls back to liquid-motion. breadbar has no tracing
+    // subscriber, so that fallback's `warn!` goes nowhere — the shell just
+    // quietly ignores `active = "spotlight"`. CI must catch it instead.
+
+    #[test]
+    fn every_builtin_theme_resolves() {
+        let _xdg = isolated_xdg();
+        for b in builtin::ALL {
+            let theme = load_named(b.id)
+                .unwrap_or_else(|e| panic!("builtin '{}' failed to load: {e:#}", b.id));
+            assert_eq!(theme.id(), b.id, "builtin '{}' resolved to a different id", b.id);
+            assert_eq!(theme.name(), b.name, "builtin '{}' name mismatch", b.id);
+            assert!(
+                !theme.window().anchors.is_empty(),
+                "builtin '{}' has no window anchors",
+                b.id
+            );
+        }
+    }
+
+    #[test]
+    fn active_theme_id_env_selects_each_builtin_and_never_falls_back() {
+        // isolated_xdg() takes the shared env lock and clears BREAD_SHELL_THEME;
+        // it's restored on drop.
+        let _xdg = isolated_xdg();
+        for b in builtin::ALL {
+            std::env::set_var("BREAD_SHELL_THEME", b.id);
+            let theme = load();
+            assert_eq!(
+                theme.id(),
+                b.id,
+                "BREAD_SHELL_THEME={} did not select it (fell back to '{}')",
+                b.id,
+                theme.id()
+            );
+        }
+        std::env::remove_var("BREAD_SHELL_THEME");
+    }
+
+    #[test]
+    fn unknown_theme_id_falls_back_to_liquid_motion() {
+        let _xdg = isolated_xdg();
+        std::env::set_var("BREAD_SHELL_THEME", "does-not-exist");
+        let theme = load();
+        std::env::remove_var("BREAD_SHELL_THEME");
+        assert_eq!(theme.id(), builtin::LIQUID_MOTION_ID);
+    }
 }
