@@ -138,7 +138,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "bakery"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "bread-utils",
@@ -187,14 +187,14 @@ dependencies = [
 
 [[package]]
 name = "bread-app"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "bread-utils",
 ]
 
 [[package]]
 name = "bread-capture"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "bread-utils",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "bread-launcher"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "bread-utils",
  "gtk4",
@@ -213,7 +213,7 @@ dependencies = [
 
 [[package]]
 name = "bread-onnx"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "bread-utils",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "bread-polkit"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "bread-app",
@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "bread-screenshots"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "bread-utils",
@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "bread-theme"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "bread-utils"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "bread-shared",
  "dirs 5.0.1",
