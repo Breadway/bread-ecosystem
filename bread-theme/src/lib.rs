@@ -318,11 +318,38 @@ pub fn write_shared_css() -> std::io::Result<std::path::PathBuf> {
     write_shared_css_from(&load_palette())
 }
 
-/// `stylesheet()` with `@name` references in rule bodies replaced by hex.
-/// Longer names first (`on-surface` before `surface`, `on-bg` before `bg`)
-/// so a prefix match cannot half-replace `@on-bg`.
+/// `stylesheet()` with `@name` references in rule bodies replaced by hex **and
+/// the leading `@define-color` block stripped entirely**.
+///
+/// This variant is only ever loaded by the per-monitor bind path
+/// (`gtk::bind_window*` / `reload_binds_for_sanitized`), which attaches it as a
+/// widget-tree `CssProvider` for one output's palette. Two things matter there:
+///
+/// 1. Every rule body is already hex (longer names first — `on-surface` before
+///    `surface`, `on-bg` before `bg` — so a prefix match cannot half-replace
+///    `@on-bg`), so the sheet needs no `@define-color` block to resolve.
+/// 2. `@define-color` in GTK4 is **stylesheet-global**, not provider- or
+///    subtree-scoped (confirmed by GTK's CSS maintainers). A per-monitor
+///    provider that still emitted the block would redefine the display-global
+///    `@accent`/`@bg`/`@on-*` to *this* monitor's palette on every bind and
+///    every per-output reload — so `apply_shared`, `apply_app_css`,
+///    `apply_user_css` and any CSS parsed afterwards in another window would
+///    resolve their named colours against whichever monitor bound last. That is
+///    exactly the "wrong monitor's accent leaks" failure the hex-inlining was
+///    added to prevent, just displaced out of the bound tree.
+///
+/// The display-global sheet ([`stylesheet`] / [`render`], loaded by
+/// [`gtk::apply_shared`] at APPLICATION priority) keeps its `@define-color`
+/// block — that is the one provider that is *supposed* to own those names.
 pub fn stylesheet_resolved(p: &Palette) -> String {
-    resolve_color_names(&stylesheet(p), p)
+    let resolved = resolve_color_names(&stylesheet(p), p);
+    let mut out: String = resolved
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("@define-color"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push('\n');
+    out
 }
 
 /// Replace `@define-color` names (`@accent`, `@on-bg`, …) with hex values.
@@ -551,34 +578,32 @@ mod tests {
         };
         let css = stylesheet_resolved(&p);
         assert!(css.contains("#7aa2f7"), "color4 must appear as hex: {css}");
-        // Rule bodies must not keep named colors — GTK display-global
-        // @define-color would otherwise leak the wrong monitor's accent.
-        let rules = css
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("@define-color"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        // The whole `@define-color` block must be gone: it is stylesheet-global
+        // in GTK4, so a per-monitor provider that kept it would clobber the
+        // display-global @accent/@bg/@on-* with this output's palette.
         assert!(
-            !rules.contains("@accent"),
-            "leftover @accent in rules:\n{rules}"
+            !css.contains("@define-color"),
+            "stylesheet_resolved must not emit any @define-color line:\n{css}"
         );
-        assert!(
-            !rules.contains("@on-bg"),
-            "leftover @on-bg in rules:\n{rules}"
-        );
-        assert!(
-            !rules.contains("@on-surface"),
-            "leftover @on-surface in rules:\n{rules}"
-        );
-        assert!(
-            !rules.contains("@on-accent"),
-            "leftover @on-accent in rules:\n{rules}"
-        );
+        // ...and no rule body may keep a named colour either.
+        assert!(!css.contains("@accent"), "leftover @accent:\n{css}");
+        assert!(!css.contains("@on-bg"), "leftover @on-bg:\n{css}");
+        assert!(!css.contains("@on-surface"), "leftover @on-surface:\n{css}");
+        assert!(!css.contains("@on-accent"), "leftover @on-accent:\n{css}");
+        assert!(!css.contains("@bg"), "leftover @bg:\n{css}");
         // Longer names first: @on-bg must not become @on-#...
-        assert!(
-            !rules.contains("@on-#"),
-            "half-replaced on-* name:\n{rules}"
-        );
+        assert!(!css.contains("@on-#"), "half-replaced on-* name:\n{css}");
+        // The component rules themselves must survive the filter.
+        assert!(css.contains("button.suggested-action"), "rules dropped:\n{css}");
+        assert!(css.contains("#7aa2f7"), "accent hex must reach rule bodies");
+    }
+
+    #[test]
+    fn render_and_stylesheet_keep_define_color_block() {
+        // The display-global sheet is the one provider that *should* own the
+        // @define-color names — only the per-bind `_resolved` variant drops it.
+        assert!(render().contains("@define-color accent "));
+        assert!(stylesheet(&Palette::default()).contains("@define-color accent "));
     }
 
     #[test]

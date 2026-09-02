@@ -22,23 +22,31 @@ pub(crate) fn runtime_bread_dir() -> PathBuf {
         .join("bread")
 }
 
-/// Keep `[A-Za-z0-9._-]`; replace everything else with `_`.
+/// Turn an output/connector name into a single path segment for
+/// `palettes/<name>.json` / `themes/<name>.css`.
+///
+/// Keep `[A-Za-z0-9._-]` verbatim (every real Hyprland connector — `eDP-1`,
+/// `HDMI-A-1`, `DP-2` — is already only those); **percent-encode** every other
+/// byte as `%XX` (upper-hex). Percent-encoding is injective, so two different
+/// connectors can never land on the same file: the old scheme mapped `/`, `:`
+/// and space all to `_`, so `a/b` and `a:b` both became `a_b` and silently
+/// shared one palette + stylesheet, last writer wins. `%` itself is not in the
+/// keep-set, so it encodes to `%25` and the mapping stays reversible in
+/// principle (nothing needs to decode today — [`reload_binds_for_sanitized`]
+/// only compares `sanitize_output(name)` against the on-disk file stem).
 pub fn sanitize_output(output: &str) -> String {
-    let s: String = output
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if s.is_empty() {
-        "_".into()
-    } else {
-        s
+    if output.is_empty() {
+        return "_".into();
     }
+    let mut s = String::with_capacity(output.len());
+    for b in output.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-') {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
 }
 
 pub fn themes_dir() -> PathBuf {
@@ -268,11 +276,26 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_output_replaces_unsafe_chars() {
-        assert_eq!(sanitize_output("HDMI A:1"), "HDMI_A_1");
-        assert_eq!(sanitize_output("foo/bar"), "foo_bar");
+    fn sanitize_output_percent_encodes_unsafe_chars() {
+        assert_eq!(sanitize_output("HDMI A:1"), "HDMI%20A%3A1");
+        assert_eq!(sanitize_output("foo/bar"), "foo%2Fbar");
         assert_eq!(sanitize_output(""), "_");
         assert_eq!(sanitize_output("..ok_name-1"), "..ok_name-1");
+        assert_eq!(sanitize_output("a%b"), "a%25b");
+    }
+
+    #[test]
+    fn sanitize_output_is_injective_across_old_collisions() {
+        // The old `_`-for-everything scheme collapsed all of these together.
+        let names = ["a/b", "a:b", "a b", "a_b", "a%2Fb"];
+        let mut seen = std::collections::HashSet::new();
+        for n in names {
+            assert!(
+                seen.insert(sanitize_output(n)),
+                "collision on {n} -> {}",
+                sanitize_output(n)
+            );
+        }
     }
 
     #[test]
@@ -281,8 +304,8 @@ mod tests {
         std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1234");
         let css = output_css_path("HDMI A:1");
         let pal = output_palette_path("HDMI A:1");
-        assert_eq!(css, themes_dir().join("HDMI_A_1.css"));
-        assert_eq!(pal, palettes_dir().join("HDMI_A_1.json"));
+        assert_eq!(css, themes_dir().join("HDMI%20A%3A1.css"));
+        assert_eq!(pal, palettes_dir().join("HDMI%20A%3A1.json"));
         assert!(css.starts_with(themes_dir()));
         assert!(pal.starts_with(palettes_dir()));
         assert_eq!(
