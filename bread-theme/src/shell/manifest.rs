@@ -40,6 +40,12 @@ pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> 
     if module.starts_with("widget:") || KNOWN_MODULES.contains(&module) {
         return Ok(());
     }
+    if module == "+" {
+        bail!(
+            "theme '{theme_id}': slot \"{slot}\" uses the \"+\" splice marker but the theme has \
+             no `extends` (or extends a theme with no {slot} slot) — nothing to splice in"
+        );
+    }
     bail!(
         "theme '{theme_id}': slot \"{slot}\" references unknown module \"{module}\" \
          (known modules: {}, or widget:<lua-module-name>)",
@@ -749,12 +755,22 @@ impl RawManifest {
     }
 }
 
-/// Deep-merge `over` onto `base`: tables merge key-by-key recursively;
-/// anything else (scalars, arrays — including slot lists) is a full
-/// replacement. This is `extends`'s one-level merge (plan §4/§11):
-/// `mod.rs` calls this exactly once per `load_named`, with the base's own
-/// `extends` key already stripped by the caller so a chain can't go deeper
-/// than one level.
+/// Deep-merge `over` onto `base`: tables merge key-by-key recursively.
+///
+/// Arrays replace wholesale **unless** the `over` array contains the splice
+/// marker `"+"`, in which case each `"+"` is replaced by the base array's
+/// elements in place — so a child theme can add one entry to an inherited
+/// slot list without restating it:
+///
+/// ```toml
+/// extends = "liquid-motion"
+/// [bar.slots]
+/// right = ["+", "widget:my-thing"]   # inherited right slot, then my-thing
+/// ```
+///
+/// This is `extends`'s one-level merge (plan §4/§11): `mod.rs` calls it once
+/// per `load_named`, with the base's own `extends` key already stripped so a
+/// chain can't go deeper than one level.
 pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value {
     match (base, over) {
         (toml::Value::Table(mut base_t), toml::Value::Table(over_t)) => {
@@ -766,6 +782,19 @@ pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value 
                 base_t.insert(k, merged);
             }
             toml::Value::Table(base_t)
+        }
+        (toml::Value::Array(base_a), toml::Value::Array(over_a))
+            if over_a.iter().any(|v| v.as_str() == Some("+")) =>
+        {
+            let mut out = Vec::with_capacity(over_a.len() + base_a.len());
+            for v in over_a {
+                if v.as_str() == Some("+") {
+                    out.extend(base_a.iter().cloned());
+                } else {
+                    out.push(v);
+                }
+            }
+            toml::Value::Array(out)
         }
         (_, over) => over,
     }

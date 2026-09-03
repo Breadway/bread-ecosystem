@@ -1183,6 +1183,54 @@ mod tests {
     }
 
     #[test]
+    fn extends_slot_splice_marker_inserts_the_inherited_list() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "spbase",
+            r#"
+                id = "spbase"
+                [bar.slots]
+                left  = ["workspaces"]
+                right = ["volume", "wifi", "battery"]
+            "#,
+        );
+        write_theme(
+            &xdg,
+            "spchild",
+            r#"
+                id = "spchild"
+                extends = "spbase"
+                [bar.slots]
+                left  = ["widget:logo", "+"]
+                right = ["+", "widget:tray", "control"]
+            "#,
+        );
+        let theme = load_named("spchild").expect("splice child should resolve");
+        assert_eq!(theme.slots().left, vec!["widget:logo", "workspaces"]);
+        assert_eq!(
+            theme.slots().right,
+            vec!["volume", "wifi", "battery", "widget:tray", "control"]
+        );
+    }
+
+    #[test]
+    fn splice_marker_without_extends_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "lonesplice",
+            r#"
+                id = "lonesplice"
+                [bar.slots]
+                left = ["+", "workspaces"]
+            "#,
+        );
+        let err = load_named("lonesplice").expect_err("\"+\" without extends must error");
+        assert!(format!("{err:#}").contains("splice marker"));
+    }
+
+    #[test]
     fn extends_chain_is_capped_at_one_level() {
         let xdg = isolated_xdg();
         write_theme(
