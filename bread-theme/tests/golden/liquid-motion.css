@@ -1056,3 +1056,82 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   text-transform: uppercase;
   opacity: 0.45;
 }
+
+
+
+.launcher-bg {
+  background-color: alpha(@bg, 0.93);
+  color: @on-bg;
+  border-radius: 20px;
+  font-family: "Outfit, sans-serif", sans-serif;
+}
+
+.launcher-bg entry.search {
+  background-color: transparent;
+  color: @on-bg;
+  caret-color: alpha(@accent, 0.9);
+  border: none;
+  outline: none;
+  box-shadow: none;
+  border-radius: 0;
+  border-bottom: 1px solid alpha(@on-bg, 0.08);
+  padding: 16px 18px;
+  font-size: 16px;
+}
+
+.launcher-bg entry.search:focus,
+.launcher-bg entry.search:focus-within {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+  border-bottom: 1px solid alpha(@on-bg, 0.08);
+}
+
+.launcher-bg list {
+  background-color: transparent;
+  padding: 4px 0;
+}
+
+.launcher-bg row {
+  padding: 10px 12px;
+  margin: 0 8px;
+  color: @on-bg;
+  background-color: transparent;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.launcher-bg row:hover,
+.launcher-bg row:selected {
+  background-color: alpha(@accent, 0.22);
+  color: @on-bg;
+}
+
+.launcher-bg .app-muted {
+  opacity: 0.4;
+  font-size: 11px;
+}
+
+.launcher-bg image {
+  margin-right: 8px;
+  border-radius: 9px;
+}
+
+.launcher-bg .section-header-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0.45;
+}
+
+.launcher-bg .bread-drawer-section-header {
+  padding: 11px 16px 5px;
+}
+
+.launcher-bg .launcher-footer {
+  padding: 8px 16px 12px;
+  font-size: 10px;
+  opacity: 0.4;
+  text-transform: uppercase; letter-spacing: 0.12em;
+}

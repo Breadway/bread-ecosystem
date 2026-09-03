@@ -1062,3 +1062,87 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   text-transform: uppercase;
   opacity: 0.45;
 }
+
+/* breadbox's overlay launcher panel. Every rule is scoped under `.launcher-bg`
+ * (the panel container, unique to breadbox) so it is inert in breadbar, whose
+ * embedded capsule launcher uses `.launcher-entry` / `.bread-drawer` instead.
+ * The one structural rule breadbox still adds itself is
+ * `window { background-color: transparent; }` (its overlay window) — not
+ * theme-dependent, so not templated here. */
+
+.launcher-bg {
+  background-color: alpha(@bg, {launcher_panel_alpha});
+  color: @on-bg;
+  border-radius: {launcher_radius}px;
+  font-family: "{font_family}", {font_fallback};
+}
+
+.launcher-bg entry.search {
+  background-color: transparent;
+  color: @on-bg;
+  caret-color: alpha(@accent, 0.9);
+  border: none;
+  outline: none;
+  box-shadow: none;
+  border-radius: 0;
+  border-bottom: 1px solid alpha(@on-bg, 0.08);
+  padding: {launcher_search_pv}px {launcher_search_ph}px;
+  font-size: {launcher_search_fs}px;
+}
+
+.launcher-bg entry.search:focus,
+.launcher-bg entry.search:focus-within {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+  border-bottom: 1px solid alpha(@on-bg, 0.08);
+}
+
+.launcher-bg list {
+  background-color: transparent;
+  padding: 4px 0;
+}
+
+.launcher-bg row {
+  padding: {launcher_row_pv}px {launcher_row_ph}px;
+  margin: 0 {launcher_row_inset}px;
+  color: @on-bg;
+  background-color: transparent;
+  border-radius: {launcher_row_radius}px;
+  font-size: {font_size_base}px;
+}
+
+.launcher-bg row:hover,
+.launcher-bg row:selected {
+  background-color: alpha(@accent, {launcher_selection_alpha});
+  color: @on-bg;
+}
+
+.launcher-bg .app-muted {
+  opacity: 0.4;
+  font-size: 11px;
+}
+
+.launcher-bg image {
+  margin-right: 8px;
+  border-radius: {launcher_icon_radius}px;
+}
+
+.launcher-bg .section-header-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0.45;
+}
+
+.launcher-bg .bread-drawer-section-header {
+  padding: 11px 16px 5px;
+}
+
+.launcher-bg .launcher-footer {
+  padding: 8px 16px 12px;
+  font-size: 10px;
+  opacity: 0.4;
+  {launcher_footer_case}
+}

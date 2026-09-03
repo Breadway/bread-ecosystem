@@ -141,6 +141,15 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
         ),
     };
 
+    // breadbox's overlay-launcher geometry — every value straight off
+    // `[launcher]`, the `{launcher_footer_case}` fragment its one derivation
+    // (`sections` also drives the uppercase footer, as in the demos).
+    let footer_case = if l.sections {
+        "text-transform: uppercase; letter-spacing: 0.12em;"
+    } else {
+        ""
+    };
+
     vec![
         ("panel".into(), panel.into()),
         ("ink".into(), ink.into()),
@@ -155,5 +164,20 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
         ("chip_radius".into(), chip_radius),
         ("chip_height_px".into(), chip_height_px),
         ("workspace_css".into(), workspace_css),
+        ("launcher_radius".into(), l.radius.to_string()),
+        ("launcher_panel_alpha".into(), fmt_f64(l.panel_alpha)),
+        (
+            "launcher_selection_alpha".into(),
+            fmt_f64(l.selection_alpha),
+        ),
+        ("launcher_row_pv".into(), l.row_padding_v.to_string()),
+        ("launcher_row_ph".into(), l.row_padding_h.to_string()),
+        ("launcher_row_inset".into(), l.row_inset.to_string()),
+        ("launcher_row_radius".into(), l.row_radius.to_string()),
+        ("launcher_icon_radius".into(), l.icon_radius.to_string()),
+        ("launcher_search_pv".into(), l.search_padding_v.to_string()),
+        ("launcher_search_ph".into(), l.search_padding_h.to_string()),
+        ("launcher_search_fs".into(), l.search_font_size.to_string()),
+        ("launcher_footer_case".into(), footer_case.into()),
     ]
 }
