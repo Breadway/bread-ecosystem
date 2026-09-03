@@ -49,9 +49,12 @@
 
 mod builtin;
 mod manifest;
+pub mod modules;
+mod schema;
 mod style;
 mod types;
 
+pub use schema::{describe, describe_json};
 pub use style::chip_height;
 
 #[cfg(feature = "gtk")]
@@ -238,6 +241,15 @@ fn css_template_for(id: &str) -> String {
 /// failure into the builtin.
 pub fn load_named(id: &str) -> anyhow::Result<ShellTheme> {
     resolve_theme(id, 0)
+}
+
+/// `None` if theme `id` resolves cleanly, otherwise a one-line reason
+/// (`"theme 'x': tokens.bar_border = \"…\" is not full|bottom|segmented"`,
+/// `"…references unknown module \"teleporter\""`, …) — for a settings UI
+/// showing why a theme is broken instead of silently falling back to the
+/// builtin ([`load`]'s behaviour). Same check [`load_named`] runs.
+pub fn diagnose(id: &str) -> Option<String> {
+    load_named(id).err().map(|e| format!("{e:#}"))
 }
 
 fn resolve_theme(id: &str, extends_depth: u8) -> anyhow::Result<ShellTheme> {

@@ -13,31 +13,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::types::*;
 
-/// Module names a slot entry may reference without recompiling anything —
-/// plan §2 tier 1/2 (declarative slots) plus the `widget:*` escape hatch
-/// (tier 3, validated separately since its suffix is open-ended). This is
-/// intentionally the set the *current* theme and the plan's own schema
-/// example use; Phase 3 (breadbar's module registry) is the place a new
-/// built-in module name gets added for real.
-const KNOWN_MODULES: &[&str] = &[
-    "workspaces",
-    "media",
-    "clock",
-    "volume",
-    "wifi",
-    "battery",
-    "control",
-    "launcher_entry",
-    "launcher_results",
-    // `02-glass-workbench` (plan §11 phase 5): plain right-side stat chips,
-    // reusing the same `AppInput::StatsUpdate` data the control panel's
-    // sys-grid already receives — see breadbar's `bar::slots` module docs.
-    "cpu",
-    "ram",
-];
-
 pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> anyhow::Result<()> {
-    if module.starts_with("widget:") || KNOWN_MODULES.contains(&module) {
+    if module.starts_with("widget:") || super::modules::is_known(module) {
         return Ok(());
     }
     if module == "+" {
@@ -48,8 +25,9 @@ pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> 
     }
     bail!(
         "theme '{theme_id}': slot \"{slot}\" references unknown module \"{module}\" \
-         (known modules: {}, or widget:<lua-module-name>)",
-        KNOWN_MODULES.join(", ")
+         (known modules: {}, or widget:<lua-module-name>; an app registers its own \
+         modules via bread_theme::shell::modules::register)",
+        super::modules::all().join(", ")
     );
 }
 
