@@ -49,7 +49,9 @@ fn print_help_to(mut w: impl std::io::Write) {
          \x20                {} —\n\
          \x20                scripts/ui/rules.lua reads it for per-namespace blur/\n\
          \x20                animation, falling back to its hardcoded rules if this\n\
-         \x20                is missing or malformed",
+         \x20                is missing or malformed\n\
+         describe          print the theme.toml schema as JSON (tokens, enums, modules)\n\
+         diagnose <id>     exit 0 if theme <id> resolves, else print the reason and exit 1",
         bread_theme::shared_css_path().display(),
         bread_theme::layerrules_path().display()
     );
@@ -69,7 +71,10 @@ fn print_help_err() {
 
 fn generate_output_cmd() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(2).collect();
-    if args.iter().any(|a| matches!(a.as_str(), "-h" | "--help" | "help")) {
+    if args
+        .iter()
+        .any(|a| matches!(a.as_str(), "-h" | "--help" | "help"))
+    {
         print_help();
         return ExitCode::SUCCESS;
     }
@@ -221,13 +226,37 @@ fn main() -> ExitCode {
         "reload" => write_and_report("reloaded"),
         "generate-output" => generate_output_cmd(),
         "layerrules" => layerrules_cmd(),
+        // Machine-readable `theme.toml` schema — token fields with types and
+        // defaults, the closed enum vocabularies, the known slot modules. For
+        // a theme editor (bos-settings).
+        "describe" => {
+            println!("{}", bread_theme::shell::describe_json());
+            ExitCode::SUCCESS
+        }
+        // `diagnose <id>`: exit 0 and print nothing if the theme resolves;
+        // exit 1 and print the one-line reason if it doesn't (instead of
+        // `load()`'s silent fall-back to the builtin).
+        "diagnose" => match std::env::args().nth(2) {
+            Some(id) => match bread_theme::shell::diagnose(&id) {
+                None => ExitCode::SUCCESS,
+                Some(reason) => {
+                    eprintln!("{reason}");
+                    ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("bread-theme: diagnose needs a theme id");
+                ExitCode::FAILURE
+            }
+        },
         "-h" | "--help" | "help" => {
             print_help();
             ExitCode::SUCCESS
         }
         other => {
             eprintln!(
-                "bread-theme: unknown command '{other}' (try generate|reload|path|print|generate-output|layerrules)"
+                "bread-theme: unknown command '{other}' \
+                 (try generate|reload|path|print|generate-output|layerrules|describe|diagnose)"
             );
             ExitCode::FAILURE
         }

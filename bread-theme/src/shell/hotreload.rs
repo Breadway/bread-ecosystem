@@ -40,7 +40,9 @@ pub struct ThemeWatch {
 /// shared-stylesheet watch.
 fn monitor_dir(dir: &std::path::Path, what: &str) -> Option<gio::FileMonitor> {
     let _ = std::fs::create_dir_all(dir);
-    match gio::File::for_path(dir).monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) {
+    match gio::File::for_path(dir)
+        .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+    {
         Ok(m) => Some(m),
         Err(err) => {
             tracing::warn!(
@@ -60,18 +62,50 @@ fn theme_dir(id: &str) -> PathBuf {
         .to_path_buf()
 }
 
-/// (Re-)arms `theme_monitor` on `id`'s own directory, replacing whatever was
-/// armed before (dropping the old [`gio::FileMonitor`] disarms it). Returns
-/// the id actually armed, so the caller can remember it for the "did the
-/// active id change" comparison in [`watch`]'s config-watch callback.
-fn arm_theme_watch(theme_monitor: &Rc<RefCell<Option<gio::FileMonitor>>>, id: &str, f: &Rc<dyn Fn(super::ShellTheme)>) {
-    let dir = theme_dir(id);
-    let monitor = monitor_dir(&dir, &format!("theme '{id}'s directory ({})", dir.display()));
-    if let Some(m) = &monitor {
+/// Quiet period after the last filesystem event before the theme is
+/// re-`load()`ed. An editor / `bread-theme` save is 2–4 events (truncate,
+/// write, close, or write-tmp + rename); a non-atomic `cat >` momentarily
+/// leaves the file truncated. Coalescing them into one `load()` after the
+/// dust settles avoids both a burst of redundant reloads and a transient
+/// parse-failure fall-back to the builtin.
+const DEBOUNCE_MS: u32 = 120;
+
+/// Wrap `f` so repeated calls within [`DEBOUNCE_MS`] collapse into a single
+/// `f(super::load())` fired once the calls stop.
+fn debounced(f: Rc<dyn Fn(super::ShellTheme)>) -> Rc<dyn Fn()> {
+    let pending: Rc<RefCell<Option<gtk4::glib::SourceId>>> = Rc::new(RefCell::new(None));
+    Rc::new(move || {
+        if let Some(id) = pending.borrow_mut().take() {
+            id.remove();
+        }
         let f = f.clone();
-        m.connect_changed(move |_, _file, _other, _event| {
-            f(super::load());
-        });
+        let pending_inner = pending.clone();
+        let id = gtk4::glib::timeout_add_local_once(
+            std::time::Duration::from_millis(DEBOUNCE_MS as u64),
+            move || {
+                *pending_inner.borrow_mut() = None;
+                f(super::load());
+            },
+        );
+        *pending.borrow_mut() = Some(id);
+    })
+}
+
+/// (Re-)arms `theme_monitor` on `id`'s own directory, replacing whatever was
+/// armed before (dropping the old [`gio::FileMonitor`] disarms it).
+fn arm_theme_watch(
+    theme_monitor: &Rc<RefCell<Option<gio::FileMonitor>>>,
+    id: &str,
+    trigger: &Rc<dyn Fn()>,
+) {
+    let dir = theme_dir(id);
+    let monitor = monitor_dir(
+        &dir,
+        &format!("theme '{id}'s directory ({})", dir.display()),
+    );
+    if let Some(m) = &monitor {
+        let trigger = trigger.clone();
+        m.connect_changed(move |_, _file, _other, _event| trigger());
     }
     *theme_monitor.borrow_mut() = monitor;
 }
@@ -104,10 +138,11 @@ fn arm_theme_watch(theme_monitor: &Rc<RefCell<Option<gio::FileMonitor>>>, id: &s
 /// `$BREAD_SHELL_THEME` value has to restart, same as before this fix.
 pub fn watch<F: Fn(super::ShellTheme) + 'static>(f: F) -> ThemeWatch {
     let f: Rc<dyn Fn(super::ShellTheme)> = Rc::new(f);
+    let trigger = debounced(f.clone());
 
     let watched_id = Rc::new(RefCell::new(super::active_theme_id()));
     let theme_monitor: Rc<RefCell<Option<gio::FileMonitor>>> = Rc::new(RefCell::new(None));
-    arm_theme_watch(&theme_monitor, &watched_id.borrow(), &f);
+    arm_theme_watch(&theme_monitor, &watched_id.borrow(), &trigger);
 
     let config_dir = super::config_home().join("bread");
     let config_monitor = monitor_dir(
@@ -118,13 +153,15 @@ pub fn watch<F: Fn(super::ShellTheme) + 'static>(f: F) -> ThemeWatch {
         let theme_monitor = theme_monitor.clone();
         let watched_id = watched_id.clone();
         let f = f.clone();
+        let trigger = trigger.clone();
         cm.connect_changed(move |_, file, other, _event| {
             // Only `shell.toml` changing can move `active` — ignore any
             // other file (e.g. a theme directory that happens to also live
             // under this same parent) so this doesn't re-check on every
             // unrelated write in ~/.config/bread/.
             let is_shell_toml = |f: &gio::File| {
-                f.basename().and_then(|b| b.to_str().map(str::to_string)) == Some("shell.toml".to_string())
+                f.basename().and_then(|b| b.to_str().map(str::to_string))
+                    == Some("shell.toml".to_string())
             };
             if !is_shell_toml(file) && !other.is_some_and(is_shell_toml) {
                 return;
@@ -136,8 +173,10 @@ pub fn watch<F: Fn(super::ShellTheme) + 'static>(f: F) -> ThemeWatch {
                 // whatever changed.
                 return;
             }
+            // An `active` switch is a deliberate action (bos-settings, an
+            // edit) — re-arm and load now, not after the debounce.
             *watched_id.borrow_mut() = new_id.clone();
-            arm_theme_watch(&theme_monitor, &new_id, &f);
+            arm_theme_watch(&theme_monitor, &new_id, &trigger);
             f(super::load());
         });
     }
@@ -293,7 +332,9 @@ mod tests {
 
         // Now edit theme-b's own directory — the re-armed watch must see it.
         write_theme(&xdg, "theme-b", "id = \"theme-b\"\n[tokens]\npad = 2\n");
-        pump_until(std::time::Duration::from_secs(3), || !seen_ids.borrow().is_empty());
+        pump_until(std::time::Duration::from_secs(3), || {
+            !seen_ids.borrow().is_empty()
+        });
         assert!(
             !seen_ids.borrow().is_empty(),
             "after switching, editing the NEW active theme's directory must fire the callback"

@@ -11,16 +11,22 @@
 //! them, and so [`super`] never touches the filesystem for a builtin — it
 //! must work identically whether or not `$XDG_CONFIG_HOME` exists at all.
 
+/// Every built-in theme renders from this one shared template. The per-theme
+/// differences (light vs dark direction, island vs flush vs segmented window,
+/// Trail vs Pill vs Dots workspaces) fall out of `[tokens]` +
+/// `shell::style::subst_pairs`, so there is no per-theme CSS file and no
+/// conditional syntax in the template. A user theme with a genuine one-off
+/// still layers its own `extra.css` on top.
+const BASE_CSS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/base.css"
+));
+
 pub const LIQUID_MOTION_ID: &str = "liquid-motion";
 
 const LIQUID_MOTION_TOML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/shell/liquid-motion/theme.toml"
-));
-
-const LIQUID_MOTION_CSS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/shell/liquid-motion/liquid-motion.css"
 ));
 
 pub const GLASS_WORKBENCH_ID: &str = "glass-workbench";
@@ -30,21 +36,11 @@ const GLASS_WORKBENCH_TOML: &str = include_str!(concat!(
     "/assets/shell/glass-workbench/theme.toml"
 ));
 
-const GLASS_WORKBENCH_CSS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/shell/glass-workbench/glass-workbench.css"
-));
-
 pub const SPOTLIGHT_ID: &str = "spotlight";
 
 const SPOTLIGHT_TOML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/shell/spotlight/theme.toml"
-));
-
-const SPOTLIGHT_CSS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/shell/spotlight/spotlight.css"
 ));
 
 pub const DAYLIGHT_ID: &str = "daylight";
@@ -54,9 +50,11 @@ const DAYLIGHT_TOML: &str = include_str!(concat!(
     "/assets/shell/daylight/theme.toml"
 ));
 
-const DAYLIGHT_CSS: &str = include_str!(concat!(
+pub const LOAF_ID: &str = "loaf";
+
+const LOAF_TOML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/shell/daylight/daylight.css"
+    "/assets/shell/loaf/theme.toml"
 ));
 
 /// One compiled-in theme's identity plus its two `include_str!`ed assets.
@@ -84,25 +82,31 @@ pub const ALL: &[BuiltinTheme] = &[
         id: LIQUID_MOTION_ID,
         name: "Liquid Motion",
         toml: LIQUID_MOTION_TOML,
-        css: LIQUID_MOTION_CSS,
+        css: BASE_CSS,
     },
     BuiltinTheme {
         id: GLASS_WORKBENCH_ID,
         name: "Glass Workbench",
         toml: GLASS_WORKBENCH_TOML,
-        css: GLASS_WORKBENCH_CSS,
+        css: BASE_CSS,
     },
     BuiltinTheme {
         id: SPOTLIGHT_ID,
         name: "Spotlight",
         toml: SPOTLIGHT_TOML,
-        css: SPOTLIGHT_CSS,
+        css: BASE_CSS,
     },
     BuiltinTheme {
         id: DAYLIGHT_ID,
         name: "Daylight",
         toml: DAYLIGHT_TOML,
-        css: DAYLIGHT_CSS,
+        css: BASE_CSS,
+    },
+    BuiltinTheme {
+        id: LOAF_ID,
+        name: "Loaf",
+        toml: LOAF_TOML,
+        css: BASE_CSS,
     },
 ];
 

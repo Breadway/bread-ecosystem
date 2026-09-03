@@ -13,37 +13,21 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::types::*;
 
-/// Module names a slot entry may reference without recompiling anything —
-/// plan §2 tier 1/2 (declarative slots) plus the `widget:*` escape hatch
-/// (tier 3, validated separately since its suffix is open-ended). This is
-/// intentionally the set the *current* theme and the plan's own schema
-/// example use; Phase 3 (breadbar's module registry) is the place a new
-/// built-in module name gets added for real.
-const KNOWN_MODULES: &[&str] = &[
-    "workspaces",
-    "media",
-    "clock",
-    "volume",
-    "wifi",
-    "battery",
-    "control",
-    "launcher_entry",
-    "launcher_results",
-    // `02-glass-workbench` (plan §11 phase 5): plain right-side stat chips,
-    // reusing the same `AppInput::StatsUpdate` data the control panel's
-    // sys-grid already receives — see breadbar's `bar::slots` module docs.
-    "cpu",
-    "ram",
-];
-
 pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> anyhow::Result<()> {
-    if module.starts_with("widget:") || KNOWN_MODULES.contains(&module) {
+    if module.starts_with("widget:") || super::modules::is_known(module) {
         return Ok(());
+    }
+    if module == "+" {
+        bail!(
+            "theme '{theme_id}': slot \"{slot}\" uses the \"+\" splice marker but the theme has \
+             no `extends` (or extends a theme with no {slot} slot) — nothing to splice in"
+        );
     }
     bail!(
         "theme '{theme_id}': slot \"{slot}\" references unknown module \"{module}\" \
-         (known modules: {}, or widget:<lua-module-name>)",
-        KNOWN_MODULES.join(", ")
+         (known modules: {}, or widget:<lua-module-name>; an app registers its own \
+         modules via bread_theme::shell::modules::register)",
+        super::modules::all().join(", ")
     );
 }
 
@@ -84,17 +68,14 @@ pub(super) struct RawManifest {
     pub(super) launcher: Option<RawLauncher>,
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
-    /// Overlay CSS path, resolved relative to the theme file's own
-    /// directory, appended last by `ShellTheme::css`. Declared-but-not-yet-
-    /// consumed in production: `ShellTheme::css` (the only reader of this
-    /// field's resolved `extra_css`) is not called by breadbar or breadbox
-    /// today — see that method's doc comment. Setting this key is currently
-    /// a no-op for a real running shell (it IS exercised by this crate's own
-    /// tests). (Schema note: plan §4
-    /// shows `css = "extra.css"` textually after the `[compositor]` table
-    /// with no table header of its own between them, which in real TOML
-    /// would nest it *inside* `[compositor]`. Treated here as a top-level
-    /// field per §5's `css()` doc — see this crate's implementation notes.)
+    /// Overlay CSS path, resolved relative to the theme file's own directory.
+    /// Its contents are token-substituted and appended after the base
+    /// template when the theme's CSS is rendered (`RawManifest::resolve` →
+    /// `ShellTheme::css`), which breadbar and breadbox now consume directly.
+    /// (Schema note: plan §4 shows `css = "extra.css"` textually after the
+    /// `[compositor]` table with no header between them, which real TOML
+    /// would nest inside `[compositor]`. Treated here as a top-level field
+    /// per §5's `css()` doc.)
     pub(super) css: Option<String>,
 }
 
@@ -247,6 +228,152 @@ fn token_value(v: &toml::Value) -> anyhow::Result<TokenValue> {
         toml::Value::Boolean(b) => Ok(TokenValue::Bool(*b)),
         other => Err(anyhow!("must be a string, number, or bool, got {other:?}")),
     }
+}
+
+/// Remove `/* … */` comments from a CSS template. CSS comments do not nest.
+/// Run before token substitution so a `{token}` mentioned in an authoring
+/// comment is neither substituted nor flagged as an unresolved reference, and
+/// so the rendered stylesheet carries no template-authoring prose.
+fn strip_css_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        match rest[start + 2..].find("*/") {
+            Some(end) => rest = &rest[start + 2 + end + 2..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The documented `[tokens]` keys — everything else a theme sets under
+/// `[tokens]` is an "extra", only meaningful for `{name}` substitution in
+/// that theme's own `extra.css` overlay.
+const KNOWN_TOKEN_KEYS: &[&str] = &[
+    "radius_bar",
+    "radius_card",
+    "radius_sm",
+    "radius_pill",
+    "pad",
+    "bg_alpha",
+    "spring",
+    "spring_settle",
+    "accent_from",
+    "accent_to",
+    "accent2",
+    "chip_height",
+    "icon_px",
+    "font_family",
+    "font_fallback",
+    "font_size_base",
+    "light",
+    "bar_border",
+];
+
+/// Build a fully-resolved, typed [`Tokens`] from the raw `[tokens]` table.
+/// Known keys go to their typed field (leniently coerced — a number written
+/// as a quoted string still parses, matching the pre-typed behaviour);
+/// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
+fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow::Result<Tokens> {
+    let mut t = Tokens::default();
+    let mut accent_to_set = false;
+    let mut accent2_set = false;
+
+    let want_i64 = |v: &toml::Value, key: &str| -> anyhow::Result<i64> {
+        match v {
+            toml::Value::Integer(i) => Ok(*i),
+            toml::Value::Float(f) => Ok(*f as i64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_f64 = |v: &toml::Value, key: &str| -> anyhow::Result<f64> {
+        match v {
+            toml::Value::Float(f) => Ok(*f),
+            toml::Value::Integer(i) => Ok(*i as f64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_str = |v: &toml::Value, key: &str| -> anyhow::Result<String> {
+        match v {
+            toml::Value::String(s) => Ok(s.clone()),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
+            )),
+        }
+    };
+    let want_bool = |v: &toml::Value, key: &str| -> anyhow::Result<bool> {
+        match v {
+            toml::Value::Boolean(b) => Ok(*b),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not true/false")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a bool, got {other:?}"
+            )),
+        }
+    };
+
+    for (k, v) in raw {
+        match k.as_str() {
+            "radius_bar" => t.radius_bar = want_i64(v, k)?,
+            "radius_card" => t.radius_card = want_i64(v, k)?,
+            "radius_sm" => t.radius_sm = want_i64(v, k)?,
+            "radius_pill" => t.radius_pill = want_i64(v, k)?,
+            "pad" => t.pad = want_i64(v, k)?,
+            "chip_height" => t.chip_height = want_i64(v, k)?,
+            "icon_px" => t.icon_px = want_i64(v, k)?,
+            "font_size_base" => t.font_size_base = want_i64(v, k)?,
+            "bg_alpha" => t.bg_alpha = want_f64(v, k)?,
+            "spring" => t.spring = want_str(v, k)?,
+            "spring_settle" => t.spring_settle = want_str(v, k)?,
+            "accent_from" => t.accent_from = want_str(v, k)?,
+            "accent_to" => {
+                t.accent_to = want_str(v, k)?;
+                accent_to_set = true;
+            }
+            "accent2" => {
+                t.accent2 = want_str(v, k)?;
+                accent2_set = true;
+            }
+            "font_family" => t.font_family = want_str(v, k)?,
+            "font_fallback" => t.font_fallback = want_str(v, k)?,
+            "light" => t.light = want_bool(v, k)?,
+            "bar_border" => t.bar_border = BarBorder::parse(theme_id, &want_str(v, k)?)?,
+            _ => {
+                debug_assert!(!KNOWN_TOKEN_KEYS.contains(&k.as_str()));
+                t.extra.insert(
+                    k.clone(),
+                    token_value(v).with_context(|| format!("theme '{theme_id}': tokens.{k}"))?,
+                );
+            }
+        }
+    }
+
+    // A theme that omits `accent_to`/`accent2` gets `accent_from` — a flat
+    // fill / a shared second accent, the same fallback the old getters did.
+    if !accent_to_set {
+        t.accent_to = t.accent_from.clone();
+    }
+    if !accent2_set {
+        t.accent2 = t.accent_from.clone();
+    }
+
+    Ok(t)
 }
 
 fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
@@ -419,8 +546,14 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         // Default to the idle value — a theme that never sets these gets
         // "no change while searching", not a hardcoded widen/shrink it
         // never asked for (see the field docs on `Launcher`).
-        search_width: l.and_then(|l| l.search_width).map(|v| v as i32).unwrap_or(width),
-        search_radius: l.and_then(|l| l.search_radius).map(|v| v as i32).unwrap_or(radius),
+        search_width: l
+            .and_then(|l| l.search_width)
+            .map(|v| v as i32)
+            .unwrap_or(width),
+        search_radius: l
+            .and_then(|l| l.search_radius)
+            .map(|v| v as i32)
+            .unwrap_or(radius),
         // Defaults below reproduce breadbox's pre-redesign hardcoded CSS
         // literals (`row { padding: 8px 12px; border-radius: 6px; }`,
         // `listbox { padding: 4px; }`, no icon swatch, a solid — not
@@ -533,12 +666,7 @@ impl RawManifest {
         let id = self.id.clone().unwrap_or_else(|| requested_id.to_string());
         let name = self.name.clone().unwrap_or_else(|| id.clone());
 
-        let mut tokens_map = BTreeMap::new();
-        for (k, v) in &self.tokens {
-            let tv = token_value(v).with_context(|| format!("theme '{id}': tokens.{k}"))?;
-            tokens_map.insert(k.clone(), tv);
-        }
-        let tokens = Tokens::from_map(tokens_map);
+        let tokens = resolve_tokens(&id, &self.tokens)?;
 
         let window = match self.bar.as_ref().and_then(|b| b.window.as_ref()) {
             Some(w) => resolve_window(&id, w)?,
@@ -562,6 +690,34 @@ impl RawManifest {
         let surfaces = resolve_surfaces(&id, self.surfaces.as_ref())?;
         let compositor = resolve_compositor(self.compositor.as_ref());
 
+        // Render the theme's CSS now, once: strip the template's authoring
+        // comments (a `{light}` written in prose must not be substituted, and
+        // a `{name}` in prose must not trip the unresolved-ref check below),
+        // substitute `[tokens]` *and* the `shell::style` derivations, then
+        // append the optional `extra.css` overlay. A `{name}` that survives
+        // matched none of those — a typo, and a hard error rather than a
+        // literal `{radus_bar}` in the output.
+        let mut pairs = tokens.subst_pairs();
+        pairs.extend(super::style::subst_pairs(&tokens, &modules, &launcher));
+
+        let mut resolved_css = substitute_pairs(&strip_css_comments(&css_template), pairs.clone());
+        if let Some(extra) = &extra_css {
+            let extra = substitute_pairs(&strip_css_comments(extra), pairs.clone());
+            if !resolved_css.is_empty() && !resolved_css.ends_with('\n') {
+                resolved_css.push('\n');
+            }
+            resolved_css.push_str(&extra);
+        }
+        let missing = unresolved_refs(&resolved_css);
+        if !missing.is_empty() {
+            bail!(
+                "theme '{id}': CSS template references unknown name(s): {} \
+                 (not a [tokens] field, not a shell::style derivation, and not \
+                 defined in this theme's extra.css)",
+                missing.join(", ")
+            );
+        }
+
         Ok(super::ShellTheme {
             name,
             id,
@@ -572,18 +728,27 @@ impl RawManifest {
             launcher,
             surfaces,
             compositor,
-            css_template,
-            extra_css,
+            resolved_css,
         })
     }
 }
 
-/// Deep-merge `over` onto `base`: tables merge key-by-key recursively;
-/// anything else (scalars, arrays — including slot lists) is a full
-/// replacement. This is `extends`'s one-level merge (plan §4/§11):
-/// `mod.rs` calls this exactly once per `load_named`, with the base's own
-/// `extends` key already stripped by the caller so a chain can't go deeper
-/// than one level.
+/// Deep-merge `over` onto `base`: tables merge key-by-key recursively.
+///
+/// Arrays replace wholesale **unless** the `over` array contains the splice
+/// marker `"+"`, in which case each `"+"` is replaced by the base array's
+/// elements in place — so a child theme can add one entry to an inherited
+/// slot list without restating it:
+///
+/// ```toml
+/// extends = "liquid-motion"
+/// [bar.slots]
+/// right = ["+", "widget:my-thing"]   # inherited right slot, then my-thing
+/// ```
+///
+/// This is `extends`'s one-level merge (plan §4/§11): `mod.rs` calls it once
+/// per `load_named`, with the base's own `extends` key already stripped so a
+/// chain can't go deeper than one level.
 pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value {
     match (base, over) {
         (toml::Value::Table(mut base_t), toml::Value::Table(over_t)) => {
@@ -595,6 +760,19 @@ pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value 
                 base_t.insert(k, merged);
             }
             toml::Value::Table(base_t)
+        }
+        (toml::Value::Array(base_a), toml::Value::Array(over_a))
+            if over_a.iter().any(|v| v.as_str() == Some("+")) =>
+        {
+            let mut out = Vec::with_capacity(over_a.len() + base_a.len());
+            for v in over_a {
+                if v.as_str() == Some("+") {
+                    out.extend(base_a.iter().cloned());
+                } else {
+                    out.push(v);
+                }
+            }
+            toml::Value::Array(out)
         }
         (_, over) => over,
     }
