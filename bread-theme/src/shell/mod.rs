@@ -1113,6 +1113,59 @@ mod tests {
         );
     }
 
+    // ---- loaf builtin (declarative-system dogfood) ----------------------
+
+    #[test]
+    fn loaf_extends_glass_workbench_with_no_rust_and_no_css() {
+        let loaf = load_named(builtin::LOAF_ID).expect("loaf should resolve");
+        let gw = load_named(builtin::GLASS_WORKBENCH_ID).expect("gw should resolve");
+
+        assert_eq!(loaf.name(), "Loaf");
+        // Inherited from glass-workbench, untouched by loaf's theme.toml —
+        // which is what makes a glass-workbench <-> loaf switch a *live* one
+        // (breadbar `theme::needs_restart` keys off `modules()`).
+        assert_eq!(loaf.modules(), gw.modules());
+
+        // Its own token overrides.
+        let t = loaf.tokens();
+        assert_eq!(t.bar_border(), BarBorder::Segmented);
+        assert_eq!(t.radius_bar(), 19);
+        assert_eq!(t.accent_from(), "yellow");
+        assert_eq!(loaf.window().height, 38);
+        assert_eq!(
+            loaf.window().margin,
+            Margin {
+                top: 10,
+                left: 18,
+                right: 18,
+                bottom: 0
+            }
+        );
+
+        // `"+"` spliced glass-workbench's centre slot (`["clock"]`) in, then
+        // added the widget entry after it.
+        assert_eq!(loaf.slots().centre, vec!["clock", "widget:right_of_clock"]);
+        assert_eq!(loaf.slots().right, vec!["wifi", "battery", "control"]);
+
+        // Renders from the shared base template — no per-theme CSS file.
+        // Renders from the shared base template (no per-theme CSS file), and
+        // `resolve` already guarantees no `{token}` is left unsubstituted.
+        let css = loaf.css(&crate::Palette::default());
+        assert!(
+            css.contains("border-radius: 19px"),
+            "radius_bar not substituted"
+        );
+        assert!(
+            css.contains("background: @yellow"),
+            "accent_from must stay a palette token"
+        );
+
+        // Discoverable in the picker.
+        assert!(list()
+            .iter()
+            .any(|s| s.id == "loaf" && s.source == ThemeSource::Builtin));
+    }
+
     #[test]
     fn light_token_defaults_false_for_every_other_builtin() {
         // The other three builtins must render unchanged — this flag must

@@ -50,6 +50,13 @@ const DAYLIGHT_TOML: &str = include_str!(concat!(
     "/assets/shell/daylight/theme.toml"
 ));
 
+pub const LOAF_ID: &str = "loaf";
+
+const LOAF_TOML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/shell/loaf/theme.toml"
+));
+
 /// One compiled-in theme's identity plus its two `include_str!`ed assets.
 /// `id`/`name` are also duplicated inside `toml`'s own `id =`/`name =`
 /// fields — kept here too so [`all`]/[`find`] can list/look up a builtin
@@ -93,6 +100,12 @@ pub const ALL: &[BuiltinTheme] = &[
         id: DAYLIGHT_ID,
         name: "Daylight",
         toml: DAYLIGHT_TOML,
+        css: BASE_CSS,
+    },
+    BuiltinTheme {
+        id: LOAF_ID,
+        name: "Loaf",
+        toml: LOAF_TOML,
         css: BASE_CSS,
     },
 ];

@@ -1,0 +1,79 @@
+# "Loaf" — the bread ecosystem's namesake, and a dogfood of the declarative
+# theme system: a whole new look with **no Rust and no CSS**, just token
+# values and one `extends`.
+#
+# Where Glass Workbench is a cold flush technical strip, Loaf is three plump
+# golden-crust slices floating on a board — maximally rounded, a warm amber
+# active fill, and a doughy spring-back on every transition.
+#
+# It `extends = "glass-workbench"`, so it inherits that theme's Pill
+# workspaces and Plain clock unchanged. Because `[modules]` is untouched,
+# `modules()` matches its parent exactly — which means switching
+# glass-workbench <-> loaf is a **live** change (geometry + slots + CSS, no
+# restart; see breadbar `theme::needs_restart`).
+
+name = "Loaf"
+id   = "loaf"
+extends = "glass-workbench"
+
+[tokens]
+# The three detached slices: `window.breadbar` itself is transparent, each
+# slot-group container carries its own pill surface (see BarBorder::Segmented).
+bar_border    = "segmented"
+# Everything rounder and chunkier than the parent's tight 0/6/10.
+radius_bar    = 19
+radius_card   = 16
+radius_sm     = 13
+pad           = 13
+# Crustier — more solid than glass, still lets Hyprland's blur through.
+bg_alpha      = 0.86
+# Warm amber active-workspace fill. Palette token names (pywal's `yellow` /
+# `color3`), never hex — the crust still tracks the wallpaper.
+accent_from   = "yellow"
+accent_to     = "yellow"
+# Dough spring-back: a real overshoot curve, unlike the parent's single
+# flat glass curve.
+spring        = "cubic-bezier(0.34, 1.7, 0.5, 1)"
+spring_settle = "cubic-bezier(0.28, 1.3, 0.4, 1)"
+chip_height   = 24
+icon_px       = 19
+
+[bar.window]
+# A floating island, not the parent's flush edge-to-edge bar.
+anchors   = ["top", "left", "right"]
+width     = "fill"
+height    = 38
+margin    = { top = 10, left = 18, right = 18 }
+exclusive = "auto"
+keyboard  = "none"
+layer     = "top"
+
+[bar.slots]
+left   = ["workspaces"]
+# `"+"` splices in the parent's centre slot (`["clock"]`) and adds room for
+# a Lua widget to the clock's right — a real use of the Stage 2 splice
+# marker, not a full restatement.
+centre = ["+", "widget:right_of_clock"]
+# Cozy, not technical: drop the parent's cpu/ram chips, keep connectivity.
+right  = ["wifi", "battery", "control"]
+drawer = []
+
+# The bar is taller and floats, so the top-right satellites sit a little
+# lower than the parent's flush-bar offsets.
+[surfaces."breadbar-notif"]
+anchor = "top_right"
+offset = [16, 60]
+width  = 320
+layer  = "overlay"
+
+[surfaces."breadbar-panel"]
+anchor = "top_right"
+offset = [16, 60]
+width  = "auto"
+layer  = "overlay"
+
+[surfaces."breadbar-dismiss"]
+anchor = "fill"
+offset = 48
+width  = "fill"
+layer  = "overlay"
