@@ -1,0 +1,72 @@
+
+
+window.breadbar {
+  background-color: alpha(@bg, 0.72);
+  color: @on-bg;
+  border-radius: 0px;
+  border: none;
+  border-bottom: 1px solid alpha(@on-bg, 0.07);
+}
+window.breadbar > centerbox { padding: 0 12px; }
+window.breadbar button { min-height: 0; min-width: 0; }
+
+
+.workspace-btn {
+  background: transparent;
+  opacity: 1;
+  color: alpha(@on-bg, 0.4);
+  border-radius: 6px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 22px;
+  min-height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),
+    opacity 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.workspace-btn:hover { background: alpha(@on-bg, 0.08); }
+.workspace-btn.occupied { color: alpha(@on-bg, 0.8); }
+.workspace-btn:not(.occupied):not(.active) { opacity: 0.35; }
+.workspace-btn.active {
+  background: @green;
+  color: @on-accent;
+  opacity: 1;
+}
+.workspace-btn.active:hover { background: @green; }
+
+.clock-plain { padding: 0 4px; }
+.clock-plain-time {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.date-label {
+  font-size: 12px;
+  opacity: 0.48;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+window.breadbar-osd {
+  background-color: alpha(@bg, 0.72);
+  color: @on-bg;
+  border-radius: 999px;
+  border: 1px solid alpha(@on-bg, 0.10);
+}
+
+window.breadbar-panel {
+  background-color: alpha(@bg, 0.86);
+  color: @on-bg;
+  border-radius: 10px;
+  border: 1px solid alpha(@on-bg, 0.12);
+}
+
+window.breadbar-dismiss {
+  background-color: alpha(#000000, 0.02);
+}
+
+.bread-widget-slot { margin-right: 12px; }

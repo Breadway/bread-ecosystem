@@ -1,0 +1,50 @@
+
+
+window.breadbar {
+  background-color: alpha(@bg, 0.82);
+  color: @on-bg;
+  border-radius: 22px;
+  border: 1px solid alpha(@on-bg, 0.08);
+}
+window.breadbar > box > centerbox { padding: 0 14px; }
+window.breadbar button { min-height: 0; min-width: 0; }
+
+
+.workspace-dot {
+  background-color: alpha(@on-bg, 0.35);
+  border-radius: 999px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-height: 6px;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.25s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1.35, 0.36, 1);
+}
+.workspace-dot:hover { background-color: alpha(@on-bg, 0.55); }
+.workspace-dot:not(.occupied):not(.active) { opacity: 0.35; }
+.workspace-dot.active {
+  background-color: @pink;
+  opacity: 1;
+}
+.workspace-dot.active:hover { background-color: @pink; }
+
+window.breadbar-osd {
+  background-color: alpha(@bg, 0.72);
+  color: @on-bg;
+  border-radius: 999px;
+  border: 1px solid alpha(@on-bg, 0.10);
+}
+
+window.breadbar-panel {
+  background-color: alpha(@bg, 0.86);
+  color: @on-bg;
+  border-radius: 12px;
+  border: 1px solid alpha(@on-bg, 0.12);
+}
+
+window.breadbar-dismiss {
+  background-color: alpha(#000000, 0.02);
+}
+
+.bread-widget-slot { margin-right: 14px; }

@@ -79,8 +79,12 @@ pub struct ShellTheme {
     launcher: Launcher,
     surfaces: BTreeMap<String, Surface>,
     compositor: BTreeMap<String, LayerRule>,
-    css_template: String,
-    extra_css: Option<String>,
+    /// The theme's full stylesheet, already rendered: `[tokens]` substituted
+    /// into the CSS template and the optional `extra.css` overlay appended.
+    /// `@name` palette references are left intact for GTK's `@define-color`
+    /// (or the per-output hex inlining in `bread_theme::gtk::bind_window*`)
+    /// to resolve when the provider is attached.
+    resolved_css: String,
 }
 
 impl ShellTheme {
@@ -112,53 +116,25 @@ impl ShellTheme {
         &self.compositor
     }
 
-    /// Token substitution into the theme's CSS template, plus the optional
-    /// `extra.css` overlay appended last — plan §5.
+    /// The theme's full stylesheet — `[tokens]` substituted into the CSS
+    /// template with the optional `extra.css` overlay appended. Rendered once
+    /// at resolve time (see `RawManifest::resolve`); this is a cheap clone.
     ///
-    /// **Declared-but-not-yet-consumed in production**, as of this writing:
-    /// neither breadbar nor breadbox calls this method. Both hand-roll their
-    /// own CSS instead (`breadbar::theme::load_css` reads individual
-    /// `Tokens::xxx()` accessors and `format!`s a literal stylesheet;
-    /// `breadbox::main::build_css` reads a growing set of individual
-    /// `Launcher`/`Tokens` accessors — `radius`, `width`, `icon_px`,
-    /// `row_radius`, `row_inset`, `row_padding_v/h`, `icon_radius`,
-    /// `search_font_size`, `search_padding_v/h`, `selection_alpha`,
-    /// `sections`, `footer`, `font_family`, `font_fallback`,
-    /// `font_size_base` as of the liquid-motion/glass-workbench redesign —
-    /// and still never calls this method or its template substitution).
-    /// That means the compiled-in `assets/shell/*/*.css` templates this method
-    /// substitutes into render nothing a user ever sees, and a theme's
-    /// `css = "extra.css"` overlay (parsed, path-resolved, read from disk,
-    /// token-substituted into [`Self::extra_css`] below) is fully
-    /// implemented and then never applied. This method itself is correct
-    /// and covered by this crate's own tests
-    /// (`builtin_css_substitutes_tokens_and_leaves_palette_names_untouched`,
-    /// `extra_css_overlay_is_appended_and_token_substituted`) — the gap is
-    /// entirely on the consumer side, in breadbar/breadbox, not here. Wiring
-    /// either app onto this method (replacing their own hand-rolled builders)
-    /// is out of scope for this crate to do unilaterally, since it's a
-    /// behavior change to code this crate doesn't own.
-    ///
-    /// `palette` is accepted to match the plan §5 signature and for parity
-    /// with [`crate::stylesheet_resolved`]-style consumers in the future,
-    /// but is deliberately unused today: per this task's brief, `@accent` /
-    /// `@on-bg` *pass through untouched* here, the same way
-    /// [`crate::stylesheet`] leaves them for GTK's own `@define-color`
-    /// mechanism to resolve once the CSS provider is attached
-    /// (`bgtk::bind_window_with_app_css` / `apply_app_css`). A caller that
-    /// wants hex-resolved CSS combines this with
-    /// [`crate::resolve_color_names`] itself, exactly as
-    /// `breadbar::theme::load_css_for` does today.
+    /// `@name` palette references (`@accent`, `@on-bg`, …) pass through
+    /// untouched, the same way [`crate::stylesheet`] leaves them for GTK's
+    /// `@define-color` to resolve once the provider is attached. A caller that
+    /// wants per-output hex-resolved CSS combines this with
+    /// [`crate::resolve_color_names`] (as `breadbar::theme::load_css_for`
+    /// does). `palette` is accepted for signature parity with
+    /// [`crate::stylesheet_resolved`] and is deliberately unused.
     #[allow(unused_variables)]
     pub fn css(&self, palette: &crate::Palette) -> String {
-        let mut out = self.tokens.substitute(&self.css_template);
-        if let Some(extra) = &self.extra_css {
-            if !out.is_empty() && !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(&self.tokens.substitute(extra));
-        }
-        out
+        self.resolved_css.clone()
+    }
+
+    /// The rendered stylesheet without the clone — for callers that only read.
+    pub fn css_str(&self) -> &str {
+        &self.resolved_css
     }
 }
 
@@ -604,7 +580,12 @@ mod tests {
         );
         assert_eq!(
             theme.slots().centre,
-            vec!["media", "widget:left_of_clock", "clock", "widget:right_of_clock"]
+            vec![
+                "media",
+                "widget:left_of_clock",
+                "clock",
+                "widget:right_of_clock"
+            ]
         );
         assert!(matches!(
             theme.modules().workspaces.style,
@@ -626,7 +607,10 @@ mod tests {
         assert_eq!(l.top, "120px");
         assert_eq!(l.radius, 20);
         assert_eq!(l.icon_px, 28);
-        assert!(l.sections, "liquid-motion shows Recent/Apps section headers");
+        assert!(
+            l.sections,
+            "liquid-motion shows Recent/Apps section headers"
+        );
         assert_eq!(l.row_radius, 12);
         assert_eq!(l.row_inset, 8);
         assert_eq!((l.row_padding_v, l.row_padding_h), (10, 12));
@@ -638,8 +622,8 @@ mod tests {
 
     #[test]
     fn glass_workbench_launcher_matches_demo_geometry_and_differs_from_liquid_motion() {
-        let theme = load_named(builtin::GLASS_WORKBENCH_ID)
-            .expect("glass-workbench should resolve");
+        let theme =
+            load_named(builtin::GLASS_WORKBENCH_ID).expect("glass-workbench should resolve");
         let l = theme.launcher();
         assert_eq!(l.width, 560);
         assert_eq!(l.top, "64px");
@@ -698,6 +682,42 @@ mod tests {
         }
     }
 
+    /// Golden snapshot of every builtin's rendered stylesheet
+    /// (`ShellTheme::css` against the default palette). The `.expected.css`
+    /// files are the reviewable record of what each theme actually paints —
+    /// diff them in review when a template or a token default changes.
+    /// Regenerate after an intended change with `BLESS_GOLDEN=1 cargo test`.
+    #[test]
+    fn builtin_css_matches_golden_snapshot() {
+        let _xdg = isolated_xdg();
+        let bless = std::env::var("BLESS_GOLDEN").is_ok();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
+        std::fs::create_dir_all(&dir).unwrap();
+        for b in builtin::ALL {
+            let theme = load_named(b.id).unwrap_or_else(|e| panic!("{}: {e:#}", b.id));
+            let got = theme.css(&crate::Palette::default());
+            let path = dir.join(format!("{}.css", b.id));
+            if bless {
+                std::fs::write(&path, &got).unwrap();
+                continue;
+            }
+            let want = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+                panic!(
+                    "missing golden {} — run `BLESS_GOLDEN=1 cargo test -p bread-theme`",
+                    path.display()
+                )
+            });
+            assert_eq!(
+                got,
+                want,
+                "rendered CSS for '{}' drifted from its golden snapshot \
+                 ({}). If intended: BLESS_GOLDEN=1 cargo test -p bread-theme",
+                b.id,
+                path.display()
+            );
+        }
+    }
+
     // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
 
     #[test]
@@ -746,7 +766,7 @@ mod tests {
         );
         assert_eq!(
             theme.tokens().bar_border(),
-            "bottom",
+            BarBorder::Bottom,
             "flush bar draws only a bottom hairline, not liquid-motion's full border"
         );
     }
@@ -906,7 +926,10 @@ mod tests {
     #[test]
     fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert!(matches!(theme.modules().workspaces.style, WorkspaceStyle::Dots));
+        assert!(matches!(
+            theme.modules().workspaces.style,
+            WorkspaceStyle::Dots
+        ));
         assert_eq!(theme.modules().workspaces.dot_widths, [8, 13, 17, 22]);
     }
 
@@ -1010,7 +1033,12 @@ mod tests {
         // No ignore_alpha anywhere: that key only means something to a
         // blurred surface, and setting it on an unblurred one would be a
         // never-consumed value.
-        for ns in ["breadbar", "breadbar-osd", "breadbar-notif", "breadbar-panel"] {
+        for ns in [
+            "breadbar",
+            "breadbar-osd",
+            "breadbar-notif",
+            "breadbar-panel",
+        ] {
             assert!(
                 rules[ns].ignore_alpha.is_none(),
                 "compositor.{ns}.ignore_alpha should be unset when blur is off"
@@ -1040,8 +1068,11 @@ mod tests {
     #[test]
     fn daylight_is_light_and_segmented() {
         let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
-        assert!(theme.tokens().light(), "daylight must set tokens.light = true");
-        assert_eq!(theme.tokens().bar_border(), "segmented");
+        assert!(
+            theme.tokens().light(),
+            "daylight must set tokens.light = true"
+        );
+        assert_eq!(theme.tokens().bar_border(), BarBorder::Segmented);
     }
 
     #[test]
@@ -1077,7 +1108,10 @@ mod tests {
             builtin::SPOTLIGHT_ID,
         ] {
             let theme = load_named(id).unwrap_or_else(|e| panic!("{id} should resolve: {e:#}"));
-            assert!(!theme.tokens().light(), "{id} must default tokens.light to false");
+            assert!(
+                !theme.tokens().light(),
+                "{id} must default tokens.light to false"
+            );
         }
     }
 
@@ -1471,7 +1505,12 @@ mod tests {
         for b in builtin::ALL {
             let theme = load_named(b.id)
                 .unwrap_or_else(|e| panic!("builtin '{}' failed to load: {e:#}", b.id));
-            assert_eq!(theme.id(), b.id, "builtin '{}' resolved to a different id", b.id);
+            assert_eq!(
+                theme.id(),
+                b.id,
+                "builtin '{}' resolved to a different id",
+                b.id
+            );
             assert_eq!(theme.name(), b.name, "builtin '{}' name mismatch", b.id);
             assert!(
                 !theme.window().anchors.is_empty(),

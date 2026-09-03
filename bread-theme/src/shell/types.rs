@@ -363,227 +363,284 @@ impl TokenValue {
     }
 }
 
-/// `[tokens]`, resolved. Deliberately an open bag (`BTreeMap`), not a fixed
-/// struct: the schema (plan §4) names eleven fields, but a theme may define
-/// arbitrary extra keys purely for `{name}` substitution in `extra.css`
-/// (`radius_pill`, `chip_height`, `icon_px`, `spring_settle` below are all
-/// exactly this — real values `theme.rs::load_css` uses today that the plan
-/// text's `[tokens]` example didn't list). The named accessors below give
-/// the documented fields typed access with sensible defaults; [`Tokens::get`]
-/// and [`Tokens::substitute`] cover everything else.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// `bar_border` — how `window.breadbar`'s own surface is drawn. A closed enum,
+/// validated at manifest-resolution time like every other string enum in this
+/// schema, rather than the free-form string it used to be (a typo silently
+/// rendered as `Full`).
+///
+/// - `Full` — a floating island: fill + a border on all four edges
+///   (liquid-motion).
+/// - `Bottom` — a flush edge-to-edge bar: fill + only a bottom hairline, since
+///   an island's full border would show as a stray line flush against the
+///   screen edge (glass-workbench).
+/// - `Segmented` — `window.breadbar` itself is fully transparent (no fill,
+///   border, radius or shadow); the bar's slot-group containers each carry
+///   their own pill surface instead, so one window reads as three detached
+///   floating pills (daylight).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BarBorder {
+    #[default]
+    Full,
+    Bottom,
+    Segmented,
+}
+
+impl BarBorder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BarBorder::Full => "full",
+            BarBorder::Bottom => "bottom",
+            BarBorder::Segmented => "segmented",
+        }
+    }
+
+    pub(crate) fn parse(theme_id: &str, s: &str) -> anyhow::Result<Self> {
+        match s {
+            "full" => Ok(BarBorder::Full),
+            "bottom" => Ok(BarBorder::Bottom),
+            "segmented" => Ok(BarBorder::Segmented),
+            other => Err(anyhow::anyhow!(
+                "theme '{theme_id}': tokens.bar_border = \"{other}\" is not full|bottom|segmented"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for BarBorder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// `[tokens]`, fully resolved: every documented token is a typed field with a
+/// default (from [`crate::tokens`]), validated when the manifest is parsed
+/// (`manifest::resolve_tokens`). A theme may still define *extra* keys purely
+/// for `{name}` substitution in its `extra.css` overlay — those land in
+/// [`Tokens::extra`]. A `{name}` in a CSS template that matches neither a
+/// field nor an extra key is a hard error at resolve time (see
+/// `RawManifest::resolve`), so a typo in a token name can no longer be a
+/// silent no-op the way it was when this was an open `BTreeMap`.
+///
+/// The zero-argument accessor methods (`tokens.radius_bar()` …) are retained
+/// as thin getters so consumer call sites (`breadbar`, `breadbox`) don't churn.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Tokens {
-    pub(crate) map: BTreeMap<String, TokenValue>,
+    pub radius_bar: i64,
+    pub radius_card: i64,
+    pub radius_sm: i64,
+    pub radius_pill: i64,
+    pub pad: i64,
+    pub bg_alpha: f64,
+    pub spring: String,
+    pub spring_settle: String,
+    pub accent_from: String,
+    pub accent_to: String,
+    pub accent2: String,
+    pub chip_height: i64,
+    pub icon_px: i64,
+    pub font_family: String,
+    pub font_fallback: String,
+    pub font_size_base: i64,
+    pub light: bool,
+    pub bar_border: BarBorder,
+    /// Open extras — only referenced by `{name}` substitution in a user
+    /// theme's `extra.css`. Not part of the documented schema.
+    pub extra: BTreeMap<String, TokenValue>,
+}
+
+impl Default for Tokens {
+    fn default() -> Self {
+        use crate::tokens::*;
+        Tokens {
+            radius_bar: RADIUS_PRIMARY as i64,
+            radius_card: RADIUS_PRIMARY as i64,
+            radius_sm: RADIUS_SECONDARY as i64,
+            radius_pill: RADIUS_PILL as i64,
+            pad: SPACE_MD as i64,
+            bg_alpha: 0.72,
+            spring: "cubic-bezier(0.22, 1.35, 0.36, 1)".to_string(),
+            spring_settle: "cubic-bezier(0.22, 1.2, 0.36, 1)".to_string(),
+            accent_from: "accent".to_string(),
+            accent_to: "accent".to_string(),
+            accent2: "accent".to_string(),
+            chip_height: 32,
+            icon_px: 24,
+            font_family: FONT_FAMILY.to_string(),
+            font_fallback: "sans-serif".to_string(),
+            font_size_base: FONT_SIZE_BASE as i64,
+            light: false,
+            bar_border: BarBorder::Full,
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+/// Render a float the way a hand-written token would read: `0.72` stays
+/// `0.72`, `16.0` collapses to `16`. Mirrors [`TokenValue::as_css`].
+fn fmt_f64(f: f64) -> String {
+    if f.fract() == 0.0 {
+        format!("{f:.0}")
+    } else {
+        f.to_string()
+    }
 }
 
 impl Tokens {
-    pub fn from_map(map: BTreeMap<String, TokenValue>) -> Self {
-        Tokens { map }
-    }
-
     pub fn get(&self, key: &str) -> Option<&TokenValue> {
-        self.map.get(key)
+        self.extra.get(key)
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.map.keys().map(|s| s.as_str())
+        self.extra.keys().map(|s| s.as_str())
     }
 
-    fn str_or(&self, key: &str, default: &str) -> String {
-        match self.map.get(key) {
-            Some(v) => v.as_css(),
-            None => default.to_string(),
+    /// Every substitutable `(name, css-value)` pair: the typed fields plus any
+    /// `extra` keys. Consumed by [`Self::substitute`] and by the
+    /// unresolved-`{ref}` check in `RawManifest::resolve`.
+    pub(crate) fn subst_pairs(&self) -> Vec<(String, String)> {
+        let mut v: Vec<(String, String)> = vec![
+            ("radius_bar".into(), self.radius_bar.to_string()),
+            ("radius_card".into(), self.radius_card.to_string()),
+            ("radius_sm".into(), self.radius_sm.to_string()),
+            ("radius_pill".into(), self.radius_pill.to_string()),
+            ("pad".into(), self.pad.to_string()),
+            ("bg_alpha".into(), fmt_f64(self.bg_alpha)),
+            ("spring".into(), self.spring.clone()),
+            ("spring_settle".into(), self.spring_settle.clone()),
+            ("accent_from".into(), self.accent_from.clone()),
+            ("accent_to".into(), self.accent_to.clone()),
+            ("accent2".into(), self.accent2.clone()),
+            ("chip_height".into(), self.chip_height.to_string()),
+            ("icon_px".into(), self.icon_px.to_string()),
+            ("font_family".into(), self.font_family.clone()),
+            ("font_fallback".into(), self.font_fallback.clone()),
+            ("font_size_base".into(), self.font_size_base.to_string()),
+            ("light".into(), self.light.to_string()),
+            ("bar_border".into(), self.bar_border.as_str().to_string()),
+        ];
+        for (k, tv) in &self.extra {
+            v.push((k.clone(), tv.as_css()));
         }
+        v
     }
 
-    fn int_or(&self, key: &str, default: i64) -> i64 {
-        match self.map.get(key) {
-            Some(TokenValue::Int(i)) => *i,
-            Some(TokenValue::Float(f)) => *f as i64,
-            Some(TokenValue::Str(s)) => s.parse().unwrap_or(default),
-            _ => default,
-        }
-    }
+    // ---- thin field getters (retained so consumer call sites don't churn) ----
 
-    fn float_or(&self, key: &str, default: f64) -> f64 {
-        match self.map.get(key) {
-            Some(TokenValue::Float(f)) => *f,
-            Some(TokenValue::Int(i)) => *i as f64,
-            Some(TokenValue::Str(s)) => s.parse().unwrap_or(default),
-            _ => default,
-        }
-    }
-
-    /// Same fallback shape as [`Self::str_or`]/[`Self::int_or`]/
-    /// [`Self::float_or`] for a `TokenValue::Bool`. First consumer: `light`
-    /// below (theme 05/daylight, plan §11 phase 7) — every existing token is
-    /// a string/number, this is the first bool-shaped one, hence the new
-    /// helper rather than reusing one of the three above.
-    fn bool_or(&self, key: &str, default: bool) -> bool {
-        match self.map.get(key) {
-            Some(TokenValue::Bool(b)) => *b,
-            Some(TokenValue::Str(s)) => s.parse().unwrap_or(default),
-            _ => default,
-        }
-    }
-
-    /// Consumed by `breadbox::main::build_css` for the launcher panel's
-    /// `font-family` (the `entry.search`/`row` rule) as of the
-    /// liquid-motion/glass-workbench redesign — combined with
-    /// [`Self::font_fallback`] into a CSS font stack. Still NOT consumed by
-    /// `breadbar` (bar/chip/clock text) or by [`crate::stylesheet`]'s
-    /// ecosystem-wide base rule, which still hardcodes
-    /// `crate::tokens::FONT_FAMILY` for every non-launcher widget — this is
-    /// a scoped, launcher-only wire-up, not the full "per-shell-theme font
-    /// everywhere" replacement a `stylesheet()` owner would need to decide
-    /// on separately.
     pub fn font_family(&self) -> String {
-        self.str_or("font_family", crate::tokens::FONT_FAMILY)
+        self.font_family.clone()
     }
-    /// See [`Self::font_family`] — same scoped (launcher-only) consumption,
-    /// appended after `font_family` in the CSS font stack breadbox builds.
     pub fn font_fallback(&self) -> String {
-        self.str_or("font_fallback", "sans-serif")
+        self.font_fallback.clone()
     }
-    /// Consumed by `breadbox::main::build_css` for the result rows'
-    /// `font-size` (the search entry uses `[launcher].search_font_size`
-    /// instead — both demos give the search field a larger face than its
-    /// rows). Still not read by `breadbar`.
     pub fn font_size_base(&self) -> i64 {
-        self.int_or("font_size_base", crate::tokens::FONT_SIZE_BASE as i64)
+        self.font_size_base
     }
     pub fn radius_bar(&self) -> i64 {
-        self.int_or("radius_bar", crate::tokens::RADIUS_PRIMARY as i64)
+        self.radius_bar
     }
     pub fn radius_card(&self) -> i64 {
-        self.int_or("radius_card", crate::tokens::RADIUS_PRIMARY as i64)
+        self.radius_card
     }
     pub fn radius_sm(&self) -> i64 {
-        self.int_or("radius_sm", crate::tokens::RADIUS_SECONDARY as i64)
+        self.radius_sm
     }
-    /// Not in the plan §4 schema list, but a named local in
-    /// `theme.rs::load_css` (`radius_pill = "999px"`) alongside the three
-    /// siblings that are. See the [`Tokens`] doc comment.
     pub fn radius_pill(&self) -> i64 {
-        self.int_or("radius_pill", crate::tokens::RADIUS_PILL as i64)
+        self.radius_pill
     }
     pub fn pad(&self) -> i64 {
-        self.int_or("pad", crate::tokens::SPACE_MD as i64)
+        self.pad
     }
     pub fn bg_alpha(&self) -> f64 {
-        self.float_or("bg_alpha", 0.72)
+        self.bg_alpha
     }
-    /// The overshoot/bounce curve (`0.22, 1.35, 0.36, 1`) — clock flips,
-    /// pop-ins, the workspace caret draw.
+    /// The overshoot/bounce curve — clock flips, pop-ins, the workspace caret.
     pub fn spring(&self) -> String {
-        self.str_or("spring", "cubic-bezier(0.22, 1.35, 0.36, 1)")
+        self.spring.clone()
     }
-    /// The settle curve (`0.22, 1.2, 0.36, 1`) — hovers, workspace-btn
-    /// opacity/background transitions, OSD/notification slide-ins. Not in
-    /// the plan §4 schema (which names only `spring`), but `theme.rs` uses
-    /// it just as pervasively as the overshoot curve. See [`Tokens`] doc.
+    /// The settle curve — hovers, opacity/background transitions, slide-ins.
     pub fn spring_settle(&self) -> String {
-        self.str_or("spring_settle", "cubic-bezier(0.22, 1.2, 0.36, 1)")
+        self.spring_settle.clone()
     }
+    /// Palette token *name* (`"accent"`, `"teal"`, …) — the workspace-trail
+    /// gradient's start stop. Resolved against pywal downstream via `@name`.
     pub fn accent_from(&self) -> String {
-        self.str_or("accent_from", "accent")
+        self.accent_from.clone()
     }
-    /// Was declared-but-not-yet-consumed in production through theme 04
-    /// (spotlight): breadbar's hand-rolled Trail CSS hardcoded the literal
-    /// gradient `linear-gradient(90deg, @accent, @teal)` instead of
-    /// substituting `accent_from`/`accent_to`, silently correct only because
-    /// liquid-motion's own `accent_from`/`accent_to` happened to be
-    /// `"accent"`/`"teal"` — the exact two names the hardcode already spelled
-    /// out. Theme 05 (daylight, plan §11 phase 7) is the first Trail-style
-    /// theme to set a *different* pair (`accent_from = accent_to = "teal"`,
-    /// a flat fill, not a gradient), which is what finally forced
-    /// `breadbar::theme::load_css`'s Trail branch to read this method for
-    /// real instead of the two literal names — see that function's own note
-    /// next to `.workspace-trail`.
+    /// Gradient end stop; resolved at manifest time to `accent_from` when the
+    /// theme omits it (a flat fill).
     pub fn accent_to(&self) -> String {
-        let from = self.accent_from();
-        self.str_or("accent_to", &from)
+        self.accent_to.clone()
     }
-    /// A second, independent accent for chrome that shouldn't track the
-    /// primary `accent_from`/`accent_to` pair — daylight (plan §11 phase 7)
-    /// is the first theme that needs one: its media-widget equaliser bars
-    /// are warm amber while the workspace trail/active-fill accent is deep
-    /// teal, so one `accent_from` value can no longer describe both.
-    /// Defaults to `accent_from` itself, which reproduces every earlier
-    /// theme's actual rendering byte-for-byte (liquid-motion/glass-
-    /// workbench/spotlight all paint their equaliser with the same accent
-    /// as everything else, and none of them sets this key). Consumed by
-    /// `breadbar::theme::load_css`'s `.media-eq-bar` rule.
+    /// A second, independent accent (daylight's amber equaliser vs its teal
+    /// trail); resolved to `accent_from` when the theme omits it.
     pub fn accent2(&self) -> String {
-        let from = self.accent_from();
-        self.str_or("accent2", &from)
+        self.accent2.clone()
     }
-    /// Whether this theme's surfaces are painted ink-on-paper (near-opaque
-    /// LIGHT fills with dark ink) rather than the glass-on-dark look every
-    /// earlier theme assumed — daylight (plan §11 phase 7) is the first
-    /// theme to set this `true`. Defaults `false`, reproducing every
-    /// existing theme's rendering unchanged.
-    ///
-    /// Exists because the palette's `bg`/`surface`/`overlay`/`fg` slots are
-    /// NEVER pywal-derived (`bread_theme::palette`'s `FIXED_*` constants —
-    /// deliberately, so a bright wallpaper can't turn the whole UI an
-    /// unreadable light colour by accident) — only the six accent slots
-    /// vary. That means there is no palette token whose value is a light
-    /// "paper" surface for a theme to reference by name; `@bg` is always
-    /// dark, `@on-bg` is always its computed-legible near-white ink.
-    /// `breadbar::theme::load_css` reads this flag to swap which of those
-    /// two *fixed, anti-correlated* tokens plays "surface fill" versus
-    /// "ink" for every translucent card/panel/hover-wash in the stylesheet
-    /// (`@on-bg` as the near-white fill, `@bg` as the near-black ink,
-    /// otherwise the reverse) — see that function's own `panel`/`ink`
-    /// locals. This works only because `@bg`/`@on-bg` are pinned opposite
-    /// constants by construction; it is not a general "pick any light
-    /// surface colour" mechanism, and this doc comment is the canonical
-    /// place that fact is written down (see the task report for the full
-    /// reasoning: the palette schema has no dedicated light-surface token).
+    /// Ink-on-paper surfaces (near-opaque light fills, dark ink) rather than
+    /// glass-on-dark. Still read in Rust by `breadbar::theme::fg_color` for
+    /// icon-texture tint, which is outside CSS.
     pub fn light(&self) -> bool {
-        self.bool_or("light", false)
+        self.light
     }
-    /// Workspace-pill / chip height. Not in the plan §4 schema, but
-    /// `breadbar::CHIP_HEIGHT` (32) today. See [`Tokens`] doc.
+    /// Workspace-pill / chip highlight height.
     pub fn chip_height(&self) -> i64 {
-        self.int_or("chip_height", 32)
+        self.chip_height
     }
-    /// Not in the plan §4 schema, but `breadbar::ICON_PX` (24) today. See
-    /// [`Tokens`] doc.
     pub fn icon_px(&self) -> i64 {
-        self.int_or("icon_px", 24)
+        self.icon_px
     }
-    /// Not in the plan §4 schema. `"full"` (default, liquid-motion's island)
-    /// draws a border on all four edges; `"bottom"` (glass-workbench's flush
-    /// edge-to-edge bar, plan §1) draws only the bottom hairline the demo's
-    /// `.bar { border-bottom: 1px solid #ffffff12 }` calls for — a floating
-    /// island's full border would otherwise render as a stray top/side line
-    /// flush against the screen edge. `"segmented"` (daylight, plan §11
-    /// phase 7) is a third value: `window.breadbar` itself gets NO fill,
-    /// border, or radius at all (fully transparent), and the bar's three
-    /// slot-group containers each carry their own pill surface instead (see
-    /// `breadbar::theme::load_css`'s `segmented`/`.bar-segment` locals) —
-    /// this is what lets one bar surface look like three detached floating
-    /// pills rather than one continuous strip. See [`Tokens`] doc; consumed
-    /// by `breadbar::theme::load_css`, not by [`crate::shell::ShellTheme::css`].
-    pub fn bar_border(&self) -> String {
-        self.str_or("bar_border", "full")
+    /// How `window.breadbar`'s own surface is drawn — see [`BarBorder`].
+    pub fn bar_border(&self) -> BarBorder {
+        self.bar_border
     }
 
-    /// Replace every `{name}` occurrence in `template` with that token's
-    /// [`TokenValue::as_css`] form. Longest names are substituted first
-    /// (mirrors [`crate::resolve_color_names`]) so `{radius}` cannot
-    /// half-consume `{radius_bar}` if a theme happens to define both.
-    /// `@name` palette references are untouched — this only ever looks at
-    /// `{...}` tokens.
+    /// Replace every `{name}` occurrence in `template` with that token's CSS
+    /// text form. Longest names first (mirrors [`crate::resolve_color_names`])
+    /// so `{radius}` cannot half-consume `{radius_bar}`. `@name` palette
+    /// references are untouched — this only ever looks at `{...}` tokens.
     pub fn substitute(&self, template: &str) -> String {
-        let mut keys: Vec<&String> = self.map.keys().collect();
-        keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+        let mut pairs = self.subst_pairs();
+        pairs.sort_by_key(|(k, _)| std::cmp::Reverse(k.len()));
         let mut out = template.to_string();
-        for k in keys {
-            let value = self.map[k].as_css();
+        for (k, value) in pairs {
             out = out.replace(&format!("{{{k}}}"), &value);
+        }
+        out
+    }
+
+    /// Every `{name}` still present after [`Self::substitute`] would run —
+    /// i.e. template placeholders that match no field and no `extra` key.
+    /// Used by `RawManifest::resolve` to turn a typo'd token reference into a
+    /// hard error instead of a literal `{radus_bar}` in the output CSS.
+    ///
+    /// Scoped to `{` immediately followed by a lowercase identifier and `}`
+    /// with no whitespace — CSS rule bodies (`sel { ... }`) never match that
+    /// shape, so this does not false-positive on real CSS.
+    pub(crate) fn unresolved_refs(&self, rendered: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let b = rendered.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] != b'{' {
+                i += 1;
+                continue;
+            }
+            let start = i + 1;
+            let mut j = start;
+            while j < b.len()
+                && (b[j].is_ascii_lowercase() || b[j].is_ascii_digit() || b[j] == b'_')
+            {
+                j += 1;
+            }
+            if j > start && j < b.len() && b[j] == b'}' {
+                let name = rendered[start..j].to_string();
+                if !out.contains(&name) {
+                    out.push(name);
+                }
+                i = j + 1;
+            } else {
+                i += 1;
+            }
         }
         out
     }

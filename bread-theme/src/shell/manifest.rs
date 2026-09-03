@@ -249,6 +249,152 @@ fn token_value(v: &toml::Value) -> anyhow::Result<TokenValue> {
     }
 }
 
+/// Remove `/* … */` comments from a CSS template. CSS comments do not nest.
+/// Run before token substitution so a `{token}` mentioned in an authoring
+/// comment is neither substituted nor flagged as an unresolved reference, and
+/// so the rendered stylesheet carries no template-authoring prose.
+fn strip_css_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        match rest[start + 2..].find("*/") {
+            Some(end) => rest = &rest[start + 2 + end + 2..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The documented `[tokens]` keys — everything else a theme sets under
+/// `[tokens]` is an "extra", only meaningful for `{name}` substitution in
+/// that theme's own `extra.css` overlay.
+const KNOWN_TOKEN_KEYS: &[&str] = &[
+    "radius_bar",
+    "radius_card",
+    "radius_sm",
+    "radius_pill",
+    "pad",
+    "bg_alpha",
+    "spring",
+    "spring_settle",
+    "accent_from",
+    "accent_to",
+    "accent2",
+    "chip_height",
+    "icon_px",
+    "font_family",
+    "font_fallback",
+    "font_size_base",
+    "light",
+    "bar_border",
+];
+
+/// Build a fully-resolved, typed [`Tokens`] from the raw `[tokens]` table.
+/// Known keys go to their typed field (leniently coerced — a number written
+/// as a quoted string still parses, matching the pre-typed behaviour);
+/// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
+fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow::Result<Tokens> {
+    let mut t = Tokens::default();
+    let mut accent_to_set = false;
+    let mut accent2_set = false;
+
+    let want_i64 = |v: &toml::Value, key: &str| -> anyhow::Result<i64> {
+        match v {
+            toml::Value::Integer(i) => Ok(*i),
+            toml::Value::Float(f) => Ok(*f as i64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_f64 = |v: &toml::Value, key: &str| -> anyhow::Result<f64> {
+        match v {
+            toml::Value::Float(f) => Ok(*f),
+            toml::Value::Integer(i) => Ok(*i as f64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_str = |v: &toml::Value, key: &str| -> anyhow::Result<String> {
+        match v {
+            toml::Value::String(s) => Ok(s.clone()),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
+            )),
+        }
+    };
+    let want_bool = |v: &toml::Value, key: &str| -> anyhow::Result<bool> {
+        match v {
+            toml::Value::Boolean(b) => Ok(*b),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not true/false")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a bool, got {other:?}"
+            )),
+        }
+    };
+
+    for (k, v) in raw {
+        match k.as_str() {
+            "radius_bar" => t.radius_bar = want_i64(v, k)?,
+            "radius_card" => t.radius_card = want_i64(v, k)?,
+            "radius_sm" => t.radius_sm = want_i64(v, k)?,
+            "radius_pill" => t.radius_pill = want_i64(v, k)?,
+            "pad" => t.pad = want_i64(v, k)?,
+            "chip_height" => t.chip_height = want_i64(v, k)?,
+            "icon_px" => t.icon_px = want_i64(v, k)?,
+            "font_size_base" => t.font_size_base = want_i64(v, k)?,
+            "bg_alpha" => t.bg_alpha = want_f64(v, k)?,
+            "spring" => t.spring = want_str(v, k)?,
+            "spring_settle" => t.spring_settle = want_str(v, k)?,
+            "accent_from" => t.accent_from = want_str(v, k)?,
+            "accent_to" => {
+                t.accent_to = want_str(v, k)?;
+                accent_to_set = true;
+            }
+            "accent2" => {
+                t.accent2 = want_str(v, k)?;
+                accent2_set = true;
+            }
+            "font_family" => t.font_family = want_str(v, k)?,
+            "font_fallback" => t.font_fallback = want_str(v, k)?,
+            "light" => t.light = want_bool(v, k)?,
+            "bar_border" => t.bar_border = BarBorder::parse(theme_id, &want_str(v, k)?)?,
+            _ => {
+                debug_assert!(!KNOWN_TOKEN_KEYS.contains(&k.as_str()));
+                t.extra.insert(
+                    k.clone(),
+                    token_value(v).with_context(|| format!("theme '{theme_id}': tokens.{k}"))?,
+                );
+            }
+        }
+    }
+
+    // A theme that omits `accent_to`/`accent2` gets `accent_from` — a flat
+    // fill / a shared second accent, the same fallback the old getters did.
+    if !accent_to_set {
+        t.accent_to = t.accent_from.clone();
+    }
+    if !accent2_set {
+        t.accent2 = t.accent_from.clone();
+    }
+
+    Ok(t)
+}
+
 fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
     let default = WindowSpec::default();
 
@@ -419,8 +565,14 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         // Default to the idle value — a theme that never sets these gets
         // "no change while searching", not a hardcoded widen/shrink it
         // never asked for (see the field docs on `Launcher`).
-        search_width: l.and_then(|l| l.search_width).map(|v| v as i32).unwrap_or(width),
-        search_radius: l.and_then(|l| l.search_radius).map(|v| v as i32).unwrap_or(radius),
+        search_width: l
+            .and_then(|l| l.search_width)
+            .map(|v| v as i32)
+            .unwrap_or(width),
+        search_radius: l
+            .and_then(|l| l.search_radius)
+            .map(|v| v as i32)
+            .unwrap_or(radius),
         // Defaults below reproduce breadbox's pre-redesign hardcoded CSS
         // literals (`row { padding: 8px 12px; border-radius: 6px; }`,
         // `listbox { padding: 4px; }`, no icon swatch, a solid — not
@@ -533,12 +685,7 @@ impl RawManifest {
         let id = self.id.clone().unwrap_or_else(|| requested_id.to_string());
         let name = self.name.clone().unwrap_or_else(|| id.clone());
 
-        let mut tokens_map = BTreeMap::new();
-        for (k, v) in &self.tokens {
-            let tv = token_value(v).with_context(|| format!("theme '{id}': tokens.{k}"))?;
-            tokens_map.insert(k.clone(), tv);
-        }
-        let tokens = Tokens::from_map(tokens_map);
+        let tokens = resolve_tokens(&id, &self.tokens)?;
 
         let window = match self.bar.as_ref().and_then(|b| b.window.as_ref()) {
             Some(w) => resolve_window(&id, w)?,
@@ -562,6 +709,30 @@ impl RawManifest {
         let surfaces = resolve_surfaces(&id, self.surfaces.as_ref())?;
         let compositor = resolve_compositor(self.compositor.as_ref());
 
+        // Render the theme's CSS now, once: strip the template's authoring
+        // comments (a `{light}` written in prose must not be substituted, and
+        // a `{name}` in prose must not trip the unresolved-ref check below),
+        // substitute `[tokens]`, then append the optional `extra.css` overlay.
+        // A `{name}` that survives substitution matched neither a `[tokens]`
+        // field nor an `extra.css`-defined key — a typo, and a hard error
+        // rather than a literal `{radus_bar}` in the output.
+        let mut resolved_css = tokens.substitute(&strip_css_comments(&css_template));
+        if let Some(extra) = &extra_css {
+            let extra = tokens.substitute(&strip_css_comments(extra));
+            if !resolved_css.is_empty() && !resolved_css.ends_with('\n') {
+                resolved_css.push('\n');
+            }
+            resolved_css.push_str(&extra);
+        }
+        let missing = tokens.unresolved_refs(&resolved_css);
+        if !missing.is_empty() {
+            bail!(
+                "theme '{id}': CSS template references unknown token(s): {} \
+                 (not a [tokens] field, and not defined in this theme's extra.css)",
+                missing.join(", ")
+            );
+        }
+
         Ok(super::ShellTheme {
             name,
             id,
@@ -572,8 +743,7 @@ impl RawManifest {
             launcher,
             surfaces,
             compositor,
-            css_template,
-            extra_css,
+            resolved_css,
         })
     }
 }
