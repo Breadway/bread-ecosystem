@@ -1,4 +1,10 @@
-
+/* Shared CSS template for every built-in shell theme.
+ * Generated from breadbar/src/theme.rs::load_css during the
+ * declarative-theme migration, then maintained here. `{token}`
+ * placeholders are substituted by ShellTheme::css (from [tokens] and
+ * the ResolvedStyle derivations); `@name` palette references pass
+ * through for GTK's @define-color / per-output hex inlining.
+ */
 
 @keyframes notif-in {
   from {
@@ -82,34 +88,34 @@
 }
 
 .bar-entrance {
-  animation: bar-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  animation: bar-in 0.4s {spring_settle} both;
 }
 
 window.breadbar {
-  color: @on-bg;
-  border-radius: 16px;
+  color: {ink};
+  border-radius: {bar_radius};
   
-background-color: alpha(@bg, 0.72); border: 1px solid alpha(@on-bg, 0.08);
-transition: border-radius 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
+{window_chrome}
+transition: border-radius 0.3s {spring_settle};
 }
 
 window.breadbar.searching {
-  border-radius: 20px;
+  border-radius: {radius_search};
 }
 
 window.breadbar > box > centerbox {
-  padding: 0 8px 0 6px;
+  padding: {centerbox_padding};
 }
 
 window.breadbar button {
   min-height: 0;
   min-width: 0;
-  color: @on-bg;
+  color: {ink};
 }
 
+{segment_css}
 
-
-.workspace-trail { background-image: linear-gradient(90deg, @accent, @teal); background-color: @accent; border-radius: 9px; } .workspace-btn { background: transparent; opacity: 0.36; color: @on-bg; border-radius: 9px; border: none; outline: none; box-shadow: none; min-width: 28px; min-height: 26px; margin: 0; padding: 0 7px; font-size: 22px; font-weight: bold; transition: opacity 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1); } .workspace-btn:hover { opacity: 0.85; background: alpha(@on-bg, 0.08); } .workspace-btn.occupied { opacity: 0.78; } .workspace-btn.active { background: transparent; color: @on-accent; opacity: 1; } .workspace-btn.active:hover { background: transparent; } .workspace-btn.ws-in { animation: row-in 0.32s cubic-bezier(0.22, 1.2, 0.36, 1) both; }
+{workspace_css}
 .clock-box {
   padding: 0 4px;
 }
@@ -139,7 +145,7 @@ window.breadbar button {
 }
 
 .clock-digit.flip {
-  animation: digit-flip 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.45s {spring} both;
 }
 
 .clock-plain {
@@ -165,7 +171,7 @@ window.breadbar button {
 }
 
 .stat-label.tick {
-  animation: digit-flip 0.35s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.35s {spring} both;
 }
 
 .stat-digit {
@@ -175,7 +181,7 @@ window.breadbar button {
 }
 
 .stat-digit.flip {
-  animation: digit-flip 0.35s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.35s {spring} both;
 }
 
 .stats-box {
@@ -184,24 +190,24 @@ window.breadbar button {
 
 .stat-pair {
   margin: 0;
-  border-radius: 9px;
+  border-radius: {chip_radius};
   padding: 5px 9px;
-  min-height: 26px;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
+  min-height: {chip_height_px};
+  transition: background-color 0.22s {spring_settle},opacity 0.18s ease;
 }
 
 .stat-pair:hover {
-  background: alpha(@on-bg, 0.12);
+  background: alpha({ink}, 0.12);
 }
 
 .stat-pair:active {
-  background: alpha(@on-bg, 0.18);
+  background: alpha({ink}, 0.18);
 }
 
 .stat-pair.icon-only {
   padding: 4px;
-  min-width: 26px;
-  min-height: 26px;
+  min-width: {chip_height_px};
+  min-height: {chip_height_px};
 }
 
 .stat-icon {
@@ -220,31 +226,31 @@ separator.bar-sep {
   min-height: 12px;
   min-width: 1px;
   margin: 0 10px 0 2px;
-  background: alpha(@on-bg, 0.10);
+  background: alpha({ink}, 0.10);
 }
 
 window.breadbar-notification {
   background-color: transparent;
-  color: @on-bg;
+  color: {ink};
 }
 
 window.breadbar-history {
-  background-color: alpha(@bg, 0.7);
-  color: @on-bg;
-  border-radius: 12px;
-  border: 1px solid alpha(@on-bg, 0.10);
-  animation: pop-in 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  background-color: alpha({panel}, {card_alpha});
+  color: {ink};
+  border-radius: {radius_card}px;
+  border: 1px solid alpha({ink}, 0.10);
+  animation: pop-in 0.45s {spring} both;
 }
 
 .notification-card {
-  background: alpha(@bg, 0.7);
-  color: @on-bg;
-  border-radius: 12px;
-  padding: 12px;
+  background: alpha({panel}, {card_alpha});
+  color: {ink};
+  border-radius: {radius_card}px;
+  padding: {pad}px;
   margin-bottom: 8px;
-  border: 1px solid alpha(@on-bg, 0.10);
+  border: 1px solid alpha({ink}, 0.10);
   border-left: 3px solid transparent;
-  animation: notif-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  animation: notif-in 0.45s {spring_settle} both;
 }
 
 .notification-card.urgency-critical {
@@ -272,7 +278,7 @@ window.breadbar-history {
 .notification-action {
   padding: 2px 8px;
   font-size: 11px;
-  border-radius: 9px;
+  border-radius: {radius_sm}px;
 }
 
 .notification-reply {
@@ -288,25 +294,25 @@ window.breadbar-history {
   min-height: 18px;
   padding: 0;
   margin: 2px;
-  border-radius: 999px;
+  border-radius: {radius_pill}px;
   background: transparent;
-  color: @on-bg;
+  color: {ink};
   opacity: 0.45;
   font-size: 12px;
   font-weight: bold;
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s ease;
+  transition: background-color 0.18s {spring_settle}, opacity 0.18s ease;
 }
 
 .notification-dismiss:hover {
   opacity: 1;
-  background: alpha(@on-bg, 0.16);
+  background: alpha({ink}, 0.16);
 }
 
 .notification-dismiss:active {
-  background: alpha(@on-bg, 0.24);
+  background: alpha({ink}, 0.24);
 }
 
 .history-title {
@@ -337,11 +343,11 @@ window.breadbar-history {
 }
 
 window.breadbar-osd {
-  background-color: alpha(@bg, 0.7);
-  color: @on-bg;
-  border-radius: 999px;
-  border: 1px solid alpha(@on-bg, 0.10);
-  animation: osd-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  background-color: alpha({panel}, {card_alpha});
+  color: {ink};
+  border-radius: {radius_pill}px;
+  border: 1px solid alpha({ink}, 0.10);
+  animation: osd-in 0.4s {spring_settle} both;
 }
 
 .osd-icon {
@@ -359,7 +365,7 @@ progressbar.osd-bar {
 
 progressbar.osd-bar trough {
   background-image: none;
-  background-color: alpha(@accent, 0.25);
+  background-color: {trough_bg};
   border-radius: 3px;
   min-height: 6px;
 }
@@ -372,14 +378,14 @@ progressbar.osd-bar trough progress {
 }
 
 window.breadbar-panel {
-  background-color: alpha(@bg, 0.72);
-  color: @on-bg;
+  background-color: alpha({panel}, {panel_surface_alpha});
+  color: {ink};
   border-radius: 14px;
-  border: 1px solid alpha(@on-bg, 0.12);
+  border: 1px solid alpha({ink}, 0.12);
 }
 
 window.breadbar-panel button, window.wifi-popover button,window.wifi-add-dialog button, window.breadbar-notification button,window.breadbar-history button {
-  color: @on-bg;
+  color: {ink};
 }
 
 window.breadbar-dismiss, .breadbar-dismiss-hit {
@@ -392,12 +398,12 @@ window.breadbar-dismiss, .breadbar-dismiss-hit {
   border-radius: 2px;
   background-color: @accent;
   background-image: linear-gradient(90deg, @accent, @teal);
-  animation: caret-draw 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: caret-draw 0.45s {spring} both;
 }
 
 .wifi-popover-inner {
   min-width: 228px;
-  padding: 12px;
+  padding: {pad}px;
 }
 
 window.wifi-popover button {
@@ -406,7 +412,7 @@ window.wifi-popover button {
 }
 
 .popover-tab-row {
-  background: alpha(@on-bg, 0.06);
+  background: alpha({ink}, 0.06);
   border-radius: 10px;
   padding: 3px;
   margin-bottom: 10px;
@@ -414,7 +420,7 @@ window.wifi-popover button {
 
 .popover-tab {
   background: transparent;
-  color: @on-bg;
+  color: {ink};
   border: none;
   box-shadow: none;
   outline: none;
@@ -424,7 +430,7 @@ window.wifi-popover button {
   font-size: 17px;
   font-weight: bold;
   opacity: 0.55;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.22s ease, color 0.22s ease;
+  transition: background-color 0.22s {spring_settle},opacity 0.22s ease, color 0.22s ease;
 }
 
 .popover-tab:hover {
@@ -472,7 +478,7 @@ window.wifi-popover button {
   border-radius: 10px;
   padding: 0 12px;
   min-height: 42px;
-  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
+  transition: background-color 0.18s {spring_settle};
 }
 
 .wifi-popover-row label {
@@ -480,7 +486,7 @@ window.wifi-popover button {
 }
 
 .wifi-popover-row:hover {
-  background: alpha(@on-bg, 0.08);
+  background: alpha({ink}, 0.08);
 }
 
 .wifi-popover-row-active {
@@ -493,7 +499,7 @@ window.wifi-popover button {
 }
 
 .row-in {
-  animation: row-in 0.32s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: row-in 0.32s {spring} both;
 }
 
 .stagger-0 {
@@ -565,8 +571,8 @@ switch.bt-switch, switch.bt-switch:hover, switch.bt-switch:checked,switch.bt-swi
 }
 
 switch.bt-switch {
-  background-color: alpha(@on-bg, 0.14);
-  transition: background-color 0.25s cubic-bezier(0.22, 1.2, 0.36, 1);
+  background-color: alpha({ink}, 0.14);
+  transition: background-color 0.25s {spring_settle};
 }
 
 switch.bt-switch:checked {
@@ -582,24 +588,24 @@ switch.bt-switch slider {
   outline: none;
   box-shadow: none;
   background-image: none;
-  background-color: @on-bg;
+  background-color: {ink};
 }
 
 window.wifi-add-dialog {
-  background-color: alpha(@bg, 0.7);
-  color: @on-bg;
+  background-color: alpha({panel}, {card_alpha});
+  color: {ink};
   min-width: 240px;
-  border-radius: 12px;
-  border: 1px solid alpha(@on-bg, 0.10);
-  animation: pop-in 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  border-radius: {radius_card}px;
+  border: 1px solid alpha({ink}, 0.10);
+  animation: pop-in 0.45s {spring} both;
 }
 
 window.wifi-add-dialog headerbar {
-  background-color: alpha(@bg, 0.7);
-  color: @on-bg;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  border-bottom: 1px solid alpha(@on-bg, 0.10);
+  background-color: alpha({panel}, {card_alpha});
+  color: {ink};
+  border-top-left-radius: {radius_card}px;
+  border-top-right-radius: {radius_card}px;
+  border-bottom: 1px solid alpha({ink}, 0.10);
   box-shadow: none;
 }
 
@@ -615,16 +621,16 @@ window.wifi-add-dialog headerbar {
 .media-widget {
   border-radius: 10px;
   padding: 4px 8px;
-  min-height: 26px;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
+  min-height: {chip_height_px};
+  transition: background-color 0.22s {spring_settle};
 }
 
 .media-widget:hover {
-  background: alpha(@on-bg, 0.08);
+  background: alpha({ink}, 0.08);
 }
 
 .media-widget.media-in {
-  animation: row-in 0.4s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: row-in 0.4s {spring} both;
 }
 
 .media-eq {
@@ -635,7 +641,7 @@ window.wifi-add-dialog headerbar {
 .media-eq-bar {
   min-width: 3px;
   min-height: 5px;
-  background-color: @accent;
+  background-color: @{accent2};
   border-radius: 2px;
 }
 
@@ -669,12 +675,12 @@ window.wifi-add-dialog headerbar {
 .media-btn {
   min-width: 32px;
   padding: 4px 8px;
-  border-radius: 9px;
+  border-radius: {radius_sm}px;
   transition: background-color 0.18s ease;
 }
 
 .media-btn:hover {
-  background: alpha(@on-bg, 0.10);
+  background: alpha({ink}, 0.10);
 }
 
 .control-panel-btn {
@@ -686,16 +692,16 @@ window.wifi-add-dialog headerbar {
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
+  transition: background-color 0.22s {spring_settle},opacity 0.18s ease;
 }
 
 .control-panel-btn:hover {
   opacity: 1;
-  background: alpha(@on-bg, 0.10);
+  background: alpha({ink}, 0.10);
 }
 
 .control-panel-btn:active {
-  background: alpha(@on-bg, 0.16);
+  background: alpha({ink}, 0.16);
 }
 
 .control-panel {
@@ -703,7 +709,7 @@ window.wifi-add-dialog headerbar {
 
 .control-panel-inner {
   min-width: 248px;
-  padding: 12px;
+  padding: {pad}px;
 }
 
 .sys-grid {
@@ -746,7 +752,7 @@ scale.control-panel-slider trough {
   min-height: 6px;
   border-radius: 99px;
   background-image: none;
-  background-color: alpha(@on-bg, 0.12);
+  background-color: alpha({ink}, 0.12);
   border: none;
   outline: none;
   box-shadow: none;
@@ -788,16 +794,16 @@ scale.control-panel-slider slider {
   min-height: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: alpha(@on-bg, 0.08);
+  background: alpha({ink}, 0.08);
   font-size: 13px;
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.2s cubic-bezier(0.22, 1.2, 0.36, 1);
+  transition: background-color 0.2s {spring_settle};
 }
 
 .power-btn:hover {
-  background: alpha(@on-bg, 0.14);
+  background: alpha({ink}, 0.14);
 }
 
 .power-btn:active {
@@ -814,7 +820,7 @@ scale.control-panel-slider slider {
 
 separator {
   margin: 4px 0;
-  background: alpha(@on-bg, 0.10);
+  background: alpha({ink}, 0.10);
 }
 
 .bread-widget-slot {
@@ -823,7 +829,7 @@ separator {
 
 progressbar.bread-widget-node trough {
   background-image: none;
-  background-color: alpha(@accent, 0.25);
+  background-color: {trough_bg};
   border-radius: 3px;
   min-height: 6px;
 }
@@ -986,11 +992,11 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
 
 .launcher-entry {
   background: transparent;
-  color: @on-bg;
+  color: {ink};
   border: none;
   outline: none;
   box-shadow: none;
-  caret-color: @accent;
+  caret-color: @{accent_from};
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -1009,7 +1015,7 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
 }
 
 .bread-drawer.open {
-  border-top: 1px solid alpha(@on-bg, 0.08);
+  border-top: 1px solid alpha({ink}, 0.08);
   margin-top: 6px;
   padding-top: 2px;
 }
@@ -1021,18 +1027,18 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
 
 .bread-drawer row {
   padding: 8px 14px;
-  border-radius: 9px;
-  color: @on-bg;
+  border-radius: {radius_sm}px;
+  color: {ink};
   background-color: transparent;
 }
 
 .bread-drawer row:hover {
-  background-color: alpha(@on-bg, 0.08);
+  background-color: alpha({ink}, 0.08);
 }
 
 .bread-drawer row:selected {
-  background-color: alpha(@accent, 0.18);
-  color: @on-bg;
+  background-color: alpha(@{accent_from}, 0.18);
+  color: {ink};
 }
 
 .bread-drawer .app-name {

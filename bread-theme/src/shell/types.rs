@@ -88,14 +88,10 @@ pub struct Margin {
     pub top: i32,
     pub left: i32,
     pub right: i32,
-    /// Declared-but-not-yet-consumed: parsed and carried all the way
-    /// through resolution, but breadbar only calls
-    /// `gtk4_layer_shell::LayerShell::set_margin` for
-    /// `Edge::{Top,Left,Right}` (`breadbar/src/main.rs`) — there is no
-    /// `Edge::Bottom` call anywhere in that crate. All three built-in
-    /// themes happen to omit `margin.bottom` (defaulting to 0, this
-    /// struct's own `Default`), which is exactly why the gap has stayed
-    /// invisible: a theme author who *does* set it would see no effect.
+    /// Applied by breadbar via `LayerShell::set_margin(Edge::Bottom, …)` and
+    /// folded into the exclusive zone for a bottom-anchored bar (see
+    /// `breadbar::exclusive_zone_for`). daylight is the first built-in to set
+    /// it (a bottom-anchored floating dock).
     pub bottom: i32,
 }
 
@@ -477,12 +473,56 @@ impl Default for Tokens {
 
 /// Render a float the way a hand-written token would read: `0.72` stays
 /// `0.72`, `16.0` collapses to `16`. Mirrors [`TokenValue::as_css`].
-fn fmt_f64(f: f64) -> String {
+pub(super) fn fmt_f64(f: f64) -> String {
     if f.fract() == 0.0 {
         format!("{f:.0}")
     } else {
         f.to_string()
     }
+}
+
+/// Replace every `{name}` in `template` with its pair value, longest name
+/// first so `{radius}` can't half-consume `{radius_bar}`. `@name` palette
+/// references are left untouched. Shared by the token substitution and the
+/// [`crate::shell::style`] derivations.
+pub(super) fn substitute_pairs(template: &str, mut pairs: Vec<(String, String)>) -> String {
+    pairs.sort_by_key(|(k, _)| std::cmp::Reverse(k.len()));
+    let mut out = template.to_string();
+    for (k, v) in pairs {
+        out = out.replace(&format!("{{{k}}}"), &v);
+    }
+    out
+}
+
+/// Every `{name}` still present after substitution — i.e. a placeholder that
+/// matched no `[tokens]` field, no derived style value, and no `extra.css`
+/// key. Scoped to `{` + a lowercase identifier + `}` with no whitespace, a
+/// shape real CSS rule bodies never produce.
+pub(super) fn unresolved_refs(rendered: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let b = rendered.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'{' {
+            i += 1;
+            continue;
+        }
+        let start = i + 1;
+        let mut j = start;
+        while j < b.len() && (b[j].is_ascii_lowercase() || b[j].is_ascii_digit() || b[j] == b'_') {
+            j += 1;
+        }
+        if j > start && j < b.len() && b[j] == b'}' {
+            let name = rendered[start..j].to_string();
+            if !out.contains(&name) {
+                out.push(name);
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
 }
 
 impl Tokens {
@@ -594,54 +634,11 @@ impl Tokens {
         self.bar_border
     }
 
-    /// Replace every `{name}` occurrence in `template` with that token's CSS
-    /// text form. Longest names first (mirrors [`crate::resolve_color_names`])
-    /// so `{radius}` cannot half-consume `{radius_bar}`. `@name` palette
-    /// references are untouched — this only ever looks at `{...}` tokens.
+    /// Replace every `{name}` in `template` with this token's CSS text form.
+    /// `@name` palette references are untouched. The full render path
+    /// (`RawManifest::resolve`) also folds in the [`crate::shell::style`]
+    /// derivations via [`substitute_pairs`]; this method covers tokens alone.
     pub fn substitute(&self, template: &str) -> String {
-        let mut pairs = self.subst_pairs();
-        pairs.sort_by_key(|(k, _)| std::cmp::Reverse(k.len()));
-        let mut out = template.to_string();
-        for (k, value) in pairs {
-            out = out.replace(&format!("{{{k}}}"), &value);
-        }
-        out
-    }
-
-    /// Every `{name}` still present after [`Self::substitute`] would run —
-    /// i.e. template placeholders that match no field and no `extra` key.
-    /// Used by `RawManifest::resolve` to turn a typo'd token reference into a
-    /// hard error instead of a literal `{radus_bar}` in the output CSS.
-    ///
-    /// Scoped to `{` immediately followed by a lowercase identifier and `}`
-    /// with no whitespace — CSS rule bodies (`sel { ... }`) never match that
-    /// shape, so this does not false-positive on real CSS.
-    pub(crate) fn unresolved_refs(&self, rendered: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let b = rendered.as_bytes();
-        let mut i = 0;
-        while i < b.len() {
-            if b[i] != b'{' {
-                i += 1;
-                continue;
-            }
-            let start = i + 1;
-            let mut j = start;
-            while j < b.len()
-                && (b[j].is_ascii_lowercase() || b[j].is_ascii_digit() || b[j] == b'_')
-            {
-                j += 1;
-            }
-            if j > start && j < b.len() && b[j] == b'}' {
-                let name = rendered[start..j].to_string();
-                if !out.contains(&name) {
-                    out.push(name);
-                }
-                i = j + 1;
-            } else {
-                i += 1;
-            }
-        }
-        out
+        substitute_pairs(template, self.subst_pairs())
     }
 }

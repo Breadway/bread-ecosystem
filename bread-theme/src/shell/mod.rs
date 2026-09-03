@@ -49,7 +49,10 @@
 
 mod builtin;
 mod manifest;
+mod style;
 mod types;
+
+pub use style::chip_height;
 
 #[cfg(feature = "gtk")]
 mod hotreload;

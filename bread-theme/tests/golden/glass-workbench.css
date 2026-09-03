@@ -1,72 +1,1058 @@
 
 
+@keyframes notif-in {
+  from {
+    opacity: 0;
+    margin-right: -16px;
+  }
+}
+
+@keyframes osd-in {
+  from {
+    opacity: 0;
+    margin-bottom: -8px;
+  }
+}
+
+@keyframes media-eq {
+  to {
+    min-height: 14px;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    margin-top: -10px;
+  }
+  to {
+    opacity: 1;
+    margin-top: 0;
+  }
+}
+
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    margin-top: 0;
+  }
+  to {
+    opacity: 0;
+    margin-top: -6px;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    margin-top: 8px;
+  }
+  to {
+    opacity: 1;
+    margin-top: 0;
+  }
+}
+
+@keyframes digit-flip {
+  from {
+    opacity: 0;
+    margin-top: 7px;
+  }
+  to {
+    opacity: 1;
+    margin-top: 0;
+  }
+}
+
+@keyframes caret-draw {
+  from {
+    margin-right: 200px;
+    opacity: 0.2;
+  }
+  to {
+    margin-right: 4px;
+    opacity: 1;
+  }
+}
+
+@keyframes bar-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.bar-entrance {
+  animation: bar-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
 window.breadbar {
-  background-color: alpha(@bg, 0.72);
   color: @on-bg;
   border-radius: 0px;
-  border: none;
-  border-bottom: 1px solid alpha(@on-bg, 0.07);
+  
+background-color: alpha(@bg, 0.72); border: none; border-bottom: 1px solid alpha(@on-bg, 0.07);
+transition: border-radius 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
-window.breadbar > centerbox { padding: 0 12px; }
-window.breadbar button { min-height: 0; min-width: 0; }
+
+window.breadbar.searching {
+  border-radius: 10px;
+}
+
+window.breadbar > box > centerbox {
+  padding: 0 14px;
+}
+
+window.breadbar button {
+  min-height: 0;
+  min-width: 0;
+  color: @on-bg;
+}
 
 
-.workspace-btn {
-  background: transparent;
-  opacity: 1;
-  color: alpha(@on-bg, 0.4);
-  border-radius: 6px;
-  border: none;
-  outline: none;
-  box-shadow: none;
-  min-width: 22px;
-  min-height: 22px;
+
+.workspace-btn { background: transparent; opacity: 1; color: alpha(@on-bg, 0.4); border-radius: 6px; border: none; outline: none; box-shadow: none; min-width: 22px; min-height: 22px; margin: 0; padding: 0 6px; font-size: 12px; font-weight: 600; transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.22s cubic-bezier(0.22, 1.2, 0.36, 1); } .workspace-btn:hover { background: alpha(@on-bg, 0.08); } .workspace-btn.occupied { color: alpha(@on-bg, 0.8); } .workspace-btn:not(.occupied):not(.active) { opacity: 0.35; } .workspace-btn.active { background: @green; color: @on-accent; opacity: 1; } .workspace-btn.active:hover { background: @green; } .workspace-btn.ws-in { animation: row-in 0.32s cubic-bezier(0.22, 1.2, 0.36, 1) both; }
+.clock-box {
+  padding: 0 4px;
+}
+
+.clock-label {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  min-height: 0;
+  padding: 0;
+  margin-top: 3px;
+}
+
+.clock-digit {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  min-width: 15px;
+  min-height: 0;
+  padding: 0;
   margin: 0;
-  padding: 0 6px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),
-    opacity 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
-.workspace-btn:hover { background: alpha(@on-bg, 0.08); }
-.workspace-btn.occupied { color: alpha(@on-bg, 0.8); }
-.workspace-btn:not(.occupied):not(.active) { opacity: 0.35; }
-.workspace-btn.active {
-  background: @green;
-  color: @on-accent;
-  opacity: 1;
-}
-.workspace-btn.active:hover { background: @green; }
 
-.clock-plain { padding: 0 4px; }
+.clock-colon {
+  min-width: 10px;
+  opacity: 0.7;
+}
+
+.clock-digit.flip {
+  animation: digit-flip 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.clock-plain {
+  padding: 0 4px;
+}
+
 .clock-plain-time {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+
 .date-label {
   font-size: 12px;
   opacity: 0.48;
-  font-weight: 400;
   letter-spacing: 0.04em;
 }
 
+.stat-label {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+}
+
+.stat-label.tick {
+  animation: digit-flip 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.stat-digit {
+  min-width: 9px;
+  padding: 0;
+  margin: 0;
+}
+
+.stat-digit.flip {
+  animation: digit-flip 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.stats-box {
+  margin-right: 0;
+}
+
+.stat-pair {
+  margin: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  min-height: 22px;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
+}
+
+.stat-pair:hover {
+  background: alpha(@on-bg, 0.12);
+}
+
+.stat-pair:active {
+  background: alpha(@on-bg, 0.18);
+}
+
+.stat-pair.icon-only {
+  padding: 4px;
+  min-width: 22px;
+  min-height: 22px;
+}
+
+.stat-icon {
+  margin-right: 6px;
+}
+
+.stat-pair.icon-only .stat-icon {
+  margin: 0;
+}
+
+.bt-icon {
+  margin-right: 8px;
+}
+
+separator.bar-sep {
+  min-height: 12px;
+  min-width: 1px;
+  margin: 0 10px 0 2px;
+  background: alpha(@on-bg, 0.10);
+}
+
+window.breadbar-notification {
+  background-color: transparent;
+  color: @on-bg;
+}
+
+window.breadbar-history {
+  background-color: alpha(@bg, 0.7);
+  color: @on-bg;
+  border-radius: 10px;
+  border: 1px solid alpha(@on-bg, 0.10);
+  animation: pop-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.notification-card {
+  background: alpha(@bg, 0.7);
+  color: @on-bg;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid alpha(@on-bg, 0.10);
+  border-left: 3px solid transparent;
+  animation: notif-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.notification-card.urgency-critical {
+  border-left-color: @red;
+}
+
+.notification-card.urgency-normal {
+  border-left-color: @accent;
+}
+
+.notification-summary {
+  font-weight: bold;
+}
+
+.notification-app {
+  opacity: 0.55;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.notification-actions {
+  margin-top: 6px;
+}
+
+.notification-action {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.notification-reply {
+  margin-top: 6px;
+}
+
+.notification-reply-entry {
+  min-width: 0;
+}
+
+.notification-dismiss {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 2px;
+  border-radius: 999px;
+  background: transparent;
+  color: @on-bg;
+  opacity: 0.45;
+  font-size: 12px;
+  font-weight: bold;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s ease;
+}
+
+.notification-dismiss:hover {
+  opacity: 1;
+  background: alpha(@on-bg, 0.16);
+}
+
+.notification-dismiss:active {
+  background: alpha(@on-bg, 0.24);
+}
+
+.history-title {
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.history-close {
+  padding: 2px 8px;
+}
+
+.history-empty {
+  opacity: 0.5;
+  padding: 8px 0;
+}
+
+.history-time {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.history-body {
+  opacity: 0.75;
+}
+
+.history-card {
+  margin-bottom: 6px;
+}
+
 window.breadbar-osd {
-  background-color: alpha(@bg, 0.72);
+  background-color: alpha(@bg, 0.7);
   color: @on-bg;
   border-radius: 999px;
   border: 1px solid alpha(@on-bg, 0.10);
+  animation: osd-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.osd-icon {
+  opacity: 0.85;
+  margin-right: 8px;
+}
+
+.osd-icon-muted {
+  opacity: 0.35;
+}
+
+progressbar.osd-bar {
+  min-height: 6px;
+}
+
+progressbar.osd-bar trough {
+  background-image: none;
+  background-color: alpha(@accent, 0.25);
+  border-radius: 3px;
+  min-height: 6px;
+}
+
+progressbar.osd-bar trough progress {
+  background-image: none;
+  background-color: @accent;
+  border-radius: 3px;
+  min-height: 6px;
 }
 
 window.breadbar-panel {
-  background-color: alpha(@bg, 0.86);
+  background-color: alpha(@bg, 0.72);
   color: @on-bg;
-  border-radius: 10px;
+  border-radius: 14px;
   border: 1px solid alpha(@on-bg, 0.12);
 }
 
-window.breadbar-dismiss {
+window.breadbar-panel button, window.wifi-popover button,window.wifi-add-dialog button, window.breadbar-notification button,window.breadbar-history button {
+  color: @on-bg;
+}
+
+window.breadbar-dismiss, .breadbar-dismiss-hit {
   background-color: alpha(#000000, 0.02);
 }
 
-.bread-widget-slot { margin-right: 12px; }
+.popover-caret {
+  min-height: 2px;
+  margin: 2px 4px 10px;
+  border-radius: 2px;
+  background-color: @accent;
+  background-image: linear-gradient(90deg, @accent, @teal);
+  animation: caret-draw 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.wifi-popover-inner {
+  min-width: 228px;
+  padding: 12px;
+}
+
+window.wifi-popover button {
+  min-height: 0;
+  min-width: 0;
+}
+
+.popover-tab-row {
+  background: alpha(@on-bg, 0.06);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 10px;
+}
+
+.popover-tab {
+  background: transparent;
+  color: @on-bg;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 999px;
+  padding: 0 14px;
+  min-height: 32px;
+  font-size: 17px;
+  font-weight: bold;
+  opacity: 0.55;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.22s ease, color 0.22s ease;
+}
+
+.popover-tab:hover {
+  opacity: 0.8;
+}
+
+.popover-tab:checked {
+  background: alpha(@accent, 0.22);
+  color: @accent;
+  opacity: 1;
+}
+
+.popover-tab label {
+  padding: 0;
+  margin: 0;
+}
+
+.wifi-popover-ssid {
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.wifi-popover-ip {
+  opacity: 0.6;
+  font-size: 16px;
+}
+
+.wifi-popover-status {
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.wifi-popover-section {
+  font-size: 13px;
+  font-weight: bold;
+  opacity: 0.45;
+  letter-spacing: 0.12em;
+}
+
+.wifi-popover-row {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 10px;
+  padding: 0 12px;
+  min-height: 42px;
+  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+.wifi-popover-row label {
+  font-size: 18px;
+}
+
+.wifi-popover-row:hover {
+  background: alpha(@on-bg, 0.08);
+}
+
+.wifi-popover-row-active {
+  background: alpha(@accent, 0.14);
+  color: @accent;
+}
+
+.wifi-popover-row-active:hover {
+  background: alpha(@accent, 0.20);
+}
+
+.row-in {
+  animation: row-in 0.32s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.stagger-0 {
+  animation-delay: 0ms;
+}
+
+.stagger-1 {
+  animation-delay: 28ms;
+}
+
+.stagger-2 {
+  animation-delay: 56ms;
+}
+
+.stagger-3 {
+  animation-delay: 84ms;
+}
+
+.stagger-4 {
+  animation-delay: 112ms;
+}
+
+.stagger-5 {
+  animation-delay: 140ms;
+}
+
+.stagger-6 {
+  animation-delay: 168ms;
+}
+
+.stagger-7 {
+  animation-delay: 196ms;
+}
+
+.stagger-8 {
+  animation-delay: 224ms;
+}
+
+.stagger-9 {
+  animation-delay: 252ms;
+}
+
+.stagger-10 {
+  animation-delay: 280ms;
+}
+
+.stagger-11 {
+  animation-delay: 308ms;
+}
+
+.wifi-popover-row-unsaved {
+  opacity: 0.4;
+}
+
+.wifi-popover-loading {
+  opacity: 0.5;
+  padding: 8px;
+}
+
+switch.bt-switch, switch.bt-switch:hover, switch.bt-switch:checked,switch.bt-switch:checked:hover {
+  min-width: 42px;
+  min-height: 24px;
+  padding: 2px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background-image: none;
+  border-radius: 99px;
+}
+
+switch.bt-switch {
+  background-color: alpha(@on-bg, 0.14);
+  transition: background-color 0.25s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+switch.bt-switch:checked {
+  background-color: @accent;
+}
+
+switch.bt-switch slider {
+  min-width: 20px;
+  min-height: 20px;
+  margin: 0;
+  border-radius: 99px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @on-bg;
+}
+
+window.wifi-add-dialog {
+  background-color: alpha(@bg, 0.7);
+  color: @on-bg;
+  min-width: 240px;
+  border-radius: 10px;
+  border: 1px solid alpha(@on-bg, 0.10);
+  animation: pop-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+window.wifi-add-dialog headerbar {
+  background-color: alpha(@bg, 0.7);
+  color: @on-bg;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  border-bottom: 1px solid alpha(@on-bg, 0.10);
+  box-shadow: none;
+}
+
+.confirm-button {
+  background-color: @accent;
+  color: @on-accent;
+}
+
+.confirm-button:hover {
+  background-color: alpha(@accent, 0.85);
+}
+
+.media-widget {
+  border-radius: 10px;
+  padding: 4px 8px;
+  min-height: 22px;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+.media-widget:hover {
+  background: alpha(@on-bg, 0.08);
+}
+
+.media-widget.media-in {
+  animation: row-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.media-eq {
+  min-height: 14px;
+  margin-right: 4px;
+}
+
+.media-eq-bar {
+  min-width: 3px;
+  min-height: 5px;
+  background-color: @green;
+  border-radius: 2px;
+}
+
+.media-widget.playing .media-eq-bar {
+  animation: media-eq 0.85s ease-in-out infinite alternate;
+}
+
+.media-widget.playing .media-eq-bar:nth-child(2) {
+  animation-delay: 0.1s;
+  min-height: 11px;
+}
+
+.media-widget.playing .media-eq-bar:nth-child(3) {
+  animation-delay: 0.22s;
+  min-height: 7px;
+}
+
+.media-widget.playing .media-eq-bar:nth-child(4) {
+  animation-delay: 0.06s;
+  min-height: 13px;
+}
+
+.media-track-lbl {
+  font-size: 17px;
+}
+
+.media-controls {
+  padding: 4px;
+}
+
+.media-btn {
+  min-width: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.18s ease;
+}
+
+.media-btn:hover {
+  background: alpha(@on-bg, 0.10);
+}
+
+.control-panel-btn {
+  margin: 0;
+  opacity: 0.92;
+  font-size: 18px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
+}
+
+.control-panel-btn:hover {
+  opacity: 1;
+  background: alpha(@on-bg, 0.10);
+}
+
+.control-panel-btn:active {
+  background: alpha(@on-bg, 0.16);
+}
+
+.control-panel {
+}
+
+.control-panel-inner {
+  min-width: 248px;
+  padding: 12px;
+}
+
+.sys-grid {
+  margin: 2px 0 6px;
+}
+
+.sys-stat {
+  padding: 4px 2px;
+  background: transparent;
+}
+
+.sys-stat:hover {
+  background: transparent;
+}
+
+.control-panel-header {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  opacity: 0.45;
+  margin-bottom: 8px;
+}
+
+.control-panel-row {
+  margin: 8px 0;
+}
+
+.control-panel-row-label {
+  font-size: 16px;
+  opacity: 0.78;
+}
+
+.control-panel-slider {
+  margin: 0;
+  padding: 0;
+  min-height: 18px;
+}
+
+scale.control-panel-slider trough {
+  min-height: 6px;
+  border-radius: 99px;
+  background-image: none;
+  background-color: alpha(@on-bg, 0.12);
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+scale.control-panel-slider highlight {
+  min-height: 6px;
+  border-radius: 99px;
+  background-image: none;
+  background-color: @accent;
+}
+
+scale.control-panel-slider slider {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.control-panel-section {
+  margin: 8px 0 0;
+}
+
+.sink-row label {
+  font-size: 15px;
+}
+
+.power-row {
+  margin-top: 8px;
+}
+
+.power-btn {
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: alpha(@on-bg, 0.08);
+  font-size: 13px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  transition: background-color 0.2s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+.power-btn:hover {
+  background: alpha(@on-bg, 0.14);
+}
+
+.power-btn:active {
+  background: alpha(@accent, 0.22);
+}
+
+.notification-action {
+  transition: background-color 0.18s ease;
+}
+
+.tray-btn {
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+separator {
+  margin: 4px 0;
+  background: alpha(@on-bg, 0.10);
+}
+
+.bread-widget-slot {
+  margin-right: 12px;
+}
+
+progressbar.bread-widget-node trough {
+  background-image: none;
+  background-color: alpha(@accent, 0.25);
+  border-radius: 3px;
+  min-height: 6px;
+}
+
+progressbar.bread-widget-node trough progress {
+  background-image: none;
+  background-color: @accent;
+  border-radius: 3px;
+  min-height: 6px;
+}
+
+progressbar.bread-widget-node.bread-color-fg trough progress {
+  background-color: @fg;
+}
+
+progressbar.bread-widget-node.bread-color-dim trough progress {
+  background-color: alpha(@fg, 0.6);
+}
+
+progressbar.bread-widget-node.bread-color-accent trough progress {
+  background-color: @accent;
+}
+
+progressbar.bread-widget-node.bread-color-red trough progress {
+  background-color: @red;
+}
+
+progressbar.bread-widget-node.bread-color-green trough progress {
+  background-color: @green;
+}
+
+progressbar.bread-widget-node.bread-color-yellow trough progress {
+  background-color: @yellow;
+}
+
+progressbar.bread-widget-node.bread-color-blue trough progress {
+  background-color: @blue;
+}
+
+progressbar.bread-widget-node.bread-color-pink trough progress {
+  background-color: @pink;
+}
+
+progressbar.bread-widget-node.bread-color-teal trough progress {
+  background-color: @teal;
+}
+
+.bread-color-fg {
+  color: @fg;
+}
+
+.bread-color-dim {
+  color: @fg;
+  opacity: 0.6;
+}
+
+.bread-color-accent {
+  color: @accent;
+}
+
+.bread-color-red {
+  color: @red;
+}
+
+.bread-color-green {
+  color: @green;
+}
+
+.bread-color-yellow {
+  color: @yellow;
+}
+
+.bread-color-blue {
+  color: @blue;
+}
+
+.bread-color-pink {
+  color: @pink;
+}
+
+.bread-color-teal {
+  color: @teal;
+}
+
+.bread-weight-normal {
+  font-weight: normal;
+}
+
+.bread-weight-bold {
+  font-weight: bold;
+}
+
+.bread-size-xs {
+  font-size: 10px;
+}
+
+.bread-size-sm {
+  font-size: 12px;
+}
+
+.bread-size-md {
+  font-size: 14px;
+}
+
+.bread-size-lg {
+  font-size: 16px;
+}
+
+.bread-size-xl {
+  font-size: 20px;
+}
+
+.bread-bg-none {
+  background-color: transparent;
+}
+
+.bread-bg-surface {
+  background-color: @surface;
+  color: @on-surface;
+}
+
+.bread-bg-card {
+  background-color: @surface;
+  color: @on-surface;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.bread-radius-none {
+  border-radius: 0;
+}
+
+.bread-radius-sm {
+  border-radius: 4px;
+}
+
+.bread-radius-md {
+  border-radius: 8px;
+}
+
+.bread-radius-full {
+  border-radius: 999px;
+}
+
+.bread-padding-none {
+  padding: 0;
+}
+
+.bread-padding-xs {
+  padding: 4px;
+}
+
+.bread-padding-sm {
+  padding: 8px;
+}
+
+.bread-padding-md {
+  padding: 12px;
+}
+
+.launcher-entry {
+  background: transparent;
+  color: @on-bg;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  caret-color: @green;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+}
+
+.launcher-entry.searching {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.bread-drawer {
+  min-height: 0;
+}
+
+.bread-drawer.open {
+  border-top: 1px solid alpha(@on-bg, 0.08);
+  margin-top: 6px;
+  padding-top: 2px;
+}
+
+.bread-drawer listbox {
+  background: transparent;
+  padding: 2px 0;
+}
+
+.bread-drawer row {
+  padding: 8px 14px;
+  border-radius: 6px;
+  color: @on-bg;
+  background-color: transparent;
+}
+
+.bread-drawer row:hover {
+  background-color: alpha(@on-bg, 0.08);
+}
+
+.bread-drawer row:selected {
+  background-color: alpha(@green, 0.18);
+  color: @on-bg;
+}
+
+.bread-drawer .app-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.bread-drawer .app-muted {
+  opacity: 0.45;
+  font-size: 11px;
+}
+
+.bread-drawer-section-header {
+  padding: 6px 14px 2px;
+}
+
+.section-header-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.45;
+}

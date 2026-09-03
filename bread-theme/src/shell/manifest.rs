@@ -84,17 +84,14 @@ pub(super) struct RawManifest {
     pub(super) launcher: Option<RawLauncher>,
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
-    /// Overlay CSS path, resolved relative to the theme file's own
-    /// directory, appended last by `ShellTheme::css`. Declared-but-not-yet-
-    /// consumed in production: `ShellTheme::css` (the only reader of this
-    /// field's resolved `extra_css`) is not called by breadbar or breadbox
-    /// today — see that method's doc comment. Setting this key is currently
-    /// a no-op for a real running shell (it IS exercised by this crate's own
-    /// tests). (Schema note: plan §4
-    /// shows `css = "extra.css"` textually after the `[compositor]` table
-    /// with no table header of its own between them, which in real TOML
-    /// would nest it *inside* `[compositor]`. Treated here as a top-level
-    /// field per §5's `css()` doc — see this crate's implementation notes.)
+    /// Overlay CSS path, resolved relative to the theme file's own directory.
+    /// Its contents are token-substituted and appended after the base
+    /// template when the theme's CSS is rendered (`RawManifest::resolve` →
+    /// `ShellTheme::css`), which breadbar and breadbox now consume directly.
+    /// (Schema note: plan §4 shows `css = "extra.css"` textually after the
+    /// `[compositor]` table with no header between them, which real TOML
+    /// would nest inside `[compositor]`. Treated here as a top-level field
+    /// per §5's `css()` doc.)
     pub(super) css: Option<String>,
 }
 
@@ -712,23 +709,27 @@ impl RawManifest {
         // Render the theme's CSS now, once: strip the template's authoring
         // comments (a `{light}` written in prose must not be substituted, and
         // a `{name}` in prose must not trip the unresolved-ref check below),
-        // substitute `[tokens]`, then append the optional `extra.css` overlay.
-        // A `{name}` that survives substitution matched neither a `[tokens]`
-        // field nor an `extra.css`-defined key — a typo, and a hard error
-        // rather than a literal `{radus_bar}` in the output.
-        let mut resolved_css = tokens.substitute(&strip_css_comments(&css_template));
+        // substitute `[tokens]` *and* the `shell::style` derivations, then
+        // append the optional `extra.css` overlay. A `{name}` that survives
+        // matched none of those — a typo, and a hard error rather than a
+        // literal `{radus_bar}` in the output.
+        let mut pairs = tokens.subst_pairs();
+        pairs.extend(super::style::subst_pairs(&tokens, &modules, &launcher));
+
+        let mut resolved_css = substitute_pairs(&strip_css_comments(&css_template), pairs.clone());
         if let Some(extra) = &extra_css {
-            let extra = tokens.substitute(&strip_css_comments(extra));
+            let extra = substitute_pairs(&strip_css_comments(extra), pairs.clone());
             if !resolved_css.is_empty() && !resolved_css.ends_with('\n') {
                 resolved_css.push('\n');
             }
             resolved_css.push_str(&extra);
         }
-        let missing = tokens.unresolved_refs(&resolved_css);
+        let missing = unresolved_refs(&resolved_css);
         if !missing.is_empty() {
             bail!(
-                "theme '{id}': CSS template references unknown token(s): {} \
-                 (not a [tokens] field, and not defined in this theme's extra.css)",
+                "theme '{id}': CSS template references unknown name(s): {} \
+                 (not a [tokens] field, not a shell::style derivation, and not \
+                 defined in this theme's extra.css)",
                 missing.join(", ")
             );
         }
