@@ -19,15 +19,16 @@ name = "Liquid Motion"
 id   = "liquid-motion"
 
 [tokens]
-# font_family/font_fallback are now consumed, but only by breadbox's launcher
-# panel (breadbox::main::build_css's entry.search/row font-family) — see
-# Tokens::font_family's doc comment for the exact scope. breadbar's bar/chip/
-# clock text still comes from bread_theme::stylesheet()'s own hardcoded
-# FONT_FAMILY constant, unaffected by this key. font_size_base is likewise
-# now consumed for the launcher's row font-size only.
-font_family    = "Outfit, sans-serif"
+# font_family / font_fallback / font_size_base / font_weight drive the whole
+# shell (breadbar bar text, breadbox launcher panel) AND the shared ecosystem
+# stylesheet (`bread_theme::stylesheet` → every bread GUI). This builtin — the
+# default theme — pins them to the historical `bread_theme::tokens::FONT_*`
+# constants so a default install looks exactly as it did before typography
+# became theme-controlled (Stage 1e). Other builtins deviate on purpose.
+font_family    = "Varela Round, sans-serif"
 font_fallback  = "sans-serif"
 font_size_base = 14
+font_weight    = 400
 radius_bar     = 16
 radius_card    = 12
 radius_sm      = 9
@@ -43,14 +44,9 @@ bg_alpha       = 0.72
 # plan's §4 example names only `spring`.
 spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
-# "accent" flows through as @accent (the workspace-trail gradient's start);
-# these are palette token NAMES, not hex - pywal still drives colour.
-# Declared-but-not-yet-consumed (accent_to only): breadbar's Trail-style CSS
-# hardcodes the literal gradient `linear-gradient(90deg, @accent, @teal)`
-# instead of substituting these two tokens (it never calls
-# ShellTheme::css(), the only thing that does the substitution) — this
-# theme's "teal" is what the demo intends, not what actually renders if a
-# future theme changed it. See Tokens::accent_to's doc comment.
+# Palette token NAMES, not hex — pywal still drives the colour. The
+# workspace-trail gradient runs `@accent → @teal` (start = accent_from,
+# end = accent_to); a flat-fill theme sets them equal.
 accent_from    = "accent"
 accent_to      = "teal"
 # Not in the plan's §4 schema list, but breadbar::CHIP_HEIGHT / ::ICON_PX

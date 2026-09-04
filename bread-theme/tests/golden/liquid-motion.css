@@ -88,8 +88,12 @@
 window.breadbar {
   color: @on-bg;
   border-radius: 16px;
-  
+  font-family: 'Varela Round', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+
 background-color: alpha(@bg, 0.72); border: 1px solid alpha(@on-bg, 0.08);
+
 transition: border-radius 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
@@ -183,7 +187,7 @@ window.breadbar button {
 }
 
 .stat-pair {
-  margin: 0;
+  margin: 0 0 0 0px;
   border-radius: 9px;
   padding: 5px 9px;
   min-height: 26px;
@@ -217,10 +221,7 @@ window.breadbar button {
 }
 
 separator.bar-sep {
-  min-height: 12px;
-  min-width: 1px;
-  margin: 0 10px 0 2px;
-  background: alpha(@on-bg, 0.10);
+  min-height: 12px; min-width: 1px; margin: 0 10px 0 2px; background: alpha(@on-bg, 0.10);
 }
 
 window.breadbar-notification {
@@ -639,24 +640,7 @@ window.wifi-add-dialog headerbar {
   border-radius: 2px;
 }
 
-.media-widget.playing .media-eq-bar {
-  animation: media-eq 0.85s ease-in-out infinite alternate;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(2) {
-  animation-delay: 0.1s;
-  min-height: 11px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(3) {
-  animation-delay: 0.22s;
-  min-height: 7px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(4) {
-  animation-delay: 0.06s;
-  min-height: 13px;
-}
+.media-widget.playing .media-eq-bar { animation: media-eq 0.85s ease-in-out infinite alternate; } .media-widget.playing .media-eq-bar:nth-child(2) { animation-delay: 0.1s; min-height: 11px; } .media-widget.playing .media-eq-bar:nth-child(3) { animation-delay: 0.22s; min-height: 7px; } .media-widget.playing .media-eq-bar:nth-child(4) { animation-delay: 0.06s; min-height: 13px; }
 
 .media-track-lbl {
   font-size: 17px;
@@ -1063,7 +1047,9 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   background-color: alpha(@bg, 0.93);
   color: @on-bg;
   border-radius: 20px;
-  font-family: "Outfit, sans-serif", sans-serif;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .launcher-bg entry.search {

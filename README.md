@@ -74,10 +74,23 @@ bread-theme generate         # render the shared stylesheet (run from a wal hook
 | `reload` | Same as `generate`; use after a palette change to trigger live recolour in running apps |
 | `path` | Print the stylesheet path |
 | `print` | Render the stylesheet to stdout without writing |
+| `layerrules` | Write the active shell theme's `[compositor]` rules to `~/.config/hypr/layerrules.json` |
+| `describe` | Print the `theme.toml` schema as JSON |
+| `diagnose <id>` | Exit 0 if theme `<id>` resolves, else print why and exit 1 |
 
 The shared theming logic lives in the `bread-theme` crate in this repo. See
 [`BREAD_DESIGN_SYSTEM.md`](BREAD_DESIGN_SYSTEM.md) for the design tokens (fonts,
 spacing, radii, colour roles) the stylesheet is built from.
+
+### Shell themes
+
+Beyond the shared colour stylesheet, a **shell theme** (`theme.toml`) describes
+the whole shell's shape and structure — the bar's geometry and contents, the
+launcher, the notification/OSD/panel surfaces, and their compositor rules. The
+active one is selected in `~/.config/bread/shell.toml` (`active = "<id>"`);
+five are built in (`liquid-motion`, `glass-workbench`, `spotlight`, `daylight`,
+`loaf`) and user themes live in `~/.config/bread/themes/<id>/`. See
+[`docs/shell-themes.md`](docs/shell-themes.md) for the authoring guide.
 
 ## Installing bakery
 

@@ -350,6 +350,7 @@ fn ensure_palettes_watch() {
 }
 
 fn reload_binds_for_sanitized(sanitized: &str) {
+    let ty = crate::Typography::active();
     BINDS.with(|binds| {
         for bind in binds.borrow_mut().values_mut() {
             if crate::sanitize_output(&bind.output) != sanitized {
@@ -357,7 +358,7 @@ fn reload_binds_for_sanitized(sanitized: &str) {
             }
             let palette = crate::load_palette_for(&bind.output);
             bind.theme
-                .load_from_string(&crate::stylesheet_resolved(&palette));
+                .load_from_string(&crate::stylesheet_resolved(&ty, &palette));
             if let (Some(build), Some(provider)) = (&bind.app_build, &bind.app) {
                 provider.load_from_string(&crate::resolve_color_names(&build(&palette), &palette));
             }
@@ -424,7 +425,7 @@ fn bind_window_inner(
 ) {
     let key = widget_key(widget);
     let palette = crate::load_palette_for(output);
-    let theme_css = crate::stylesheet_resolved(&palette);
+    let theme_css = crate::stylesheet_resolved(&crate::Typography::active(), &palette);
     let app_css = app_build
         .as_ref()
         .map(|build| crate::resolve_color_names(&build(&palette), &palette));

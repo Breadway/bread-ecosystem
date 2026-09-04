@@ -53,8 +53,104 @@ pub mod tokens {
 /// CSS `font-family` list: quote the named face, leave the generic fallback
 /// unquoted. Wrapping [`tokens::FONT_FAMILY`] in one pair of quotes would
 /// make a single family named "Varela Round, sans-serif" and drop sans-serif.
-fn css_font_family() -> &'static str {
-    "'Varela Round', sans-serif"
+fn css_font_family() -> String {
+    font_family_css(tokens::FONT_FAMILY, "sans-serif")
+}
+
+/// The CSS generic font families — left unquoted; everything else is a named
+/// face and gets quoted.
+fn is_generic_family(s: &str) -> bool {
+    matches!(
+        s.to_ascii_lowercase().as_str(),
+        "serif"
+            | "sans-serif"
+            | "monospace"
+            | "cursive"
+            | "fantasy"
+            | "system-ui"
+            | "ui-sans-serif"
+            | "ui-serif"
+            | "ui-monospace"
+            | "ui-rounded"
+            | "emoji"
+            | "math"
+            | "fangsong"
+    )
+}
+
+/// Build a well-formed CSS `font-family` value from a theme's `font_family`
+/// (which may itself be a bare face `"IBM Plex Sans"` **or** a list
+/// `"Varela Round, sans-serif"`) plus its `font_fallback` stack. Each named
+/// face is single-quoted, generics are left bare, duplicates are dropped:
+/// `("Varela Round, sans-serif", "sans-serif")` → `'Varela Round', sans-serif`.
+pub fn font_family_css(primary: &str, fallback: &str) -> String {
+    let mut segs: Vec<String> = Vec::new();
+    for raw in primary.split(',').chain(fallback.split(',')) {
+        let s = raw.trim().trim_matches(['"', '\'']).trim();
+        if s.is_empty() {
+            continue;
+        }
+        let seg = if is_generic_family(s) {
+            s.to_ascii_lowercase()
+        } else {
+            format!("'{s}'")
+        };
+        if !segs.iter().any(|e| e.eq_ignore_ascii_case(&seg)) {
+            segs.push(seg);
+        }
+    }
+    if segs.is_empty() {
+        return "'Varela Round', sans-serif".to_string();
+    }
+    if !segs.iter().any(|s| is_generic_family(s.trim_matches('\''))) {
+        segs.push("sans-serif".to_string());
+    }
+    segs.join(", ")
+}
+
+/// Resolved typography for the shared component stylesheet — the CSS
+/// `font-family` value, base size, and weight. Built from the **active shell
+/// theme**'s `[tokens]` via [`Typography::active`], so a theme's
+/// `font_family` / `font_fallback` / `font_size_base` / `font_weight` reach
+/// every bread GUI, not just breadbox's launcher panel.
+/// [`Typography::default`] is the BREAD_DESIGN_SYSTEM baseline
+/// (`'Varela Round', sans-serif` / 14px / 400).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Typography {
+    /// A ready-to-use CSS `font-family` value (see [`font_family_css`]).
+    pub family_css: String,
+    /// Base `font-size` in px.
+    pub size: u8,
+    /// Base `font-weight` (100–900).
+    pub weight: u16,
+}
+
+impl Typography {
+    /// Resolve from an explicit token set.
+    pub fn from_tokens(t: &shell::Tokens) -> Self {
+        Typography {
+            family_css: font_family_css(&t.font_family, &t.font_fallback),
+            size: t.font_size_base.clamp(1, 255) as u8,
+            weight: t.font_weight.clamp(1, 1000) as u16,
+        }
+    }
+
+    /// Resolve from the active shell theme. [`shell::load`] never fails (it
+    /// falls back to the compiled-in `liquid-motion` builtin), so this is
+    /// infallible.
+    pub fn active() -> Self {
+        Self::from_tokens(shell::load().tokens())
+    }
+}
+
+impl Default for Typography {
+    fn default() -> Self {
+        Typography {
+            family_css: font_family_css(tokens::FONT_FAMILY, "sans-serif"),
+            size: tokens::FONT_SIZE_BASE,
+            weight: 400,
+        }
+    }
 }
 
 /// Emit the `@define-color` block that all bread apps use, plus the shared
@@ -201,13 +297,15 @@ pub fn css_tokens() -> String {
 /// every bread GUI (bos-settings, breadbar, breadbox, breadpad, breadman) styles
 /// common widgets. Apps load this, then append only their own *layout* rules.
 ///
-/// Built entirely from the design tokens (font, spacing, radii) and the
-/// `@define-color` palette, so changing the palette recolours every app.
-pub fn stylesheet(p: &Palette) -> String {
+/// Built from the [`Palette`] (`@define-color`), the spacing/radius design
+/// tokens, and the active shell theme's [`Typography`] — so changing the
+/// palette recolours every app and changing the shell theme's
+/// `font_family` / `font_size_base` / `font_weight` re-fonts every app.
+pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
     use tokens::*;
     format!(
         "{vars}\
-         * {{ font-family: {font}; font-size: {base}px; }}\n\
+         * {{ font-family: {font}; font-size: {base}px; font-weight: {weight}; }}\n\
          /* Colour is set on containers; labels inherit it, so text on any panel,\
             button, or accent is always the legible ink for that background. Bare\
             `label {{ color }}` is deliberately avoided — as a type selector it\
@@ -290,19 +388,20 @@ pub fn stylesheet(p: &Palette) -> String {
          textview, .mono {{ font-family: monospace; }}\n\
          textview text {{ background-color: @surface; color: @on-surface; }}\n",
         vars = define_colors(p),
-        font = css_font_family(),
-        base = FONT_SIZE_BASE,
+        font = ty.family_css,
+        base = ty.size,
+        weight = ty.weight,
         sec = FONT_SIZE_SECONDARY,
         xs = SPACE_XS, sm = SPACE_SM, md = SPACE_MD, lg = SPACE_LG,
         r1 = RADIUS_PRIMARY, r2 = RADIUS_SECONDARY, pill = RADIUS_PILL,
     )
 }
 
-/// Render the shared stylesheet for the current (pywal) palette. Used by the
-/// `bread-theme` generator and as the in-app fallback when the generated file
-/// isn't present yet.
+/// Render the shared stylesheet for the current (pywal) palette and the
+/// active shell theme's typography. Used by the `bread-theme` generator and
+/// as the in-app fallback when the generated file isn't present yet.
 pub fn render() -> String {
-    stylesheet(&load_palette())
+    stylesheet(&Typography::active(), &load_palette())
 }
 
 /// Canonical path of the generated shared stylesheet. Apps load it; the
@@ -341,8 +440,8 @@ pub fn write_shared_css() -> std::io::Result<std::path::PathBuf> {
 /// The display-global sheet ([`stylesheet`] / [`render`], loaded by
 /// [`gtk::apply_shared`] at APPLICATION priority) keeps its `@define-color`
 /// block — that is the one provider that is *supposed* to own those names.
-pub fn stylesheet_resolved(p: &Palette) -> String {
-    let resolved = resolve_color_names(&stylesheet(p), p);
+pub fn stylesheet_resolved(ty: &Typography, p: &Palette) -> String {
+    let resolved = resolve_color_names(&stylesheet(ty, p), p);
     let mut out: String = resolved
         .lines()
         .filter(|l| !l.trim_start().starts_with("@define-color"))
@@ -433,7 +532,7 @@ mod tests {
         // `define_colors` implementation, so they can't drift apart again.
         let p = Palette::default();
         let vars = css_vars(&p);
-        let sheet = stylesheet(&p);
+        let sheet = stylesheet(&Typography::default(), &p);
         for name in &[
             "bg",
             "fg",
@@ -451,7 +550,7 @@ mod tests {
 
     #[test]
     fn stylesheet_defines_canonical_colors_and_components() {
-        let css = stylesheet(&Palette::default());
+        let css = stylesheet(&Typography::default(), &Palette::default());
         for name in &["bg", "fg", "surface", "overlay", "accent", "red", "blue"] {
             assert!(
                 css.contains(&format!("@define-color {name} ")),
@@ -538,7 +637,7 @@ mod tests {
 
     #[test]
     fn stylesheet_defines_on_colors() {
-        let css = stylesheet(&Palette::default());
+        let css = stylesheet(&Typography::default(), &Palette::default());
         for name in &["on-bg", "on-surface", "on-accent", "on-red", "on-overlay"] {
             assert!(
                 css.contains(&format!("@define-color {name} ")),
@@ -551,7 +650,7 @@ mod tests {
     fn stylesheet_has_no_blanket_label_color_rule() {
         // A bare `label { color: ... }` would override container colours on child
         // labels — the bug that made coloured-background text illegible.
-        let css = stylesheet(&Palette::default());
+        let css = stylesheet(&Typography::default(), &Palette::default());
         assert!(
             !css.contains("label { color:"),
             "blanket label colour rule reintroduced"
@@ -576,7 +675,7 @@ mod tests {
             color4: "#7aa2f7".into(),
             ..Default::default()
         };
-        let css = stylesheet_resolved(&p);
+        let css = stylesheet_resolved(&Typography::default(), &p);
         assert!(css.contains("#7aa2f7"), "color4 must appear as hex: {css}");
         // The whole `@define-color` block must be gone: it is stylesheet-global
         // in GTK4, so a per-monitor provider that kept it would clobber the
@@ -603,7 +702,8 @@ mod tests {
         // The display-global sheet is the one provider that *should* own the
         // @define-color names — only the per-bind `_resolved` variant drops it.
         assert!(render().contains("@define-color accent "));
-        assert!(stylesheet(&Palette::default()).contains("@define-color accent "));
+        assert!(stylesheet(&Typography::default(), &Palette::default())
+            .contains("@define-color accent "));
     }
 
     #[test]

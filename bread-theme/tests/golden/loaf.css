@@ -88,8 +88,12 @@
 window.breadbar {
   color: @on-bg;
   border-radius: 0px;
-  
+  font-family: 'IBM Plex Sans', 'Inter', 'Noto Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+
 background-color: transparent; border: none; box-shadow: none;
+
 transition: border-radius 0.3s cubic-bezier(0.28, 1.3, 0.4, 1);
 }
 
@@ -183,7 +187,7 @@ window.breadbar button {
 }
 
 .stat-pair {
-  margin: 0;
+  margin: 0 0 0 0px;
   border-radius: 13px;
   padding: 5px 9px;
   min-height: 22px;
@@ -217,10 +221,7 @@ window.breadbar button {
 }
 
 separator.bar-sep {
-  min-height: 12px;
-  min-width: 1px;
-  margin: 0 10px 0 2px;
-  background: alpha(@on-bg, 0.10);
+  min-height: 12px; min-width: 1px; margin: 0 10px 0 2px; background: alpha(@on-bg, 0.10);
 }
 
 window.breadbar-notification {
@@ -390,8 +391,8 @@ window.breadbar-dismiss, .breadbar-dismiss-hit {
   min-height: 2px;
   margin: 2px 4px 10px;
   border-radius: 2px;
-  background-color: @accent;
-  background-image: linear-gradient(90deg, @accent, @teal);
+  background-color: @yellow;
+  background-image: linear-gradient(90deg, @yellow, @yellow);
   animation: caret-draw 0.45s cubic-bezier(0.34, 1.7, 0.5, 1) both;
 }
 
@@ -639,24 +640,7 @@ window.wifi-add-dialog headerbar {
   border-radius: 2px;
 }
 
-.media-widget.playing .media-eq-bar {
-  animation: media-eq 0.85s ease-in-out infinite alternate;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(2) {
-  animation-delay: 0.1s;
-  min-height: 11px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(3) {
-  animation-delay: 0.22s;
-  min-height: 7px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(4) {
-  animation-delay: 0.06s;
-  min-height: 13px;
-}
+.media-widget.playing .media-eq-bar { animation: media-eq 0.85s ease-in-out infinite alternate; } .media-widget.playing .media-eq-bar:nth-child(2) { animation-delay: 0.1s; min-height: 11px; } .media-widget.playing .media-eq-bar:nth-child(3) { animation-delay: 0.22s; min-height: 7px; } .media-widget.playing .media-eq-bar:nth-child(4) { animation-delay: 0.06s; min-height: 13px; }
 
 .media-track-lbl {
   font-size: 17px;
@@ -1063,7 +1047,9 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   background-color: alpha(@bg, 0.95);
   color: @on-bg;
   border-radius: 10px;
-  font-family: "IBM Plex Sans", Inter, Noto Sans, sans-serif;
+  font-family: 'IBM Plex Sans', 'Inter', 'Noto Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .launcher-bg entry.search {

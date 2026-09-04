@@ -266,6 +266,130 @@ pub struct Launcher {
     pub selection_alpha: f64,
 }
 
+/// The named control-panel sections, in the order breadbar builds them by
+/// default. `[panel].sections` may reorder / drop entries from this set;
+/// unknown names are a hard error.
+pub const PANEL_SECTIONS: &[&str] = &[
+    "volume", "output", "brightness", "system", "power", "tray",
+];
+
+/// `[panel]` — the hamburger control-panel popover. `min_width` is CSS
+/// (`.control-panel-inner`); `sections` drives which sub-sections breadbar
+/// assembles and in what order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Panel {
+    pub min_width: i64,
+    pub sections: Vec<String>,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Panel {
+            min_width: 248,
+            sections: PANEL_SECTIONS.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
+/// The OSD kinds breadbar knows how to show.
+pub const OSD_KINDS: &[&str] = &["volume", "brightness"];
+
+/// `[osd]` — the volume/brightness on-screen display. `anchor`/radius are
+/// controlled by `[surfaces."breadbar-osd"]` + the `osd_style` token; this
+/// table adds which kinds are enabled and how long they linger.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Osd {
+    pub enabled: Vec<String>,
+    pub dismiss_ms: i64,
+}
+
+impl Default for Osd {
+    fn default() -> Self {
+        Osd {
+            enabled: OSD_KINDS.iter().map(|s| s.to_string()).collect(),
+            dismiss_ms: 2000,
+        }
+    }
+}
+
+// ---- theme-declared bar widgets (`[[bar.widget]]`) -----------------------
+
+/// Max node-tree depth / count for a theme widget — mirrors
+/// `bread_shared::widget::{MAX_NODE_DEPTH, MAX_NODE_COUNT}` (kept as local
+/// consts so `bread-theme` needs no dependency on `bread-shared`).
+pub const WIDGET_MAX_DEPTH: usize = 4;
+pub const WIDGET_MAX_NODES: usize = 50;
+
+/// The closed `style` vocabularies a `[[bar.widget]]` node may use — the same
+/// names `bread_shared::widget::WidgetStyle` accepts, so breadbar's existing
+/// `apply_style` maps them 1:1 onto the `bread-*` CSS classes.
+pub const WIDGET_COLORS: &[&str] = &[
+    "fg", "dim", "accent", "red", "green", "yellow", "blue", "pink", "teal",
+];
+pub const WIDGET_WEIGHTS: &[&str] = &["normal", "bold"];
+pub const WIDGET_SIZES: &[&str] = &["xs", "sm", "md", "lg", "xl"];
+
+/// A poll binding: run `cmd` every `every_ms`, its trimmed stdout replacing
+/// `{value}` in the widget's node tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bind {
+    pub cmd: String,
+    pub every_ms: u64,
+}
+
+/// One node in a theme widget's render tree — deliberately the same shape as
+/// `bread_shared::widget::WidgetNode` so breadbar maps it mechanically.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThemeNode {
+    Box {
+        /// `"horizontal"` (default) or `"vertical"`.
+        orientation: String,
+        spacing: Option<i64>,
+        class: Option<String>,
+        children: Vec<ThemeNode>,
+    },
+    Label {
+        text: String,
+        class: Option<String>,
+        color: Option<String>,
+        weight: Option<String>,
+        size: Option<String>,
+    },
+    Icon {
+        name: Option<String>,
+        path: Option<String>,
+        size: Option<i64>,
+        class: Option<String>,
+    },
+    Progress {
+        value: f64,
+        class: Option<String>,
+    },
+}
+
+/// A theme-declared live bar widget, fully resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThemeWidget {
+    pub id: String,
+    /// The `widget:<slot>` key it renders into (validated to exist).
+    pub slot: String,
+    pub order: i32,
+    pub bind: Bind,
+    pub node: ThemeNode,
+}
+
+/// Parse `"500ms"` / `"5s"` / `"2m"` into milliseconds. `None` on junk.
+pub(super) fn parse_duration(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let (num, mult): (&str, u64) = s
+        .strip_suffix("ms")
+        .map(|n| (n, 1))
+        .or_else(|| s.strip_suffix('s').map(|n| (n, 1000)))
+        .or_else(|| s.strip_suffix('m').map(|n| (n, 60_000)))?;
+    let v: u64 = num.trim().parse().ok()?;
+    v.checked_mul(mult).filter(|ms| *ms >= 1)
+}
+
 /// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]` —
 /// deliberately the same keyspace as `[compositor.*]` (see module docs)
 /// rather than a role name, so the two tables can be validated against each
@@ -437,8 +561,25 @@ pub struct Tokens {
     pub font_family: String,
     pub font_fallback: String,
     pub font_size_base: i64,
+    /// CSS `font-weight` for the bar / launcher / shared component text
+    /// (100–900). Default 400. Widget-level `.bread-weight-*` classes still
+    /// override per element.
+    pub font_weight: i64,
     pub light: bool,
     pub bar_border: BarBorder,
+    // ---- chrome (CSS-only; nothing in Rust reads these) ------------------
+    /// Angle (deg) of the Trail workspace gradient (`accent_from → accent_to`).
+    pub ws_gradient_angle: i64,
+    /// Extra left-margin (px) between adjacent bar chips.
+    pub chip_gap: i64,
+    /// Divider between bar stat chips: `line` (default) · `none` · `dot`.
+    pub sep_style: String,
+    /// Drop shadow under the bar / segments: `none` (default) · `soft` · `hard`.
+    pub bar_shadow: String,
+    /// Media-widget equaliser: `bars` (default, animated) · `none`.
+    pub media_eq_style: String,
+    /// OSD pill shape: `pill` (default, `radius_pill`) · `bar` (`radius_card`).
+    pub osd_style: String,
     /// Open extras — only referenced by `{name}` substitution in a user
     /// theme's `extra.css`. Not part of the documented schema.
     pub extra: BTreeMap<String, TokenValue>,
@@ -464,8 +605,15 @@ impl Default for Tokens {
             font_family: FONT_FAMILY.to_string(),
             font_fallback: "sans-serif".to_string(),
             font_size_base: FONT_SIZE_BASE as i64,
+            font_weight: 400,
             light: false,
             bar_border: BarBorder::Full,
+            ws_gradient_angle: 90,
+            chip_gap: 0,
+            sep_style: "line".to_string(),
+            bar_shadow: "none".to_string(),
+            media_eq_style: "bars".to_string(),
+            osd_style: "pill".to_string(),
             extra: BTreeMap::new(),
         }
     }
@@ -555,8 +703,14 @@ impl Tokens {
             ("font_family".into(), self.font_family.clone()),
             ("font_fallback".into(), self.font_fallback.clone()),
             ("font_size_base".into(), self.font_size_base.to_string()),
+            ("font_weight".into(), self.font_weight.to_string()),
             ("light".into(), self.light.to_string()),
             ("bar_border".into(), self.bar_border.as_str().to_string()),
+            (
+                "ws_gradient_angle".into(),
+                self.ws_gradient_angle.to_string(),
+            ),
+            ("chip_gap".into(), self.chip_gap.to_string()),
         ];
         for (k, tv) in &self.extra {
             v.push((k.clone(), tv.as_css()));
@@ -574,6 +728,10 @@ impl Tokens {
     }
     pub fn font_size_base(&self) -> i64 {
         self.font_size_base
+    }
+    /// CSS `font-weight` (100–900) for bar / launcher / shared component text.
+    pub fn font_weight(&self) -> i64 {
+        self.font_weight
     }
     pub fn radius_bar(&self) -> i64 {
         self.radius_bar

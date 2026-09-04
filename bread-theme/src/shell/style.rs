@@ -10,7 +10,7 @@
 //! every theme renders from the one template, its differences falling out of
 //! these resolved values.
 
-use super::types::{fmt_f64, BarBorder, Launcher, Modules, Tokens, WorkspaceStyle};
+use super::types::{fmt_f64, BarBorder, Launcher, Modules, Panel, Tokens, WorkspaceStyle};
 
 /// One chip-highlight height per bar, keyed on the workspace style (Trail's
 /// pills are taller than Pill/Dots). Matches `breadbar`'s historical
@@ -26,7 +26,12 @@ pub fn chip_height(style: WorkspaceStyle) -> i64 {
 /// The `{name}` pairs the base template needs beyond the plain `[tokens]`.
 /// Every value is fully resolved to literal CSS (only `@palette` names left);
 /// none references another derived name, so substitution order doesn't matter.
-pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String, String)> {
+pub(super) fn subst_pairs(
+    t: &Tokens,
+    m: &Modules,
+    l: &Launcher,
+    p: &Panel,
+) -> Vec<(String, String)> {
     let light = t.light;
     // `@bg` is a FIXED dark hex and `@on-bg` its computed near-white ink
     // (never pywal-derived). A light theme swaps which plays surface vs ink;
@@ -78,14 +83,61 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
         "0 8px 0 6px"
     }
     .to_string();
+    // `bar_shadow`: an opt-in drop shadow. `none` keeps today's look (island /
+    // flush have no shadow; a segment keeps its own faint `0 2px 10px`).
+    let bar_shadow_css = match t.bar_shadow.as_str() {
+        "soft" => format!("box-shadow: 0 8px 28px alpha({ink}, 0.18);"),
+        "hard" => format!("box-shadow: 0 3px 0 alpha({ink}, 0.30);"),
+        _ => String::new(),
+    };
+    let segment_shadow = if bar_shadow_css.is_empty() {
+        format!("box-shadow: 0 2px 10px alpha({ink}, 0.13);")
+    } else {
+        bar_shadow_css.clone()
+    };
     let segment_css = if segmented {
         format!(
             ".bar-segment {{ background-color: alpha({panel}, {bg_alpha}); \
              border: 1px solid alpha({ink}, 0.10); border-radius: {radius_bar}; \
-             box-shadow: 0 2px 10px alpha({ink}, 0.13); }}"
+             {segment_shadow} }}"
         )
     } else {
         String::new()
+    };
+
+    // `sep_style`: the divider between bar stat chips.
+    let sep_css = match t.sep_style.as_str() {
+        "none" => "min-width: 0; min-height: 0; margin: 0; background: transparent;".to_string(),
+        "dot" => format!(
+            "min-width: 3px; min-height: 3px; margin: 0 8px; \
+             border-radius: 999px; background: alpha({ink}, 0.25);"
+        ),
+        _ => format!(
+            "min-height: 12px; min-width: 1px; margin: 0 10px 0 2px; \
+             background: alpha({ink}, 0.10);"
+        ),
+    };
+
+    // `media_eq_style`: the animated equaliser bars, or hide them.
+    let media_eq_css = if t.media_eq_style == "none" {
+        ".media-eq { opacity: 0; min-width: 0; margin: 0; }".to_string()
+    } else {
+        ".media-widget.playing .media-eq-bar { \
+             animation: media-eq 0.85s ease-in-out infinite alternate; } \
+         .media-widget.playing .media-eq-bar:nth-child(2) { \
+             animation-delay: 0.1s; min-height: 11px; } \
+         .media-widget.playing .media-eq-bar:nth-child(3) { \
+             animation-delay: 0.22s; min-height: 7px; } \
+         .media-widget.playing .media-eq-bar:nth-child(4) { \
+             animation-delay: 0.06s; min-height: 13px; }"
+            .to_string()
+    };
+
+    // `osd_style`: pill (round) vs bar (card radius).
+    let osd_radius = if t.osd_style == "bar" {
+        format!("{}px", t.radius_card)
+    } else {
+        format!("{}px", t.radius_pill)
     };
 
     let style = m.workspaces.style;
@@ -100,9 +152,10 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
     let from = &t.accent_from;
     let to = &t.accent_to;
 
+    let angle = t.ws_gradient_angle;
     let workspace_css = match style {
         WorkspaceStyle::Trail => format!(
-            ".workspace-trail {{ background-image: linear-gradient(90deg, @{from}, @{to}); \
+            ".workspace-trail {{ background-image: linear-gradient({angle}deg, @{from}, @{to}); \
                  background-color: @{from}; border-radius: {radius_sm}; }} \
              .workspace-btn {{ background: transparent; opacity: 0.36; color: {ink}; \
                  border-radius: {radius_sm}; border: none; outline: none; box-shadow: none; \
@@ -151,6 +204,10 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
     };
 
     vec![
+        (
+            "font_family_css".into(),
+            crate::font_family_css(&t.font_family, &t.font_fallback),
+        ),
         ("panel".into(), panel.into()),
         ("ink".into(), ink.into()),
         ("card_alpha".into(), card_alpha),
@@ -158,6 +215,11 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
         ("trough_bg".into(), trough_bg),
         ("radius_search".into(), radius_search),
         ("window_chrome".into(), window_chrome),
+        ("panel_min_width".into(), p.min_width.to_string()),
+        ("bar_shadow_css".into(), bar_shadow_css),
+        ("sep_css".into(), sep_css),
+        ("media_eq_css".into(), media_eq_css),
+        ("osd_radius".into(), osd_radius),
         ("bar_radius".into(), bar_radius),
         ("centerbox_padding".into(), centerbox_padding),
         ("segment_css".into(), segment_css),

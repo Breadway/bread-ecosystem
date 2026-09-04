@@ -1,5 +1,30 @@
 # bread-theme changelog
 
+## 0.7.8
+
+Expanded shell-theme UI control (four axes):
+
+- **Typography** — `font_family` / `font_fallback` / `font_size_base` and a
+  new `font_weight` token now drive the whole bar + launcher **and** the
+  shared ecosystem stylesheet (`stylesheet()` takes a `Typography` resolved
+  from `shell::load()`), not just breadbox's launcher panel. `font_family_css`
+  builds a well-formed quoted family list. `liquid-motion` pinned to the
+  historical `tokens::FONT_*` values so a default install is unchanged;
+  glass-workbench / spotlight / daylight render their intended fonts.
+- **Chrome tokens** — `sep_style`, `bar_shadow`, `chip_gap`,
+  `ws_gradient_angle`, `media_eq_style`, `osd_style`, all defaulting to the
+  current rendering.
+- **`[panel]` / `[osd]`** — `[panel]` `min_width` + `sections` (reorder / drop
+  the control-panel body sections); `[osd]` `enabled` + `dismiss_ms`.
+- **`[[bar.widget]]`** — a theme can declare a live bar widget inline: a
+  `bind = { cmd, every }` poll + a box/label/icon/progress node tree with
+  `{value}` substitution, rendered through breadbar's existing `WidgetSpec`
+  path. Node depth/count bounded (4/50); style vocab validated.
+- A standalone theme (neither a builtin nor extending one) now renders from
+  the shared `base.css` instead of an empty template. `.popover-caret`
+  gradient de-hardcoded to `accent_from`/`accent_to`. `bread-theme describe`
+  gains `panel` / `osd` / `bar.widget` blocks.
+
 ## 0.7.4
 
 Per-output (per-monitor) theming. Session-global `theme.css` remains the

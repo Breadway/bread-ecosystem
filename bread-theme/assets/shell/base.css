@@ -94,8 +94,12 @@
 window.breadbar {
   color: {ink};
   border-radius: {bar_radius};
-  
+  font-family: {font_family_css};
+  font-size: {font_size_base}px;
+  font-weight: {font_weight};
+
 {window_chrome}
+{bar_shadow_css}
 transition: border-radius 0.3s {spring_settle};
 }
 
@@ -189,7 +193,7 @@ window.breadbar button {
 }
 
 .stat-pair {
-  margin: 0;
+  margin: 0 0 0 {chip_gap}px;
   border-radius: {chip_radius};
   padding: 5px 9px;
   min-height: {chip_height_px};
@@ -223,10 +227,7 @@ window.breadbar button {
 }
 
 separator.bar-sep {
-  min-height: 12px;
-  min-width: 1px;
-  margin: 0 10px 0 2px;
-  background: alpha({ink}, 0.10);
+  {sep_css}
 }
 
 window.breadbar-notification {
@@ -345,7 +346,7 @@ window.breadbar-history {
 window.breadbar-osd {
   background-color: alpha({panel}, {card_alpha});
   color: {ink};
-  border-radius: {radius_pill}px;
+  border-radius: {osd_radius};
   border: 1px solid alpha({ink}, 0.10);
   animation: osd-in 0.4s {spring_settle} both;
 }
@@ -396,8 +397,8 @@ window.breadbar-dismiss, .breadbar-dismiss-hit {
   min-height: 2px;
   margin: 2px 4px 10px;
   border-radius: 2px;
-  background-color: @accent;
-  background-image: linear-gradient(90deg, @accent, @teal);
+  background-color: @{accent_from};
+  background-image: linear-gradient(90deg, @{accent_from}, @{accent_to});
   animation: caret-draw 0.45s {spring} both;
 }
 
@@ -645,24 +646,7 @@ window.wifi-add-dialog headerbar {
   border-radius: 2px;
 }
 
-.media-widget.playing .media-eq-bar {
-  animation: media-eq 0.85s ease-in-out infinite alternate;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(2) {
-  animation-delay: 0.1s;
-  min-height: 11px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(3) {
-  animation-delay: 0.22s;
-  min-height: 7px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(4) {
-  animation-delay: 0.06s;
-  min-height: 13px;
-}
+{media_eq_css}
 
 .media-track-lbl {
   font-size: 17px;
@@ -708,7 +692,7 @@ window.wifi-add-dialog headerbar {
 }
 
 .control-panel-inner {
-  min-width: 248px;
+  min-width: {panel_min_width}px;
   padding: {pad}px;
 }
 
@@ -1074,7 +1058,9 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   background-color: alpha(@bg, {launcher_panel_alpha});
   color: @on-bg;
   border-radius: {launcher_radius}px;
-  font-family: "{font_family}", {font_fallback};
+  font-family: {font_family_css};
+  font-size: {font_size_base}px;
+  font-weight: {font_weight};
 }
 
 .launcher-bg entry.search {
