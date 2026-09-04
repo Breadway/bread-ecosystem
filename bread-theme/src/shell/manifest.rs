@@ -274,6 +274,12 @@ const KNOWN_TOKEN_KEYS: &[&str] = &[
     "font_weight",
     "light",
     "bar_border",
+    "ws_gradient_angle",
+    "chip_gap",
+    "sep_style",
+    "bar_shadow",
+    "media_eq_style",
+    "osd_style",
 ];
 
 /// Build a fully-resolved, typed [`Tokens`] from the raw `[tokens]` table.
@@ -317,6 +323,25 @@ fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow:
             )),
         }
     };
+    let want_enum =
+        |v: &toml::Value, key: &str, allowed: &[&str]| -> anyhow::Result<String> {
+            let s = match v {
+                toml::Value::String(s) => s.clone(),
+                other => {
+                    return Err(anyhow!(
+                        "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
+                    ))
+                }
+            };
+            if allowed.contains(&s.as_str()) {
+                Ok(s)
+            } else {
+                Err(anyhow!(
+                    "theme '{theme_id}': tokens.{key} = \"{s}\" is not {}",
+                    allowed.join("|")
+                ))
+            }
+        };
     let want_bool = |v: &toml::Value, key: &str| -> anyhow::Result<bool> {
         match v {
             toml::Value::Boolean(b) => Ok(*b),
@@ -340,6 +365,12 @@ fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow:
             "icon_px" => t.icon_px = want_i64(v, k)?,
             "font_size_base" => t.font_size_base = want_i64(v, k)?,
             "font_weight" => t.font_weight = want_i64(v, k)?,
+            "ws_gradient_angle" => t.ws_gradient_angle = want_i64(v, k)?,
+            "chip_gap" => t.chip_gap = want_i64(v, k)?,
+            "sep_style" => t.sep_style = want_enum(v, k, &["line", "none", "dot"])?,
+            "bar_shadow" => t.bar_shadow = want_enum(v, k, &["none", "soft", "hard"])?,
+            "media_eq_style" => t.media_eq_style = want_enum(v, k, &["bars", "none"])?,
+            "osd_style" => t.osd_style = want_enum(v, k, &["pill", "bar"])?,
             "bg_alpha" => t.bg_alpha = want_f64(v, k)?,
             "spring" => t.spring = want_str(v, k)?,
             "spring_settle" => t.spring_settle = want_str(v, k)?,

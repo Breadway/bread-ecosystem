@@ -784,6 +784,51 @@ mod tests {
         );
     }
 
+    /// Axis 2: the chrome tokens render into the CSS and reject typos.
+    #[test]
+    fn chrome_tokens_render_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "chrome",
+            r#"
+                name = "Chrome"
+                id   = "chrome"
+                [tokens]
+                sep_style         = "dot"
+                bar_shadow        = "soft"
+                osd_style         = "bar"
+                media_eq_style    = "none"
+                ws_gradient_angle = 45
+                chip_gap          = 8
+                [modules.workspaces]
+                style = "trail"
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "chrome");
+        let css = load_named("chrome").unwrap().css(&crate::Palette::default());
+        assert!(css.contains("linear-gradient(45deg,"), "ws_gradient_angle");
+        assert!(css.contains("box-shadow: 0 8px 28px"), "bar_shadow=soft");
+        assert!(css.contains("margin: 0 0 0 8px"), "chip_gap");
+        assert!(css.contains(".media-eq { opacity: 0"), "media_eq_style=none");
+        // osd_style=bar → card radius (8px default), not the pill 999px.
+        assert!(css.contains("window.breadbar-osd {"));
+        assert!(!css.contains("border-radius: 999px;\n  border: 1px solid"));
+
+        write_theme(
+            &xdg,
+            "badsep",
+            r#"
+                name = "Bad"
+                id   = "badsep"
+                [tokens]
+                sep_style = "squiggle"
+            "#,
+        );
+        let err = diagnose("badsep").expect("bad enum must fail");
+        assert!(err.contains("sep_style") && err.contains("line|none|dot"), "{err}");
+    }
+
     // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
 
     #[test]

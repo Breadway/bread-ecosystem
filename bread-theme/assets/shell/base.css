@@ -99,6 +99,7 @@ window.breadbar {
   font-weight: {font_weight};
 
 {window_chrome}
+{bar_shadow_css}
 transition: border-radius 0.3s {spring_settle};
 }
 
@@ -192,7 +193,7 @@ window.breadbar button {
 }
 
 .stat-pair {
-  margin: 0;
+  margin: 0 0 0 {chip_gap}px;
   border-radius: {chip_radius};
   padding: 5px 9px;
   min-height: {chip_height_px};
@@ -226,10 +227,7 @@ window.breadbar button {
 }
 
 separator.bar-sep {
-  min-height: 12px;
-  min-width: 1px;
-  margin: 0 10px 0 2px;
-  background: alpha({ink}, 0.10);
+  {sep_css}
 }
 
 window.breadbar-notification {
@@ -348,7 +346,7 @@ window.breadbar-history {
 window.breadbar-osd {
   background-color: alpha({panel}, {card_alpha});
   color: {ink};
-  border-radius: {radius_pill}px;
+  border-radius: {osd_radius};
   border: 1px solid alpha({ink}, 0.10);
   animation: osd-in 0.4s {spring_settle} both;
 }
@@ -648,24 +646,7 @@ window.wifi-add-dialog headerbar {
   border-radius: 2px;
 }
 
-.media-widget.playing .media-eq-bar {
-  animation: media-eq 0.85s ease-in-out infinite alternate;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(2) {
-  animation-delay: 0.1s;
-  min-height: 11px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(3) {
-  animation-delay: 0.22s;
-  min-height: 7px;
-}
-
-.media-widget.playing .media-eq-bar:nth-child(4) {
-  animation-delay: 0.06s;
-  min-height: 13px;
-}
+{media_eq_css}
 
 .media-track-lbl {
   font-size: 17px;

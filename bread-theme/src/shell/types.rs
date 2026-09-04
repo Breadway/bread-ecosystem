@@ -443,6 +443,19 @@ pub struct Tokens {
     pub font_weight: i64,
     pub light: bool,
     pub bar_border: BarBorder,
+    // ---- chrome (CSS-only; nothing in Rust reads these) ------------------
+    /// Angle (deg) of the Trail workspace gradient (`accent_from → accent_to`).
+    pub ws_gradient_angle: i64,
+    /// Extra left-margin (px) between adjacent bar chips.
+    pub chip_gap: i64,
+    /// Divider between bar stat chips: `line` (default) · `none` · `dot`.
+    pub sep_style: String,
+    /// Drop shadow under the bar / segments: `none` (default) · `soft` · `hard`.
+    pub bar_shadow: String,
+    /// Media-widget equaliser: `bars` (default, animated) · `none`.
+    pub media_eq_style: String,
+    /// OSD pill shape: `pill` (default, `radius_pill`) · `bar` (`radius_card`).
+    pub osd_style: String,
     /// Open extras — only referenced by `{name}` substitution in a user
     /// theme's `extra.css`. Not part of the documented schema.
     pub extra: BTreeMap<String, TokenValue>,
@@ -471,6 +484,12 @@ impl Default for Tokens {
             font_weight: 400,
             light: false,
             bar_border: BarBorder::Full,
+            ws_gradient_angle: 90,
+            chip_gap: 0,
+            sep_style: "line".to_string(),
+            bar_shadow: "none".to_string(),
+            media_eq_style: "bars".to_string(),
+            osd_style: "pill".to_string(),
             extra: BTreeMap::new(),
         }
     }
@@ -563,6 +582,11 @@ impl Tokens {
             ("font_weight".into(), self.font_weight.to_string()),
             ("light".into(), self.light.to_string()),
             ("bar_border".into(), self.bar_border.as_str().to_string()),
+            (
+                "ws_gradient_angle".into(),
+                self.ws_gradient_angle.to_string(),
+            ),
+            ("chip_gap".into(), self.chip_gap.to_string()),
         ];
         for (k, tv) in &self.extra {
             v.push((k.clone(), tv.as_css()));
