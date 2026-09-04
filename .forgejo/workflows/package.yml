@@ -9,7 +9,7 @@ jobs:
     # PKGBUILD pkgver cannot contain `-`; skip RC tags the same way
     # release-bakery.yml does.
     if: ${{ !contains(github.ref_name, '-rc.') }}
-    runs-on: [self-hosted, hestia]
+    runs-on: [self-hosted]
     container:
       image: archlinux:latest
     steps:

@@ -6,7 +6,7 @@
 #   - <PKG_ROOT>/                           (built binaries + sha256 files)
 #
 # Fallback for local dev: looks for ../name/bakery.toml (sibling repo checkout).
-# Run on hestia after each product build, before the dl server is refreshed.
+# Run on the build host after each product build, before the dl server is refreshed.
 #
 # TRACK selects which build track to generate an index for: "stable"
 # (default — reads/writes DL_DIR directly, byte-for-byte the same behavior
@@ -362,7 +362,7 @@ echo "wrote ${OUT}"
 # MINISIGN_SEC_KEY must point at the *secret* key file generated with
 # `minisign -G`. It is intentionally never read from inside either git repo;
 # point it at wherever the key actually lives on the machine that runs this
-# script (e.g. a root-only path on hestia), and set MINISIGN_SEC_KEY_PASSWORD
+# script (e.g. a root-only path on the build host), and set MINISIGN_SEC_KEY_PASSWORD
 # too if the key was generated with a password.
 #
 # This step is a no-op (with a loud warning) if the key isn't configured, so
