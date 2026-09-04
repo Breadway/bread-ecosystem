@@ -20,7 +20,8 @@
 #
 # Cargo's registry/git caches are shared across all products (same crates
 # regardless of which app is building); CARGO_TARGET_DIR is cached
-# per-product. Both persist in named docker volumes across runs.
+# per-product. Both persist as host directories under CACHE_ROOT (bind
+# mounts, not named docker volumes — see the --user note below) across runs.
 set -euo pipefail
 
 if [ $# -lt 3 ]; then
@@ -44,12 +45,39 @@ docker build \
     -t "bread-ci:${PRODUCT}" \
     -f "${CI_DIR}/Containerfile" "${CI_DIR}"
 
+# The container runs as the invoking user (--user), not root, so that
+# `cp -a` below (and anything cargo writes) doesn't leave host-owned-by-root
+# files behind in ${REPO_ROOT}/target. That only works if every writable
+# mount the container touches is already writable by that user:
+#
+#   - ${REPO_ROOT} is a bind mount of a real host directory the invoking
+#     user already owns, so it's fine as-is.
+#   - The cargo registry/git/target caches used to be named docker volumes
+#     mounted under /root/.cargo/... and /cargo-target. Two problems with
+#     that combination: (1) /root is 0750 root:root in the base image, so a
+#     non-root, non-root-group user can't even traverse into
+#     /root/.cargo/registry regardless of that directory's own permissions;
+#     (2) dockerd's local volume driver initializes a fresh named volume as
+#     root:root 0755 and does not chown it to match --user, so a top-level
+#     mount like /cargo-target has the same problem. Bind-mounting host
+#     directories under CACHE_ROOT instead sidesteps both: `mkdir -p` below
+#     runs as the invoking user, so the directories are already theirs
+#     before the container ever starts.
+CACHE_ROOT="${BREAD_CI_CACHE_ROOT:-${HOME:-/tmp}/.cache/bread-ci}"
+mkdir -p \
+    "${CACHE_ROOT}/cargo-registry" \
+    "${CACHE_ROOT}/cargo-git" \
+    "${CACHE_ROOT}/target-${PRODUCT}"
+
 docker run --rm \
+    --user "$(id -u):$(id -g)" \
     -v "${REPO_ROOT}:/workspace" \
-    -v "bread-ci-cargo-registry:/root/.cargo/registry" \
-    -v "bread-ci-cargo-git:/root/.cargo/git" \
-    -v "bread-ci-${PRODUCT}-target:/cargo-target" \
+    -v "${CACHE_ROOT}/cargo-registry:/cargo-home/registry" \
+    -v "${CACHE_ROOT}/cargo-git:/cargo-home/git" \
+    -v "${CACHE_ROOT}/target-${PRODUCT}:/cargo-target" \
     -w /workspace \
+    -e HOME=/tmp \
+    -e CARGO_HOME=/cargo-home \
     -e CARGO_TARGET_DIR=/cargo-target \
     "bread-ci:${PRODUCT}" \
     bash -c '
