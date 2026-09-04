@@ -58,6 +58,21 @@ centre = ["+", "widget:right_of_clock"]
 right  = ["wifi", "battery", "control"]
 drawer = []
 
+# A declarative bar widget — no Rust, no Lua. Polls the 1-minute load
+# average every 5s and shows it as a warm chip right of the clock (the
+# `widget:right_of_clock` slot the `"+"`-spliced centre list carries). This
+# is the whole `[[bar.widget]]` contract: an id, a slot that must exist in
+# `[bar.slots]`, a `bind = { cmd, every }` poll, and a node tree whose
+# `{value}` is replaced with the command's trimmed stdout.
+[[bar.widget]]
+id   = "loadavg"
+slot = "right_of_clock"
+bind = { cmd = "cut -d' ' -f1 /proc/loadavg", every = "5s" }
+node = { kind = "box", spacing = 4, class = "bread-chip", children = [
+  { kind = "icon", name = "cpu", size = 13 },
+  { kind = "label", text = "{value}", color = "yellow", weight = "bold" },
+] }
+
 # The bar is taller and floats, so the top-right satellites sit a little
 # lower than the parent's flush-bar offsets.
 [surfaces."breadbar-notif"]
