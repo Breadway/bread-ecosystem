@@ -5,7 +5,7 @@ Scope: this file covers *repo hygiene* — branching, remotes, CI, cleanup. It i
 Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for any git, branch, or release work. Channel/track policy lives in [`docs/release-channels.md`](docs/release-channels.md). The product list is [`registry/bread-ecosystem.toml`](registry/bread-ecosystem.toml) — regenerate the README table with `scripts/gen-readme-products.sh` after editing it. Don't invent a second long-lived branch; there is only `main`. Bakery's package version **must** match `[workspace.package] version` in the root `Cargo.toml` at tag time (`bakery --version` is compiled from that field; `bakery list` reports the git tag) — never push a `v*` tag without bumping Cargo.toml to the same `X.Y.Z`.
 
 ## Remotes
-- `origin` — Forgejo (`git.breadway.dev` via Hestia, SSH) — authoritative.
+- `origin` — Forgejo (`git.breadway.dev`, SSH) — authoritative.
 - `github` — GitHub mirror. Push both when publishing.
 
 ## CI

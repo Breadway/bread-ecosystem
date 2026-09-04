@@ -30,8 +30,7 @@ pub fn check_deps(required: &[String], optional: &[String]) -> Result<DepReport>
 /// already does for e.g. `ffmpeg`/`openssl`, whose package name matches
 /// their own binary name on both distros). `system_deps` in `bakery.toml`
 /// is always written as the Arch name — this is what makes that same
-/// declaration also resolve correctly on a Debian-family bakery host like
-/// hestia.
+/// declaration also resolve correctly on a Debian-family bakery host.
 const ARCH_TO_DEBIAN_PKG: &[(&str, &str)] = &[("mkvtoolnix-cli", "mkvtoolnix")];
 
 fn debian_name(pkg: &str) -> &str {
@@ -93,7 +92,7 @@ fn pkg_config_exists(lib: &str) -> bool {
 /// Builds the "install with: ..." hint for a list of missing Arch package
 /// names, picking the command for whichever package manager is actually on
 /// this host — `sudo pacman -S ...` is meaningless advice on a Debian-family
-/// bakery host like hestia, which has neither `pacman` nor the Arch names.
+/// bakery host, which has neither `pacman` nor the Arch names.
 pub fn install_hint(missing: &[String]) -> String {
     if path_has("pacman") {
         format!("sudo pacman -S {}", missing.join(" "))

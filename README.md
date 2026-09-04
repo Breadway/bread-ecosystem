@@ -216,7 +216,7 @@ exec-once = bread-polkit
 
 Each product repo (`Breadway/bread`, `Breadway/breadbar`, …) has
 `.forgejo/workflows/release-*.yml` that triggers on `v*` tags. The workflow
-runs on a self-hosted runner on hestia, builds a stripped x86_64 binary,
+runs on a self-hosted runner, builds a stripped x86_64 binary,
 deposits it at `dl.breadway.dev/<pkg>/<version>/`, updates `index.json`,
 and mirrors the binary to GitHub Releases as a fallback.
 

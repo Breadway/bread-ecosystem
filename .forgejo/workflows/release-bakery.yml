@@ -7,7 +7,7 @@ on:
 jobs:
   build:
     if: ${{ !contains(github.ref_name, '-rc.') }}
-    runs-on: [self-hosted, hestia]
+    runs-on: [self-hosted]
     steps:
       - name: checkout
         run: |
@@ -38,7 +38,7 @@ jobs:
       # Signs the bakery binary itself with the shared bakery ecosystem signing
       # key (same key that signs index.json and bread-theme — see
       # release-bread-theme.yml). BAKERY_MINISIGN_SEC_KEY_PATH is a *path on
-      # this runner's disk* (hestia has persistent storage), not the key
+      # this runner's disk* (the runner has persistent storage), not the key
       # contents. Dormant (binary ships unsigned, as today) until that secret
       # is provisioned.
       - name: sign release binary
