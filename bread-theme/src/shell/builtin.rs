@@ -17,7 +17,7 @@
 /// `shell::style::subst_pairs`, so there is no per-theme CSS file and no
 /// conditional syntax in the template. A user theme with a genuine one-off
 /// still layers its own `extra.css` on top.
-const BASE_CSS: &str = include_str!(concat!(
+pub(super) const BASE_CSS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/shell/base.css"
 ));

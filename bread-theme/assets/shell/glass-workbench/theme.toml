@@ -21,11 +21,10 @@ name = "Glass Workbench"
 id   = "glass-workbench"
 
 [tokens]
-# font_family/font_fallback/font_size_base are consumed by breadbox's
-# launcher panel only (breadbox::main::build_css's entry.search/row rules —
-# see Tokens::font_family's doc comment for the exact scope); breadbar's
-# bar/chip/clock text still comes from bread_theme::stylesheet()'s own
-# hardcoded FONT_FAMILY constant, unaffected by this key.
+# font_family / font_fallback / font_size_base drive the whole shell (bar +
+# launcher) and the shared ecosystem stylesheet. IBM Plex Sans is not on the
+# dev machine, so this renders in `font_fallback` until `ttf-ibm-plex` is
+# installed.
 font_family    = "IBM Plex Sans"
 font_fallback  = "Inter, Noto Sans, sans-serif"
 font_size_base = 13
@@ -43,12 +42,8 @@ bg_alpha       = 0.72
 spring         = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 # Palette token NAMES, not hex — #7a9a88 is this palette's `green`. Equal
-# from/to because the demo's accent is flat, not a gradient. accent_from IS
-# read (Pill-style workspace fill, theme.rs); accent_to is declared-but-
-# not-yet-consumed regardless of style — nothing reads it outside the
-# breadbar Trail gradient this theme doesn't use, and even Trail hardcodes
-# its own literal gradient rather than substituting it. See
-# Tokens::accent_to's doc comment.
+# from/to because the demo's accent is flat, not a gradient (the Pill-style
+# workspace fill and the popover caret both read `accent_from`).
 accent_from    = "green"
 accent_to      = "green"
 # Demo: `.ws button { height: 20px }`. Liquid-motion's chip_height (32) is

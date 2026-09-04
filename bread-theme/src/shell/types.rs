@@ -437,6 +437,10 @@ pub struct Tokens {
     pub font_family: String,
     pub font_fallback: String,
     pub font_size_base: i64,
+    /// CSS `font-weight` for the bar / launcher / shared component text
+    /// (100–900). Default 400. Widget-level `.bread-weight-*` classes still
+    /// override per element.
+    pub font_weight: i64,
     pub light: bool,
     pub bar_border: BarBorder,
     /// Open extras — only referenced by `{name}` substitution in a user
@@ -464,6 +468,7 @@ impl Default for Tokens {
             font_family: FONT_FAMILY.to_string(),
             font_fallback: "sans-serif".to_string(),
             font_size_base: FONT_SIZE_BASE as i64,
+            font_weight: 400,
             light: false,
             bar_border: BarBorder::Full,
             extra: BTreeMap::new(),
@@ -555,6 +560,7 @@ impl Tokens {
             ("font_family".into(), self.font_family.clone()),
             ("font_fallback".into(), self.font_fallback.clone()),
             ("font_size_base".into(), self.font_size_base.to_string()),
+            ("font_weight".into(), self.font_weight.to_string()),
             ("light".into(), self.light.to_string()),
             ("bar_border".into(), self.bar_border.as_str().to_string()),
         ];
@@ -574,6 +580,10 @@ impl Tokens {
     }
     pub fn font_size_base(&self) -> i64 {
         self.font_size_base
+    }
+    /// CSS `font-weight` (100–900) for bar / launcher / shared component text.
+    pub fn font_weight(&self) -> i64 {
+        self.font_weight
     }
     pub fn radius_bar(&self) -> i64 {
         self.radius_bar

@@ -24,6 +24,7 @@ pub fn describe() -> Value {
             "chip_height":     { "type": "int",   "default": d.chip_height, "unit": "px" },
             "icon_px":         { "type": "int",   "default": d.icon_px,     "unit": "px" },
             "font_size_base":  { "type": "int",   "default": d.font_size_base, "unit": "px" },
+            "font_weight":     { "type": "int",   "default": d.font_weight, "range": [100, 900] },
             "bg_alpha":        { "type": "float", "default": d.bg_alpha, "range": [0.0, 1.0] },
             "spring":          { "type": "string", "default": d.spring, "hint": "cubic-bezier(...)" },
             "spring_settle":   { "type": "string", "default": d.spring_settle, "hint": "cubic-bezier(...)" },

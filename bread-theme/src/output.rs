@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::palette::{from_wal_json, Palette};
-use crate::{load_palette, stylesheet};
+use crate::{load_palette, stylesheet, Typography};
 
 /// Session-scoped `$XDG_RUNTIME_DIR/bread`, same fallback as [`crate::shared_css_path`].
 pub(crate) fn runtime_bread_dir() -> PathBuf {
@@ -150,14 +150,14 @@ pub fn write_output_palette(output: &str, palette: &Palette) -> std::io::Result<
 
 pub fn write_output_css(output: &str, palette: &Palette) -> std::io::Result<PathBuf> {
     let path = output_css_path(output);
-    atomic_write(&path, &stylesheet(palette))?;
+    atomic_write(&path, &stylesheet(&Typography::active(), palette))?;
     Ok(path)
 }
 
 /// Like [`crate::write_shared_css`] but from an explicit palette.
 pub fn write_shared_css_from(palette: &Palette) -> std::io::Result<PathBuf> {
     let path = crate::shared_css_path();
-    atomic_write(&path, &stylesheet(palette))?;
+    atomic_write(&path, &stylesheet(&Typography::active(), palette))?;
     Ok(path)
 }
 

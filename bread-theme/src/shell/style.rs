@@ -151,6 +151,10 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
     };
 
     vec![
+        (
+            "font_family_css".into(),
+            crate::font_family_css(&t.font_family, &t.font_fallback),
+        ),
         ("panel".into(), panel.into()),
         ("ink".into(), ink.into()),
         ("card_alpha".into(), card_alpha),

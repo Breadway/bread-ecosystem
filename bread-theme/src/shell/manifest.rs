@@ -271,6 +271,7 @@ const KNOWN_TOKEN_KEYS: &[&str] = &[
     "font_family",
     "font_fallback",
     "font_size_base",
+    "font_weight",
     "light",
     "bar_border",
 ];
@@ -338,6 +339,7 @@ fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow:
             "chip_height" => t.chip_height = want_i64(v, k)?,
             "icon_px" => t.icon_px = want_i64(v, k)?,
             "font_size_base" => t.font_size_base = want_i64(v, k)?,
+            "font_weight" => t.font_weight = want_i64(v, k)?,
             "bg_alpha" => t.bg_alpha = want_f64(v, k)?,
             "spring" => t.spring = want_str(v, k)?,
             "spring_settle" => t.spring_settle = want_str(v, k)?,

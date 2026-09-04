@@ -88,7 +88,10 @@
 window.breadbar {
   color: @on-bg;
   border-radius: 16px;
-  
+  font-family: 'Varela Round', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+
 background-color: alpha(@bg, 0.72); border: 1px solid alpha(@on-bg, 0.08);
 transition: border-radius 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
@@ -1063,7 +1066,9 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   background-color: alpha(@bg, 0.93);
   color: @on-bg;
   border-radius: 20px;
-  font-family: "Outfit, sans-serif", sans-serif;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .launcher-bg entry.search {

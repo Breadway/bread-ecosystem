@@ -229,10 +229,15 @@ fn read_source(src: &Source) -> anyhow::Result<(String, Option<PathBuf>)> {
     }
 }
 
+/// The CSS template a theme renders from. Every builtin points at the one
+/// shared `assets/shell/base.css`; a standalone user/system theme (one that
+/// is neither a builtin nor `extends` a builtin) gets that same template
+/// rather than an empty string, so it renders the full shell out of the box
+/// and only needs `[tokens]` + an optional `extra.css` on top.
 fn css_template_for(id: &str) -> String {
     builtin::find(id)
         .map(|t| t.css.to_string())
-        .unwrap_or_default()
+        .unwrap_or_else(|| builtin::BASE_CSS.to_string())
 }
 
 /// The fallible primitive: look up `id` through discovery, apply one level
@@ -731,6 +736,52 @@ mod tests {
                 path.display()
             );
         }
+    }
+
+    /// Stage 1e: the active shell theme's typography reaches the shared
+    /// ecosystem stylesheet, not just breadbox's launcher panel.
+    #[test]
+    fn shared_stylesheet_uses_active_shell_theme_typography() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "testfont",
+            r#"
+                name = "Test Font"
+                id   = "testfont"
+                [tokens]
+                font_family    = "Test Face"
+                font_fallback  = "Noto Sans, sans-serif"
+                font_size_base = 17
+                font_weight    = 650
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "testfont");
+
+        let ty = crate::Typography::active();
+        assert_eq!(ty.family_css, "'Test Face', 'Noto Sans', sans-serif");
+        assert_eq!(ty.size, 17);
+        assert_eq!(ty.weight, 650);
+
+        let sheet = crate::stylesheet(&ty, &crate::Palette::default());
+        assert!(
+            sheet.contains("font-family: 'Test Face', 'Noto Sans', sans-serif;"),
+            "shared stylesheet ignored the theme font:\n{sheet}"
+        );
+        assert!(sheet.contains("font-size: 17px; font-weight: 650;"));
+
+        // A standalone theme (no `extends`) still renders the full shell from
+        // the shared base template, so its own CSS carries the font too — the
+        // live-switch path breadbar reloads on a `shell.toml` edit.
+        let css = load_named("testfont").unwrap().css(&crate::Palette::default());
+        assert!(
+            css.contains("font-family: 'Test Face', 'Noto Sans', sans-serif;"),
+            "shell CSS missing the theme font-family"
+        );
+        assert!(
+            css.contains("font-weight: 650;"),
+            "shell CSS missing the theme font-weight"
+        );
     }
 
     // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
