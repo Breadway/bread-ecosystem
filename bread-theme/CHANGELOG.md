@@ -1,5 +1,13 @@
 # bread-theme changelog
 
+## 0.7.9
+
+`window.breadbar-panel` (the control-panel + connectivity popover) now takes
+its corner radius from `radius_card`, like every other popover card
+(`window.breadbar-history`, `.notification-card`, `window.wifi-add-dialog`)
+— it was the one surface still hardcoded to `14px`, so a hard-edged theme's
+panel came out rounded. Default (`liquid-motion`) 14→12px.
+
 ## 0.7.8
 
 Expanded shell-theme UI control (four axes):

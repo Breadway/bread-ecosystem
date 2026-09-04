@@ -381,7 +381,7 @@ progressbar.osd-bar trough progress {
 window.breadbar-panel {
   background-color: alpha({panel}, {panel_surface_alpha});
   color: {ink};
-  border-radius: 14px;
+  border-radius: {radius_card}px;
   border: 1px solid alpha({ink}, 0.12);
 }
 
