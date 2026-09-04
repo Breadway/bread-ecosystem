@@ -33,9 +33,7 @@ pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> 
 
 pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Result<()> {
     let Some(bar) = &raw.bar else { return Ok(()) };
-    let Some(slots) = &bar.slots else {
-        return Ok(());
-    };
+    let slots = bar.slots.clone().unwrap_or_default();
     for (slot_name, list) in [
         ("left", &slots.left),
         ("centre", &slots.centre),
@@ -44,6 +42,31 @@ pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Resul
     ] {
         for module in list {
             validate_module_name(theme_id, slot_name, module)?;
+        }
+    }
+    // Every `[[bar.widget]]` must have a `widget:<slot>` render position in
+    // one of the slot lists — the same "no silent drop" policy as a module
+    // name that names nothing.
+    let placed: std::collections::HashSet<&str> = [
+        &slots.left,
+        &slots.centre,
+        &slots.right,
+        &slots.drawer,
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|e| e.strip_prefix("widget:"))
+    .collect();
+    for w in &bar.widget {
+        if !placed.contains(w.slot.as_str()) {
+            bail!(
+                "theme '{theme_id}': bar.widget '{}' has slot = \"{}\" but no \
+                 `widget:{}` entry appears in any [bar.slots] list — it would \
+                 never be shown",
+                w.id,
+                w.slot,
+                w.slot
+            );
         }
     }
     Ok(())
@@ -66,6 +89,8 @@ pub(super) struct RawManifest {
     pub(super) bar: Option<RawBar>,
     pub(super) modules: Option<RawModules>,
     pub(super) launcher: Option<RawLauncher>,
+    pub(super) panel: Option<RawPanel>,
+    pub(super) osd: Option<RawOsd>,
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
     /// Overlay CSS path, resolved relative to the theme file's own directory.
@@ -84,6 +109,60 @@ pub(super) struct RawManifest {
 pub(super) struct RawBar {
     pub(super) window: Option<RawWindow>,
     pub(super) slots: Option<RawSlots>,
+    /// `[[bar.widget]]` — theme-declared live bar widgets (a poll + a node
+    /// tree). Rendered by breadbar through the same path as a Lua module's
+    /// `WidgetSpec`.
+    #[serde(default)]
+    pub(super) widget: Vec<RawThemeWidget>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawThemeWidget {
+    pub(super) id: String,
+    /// The `widget:<slot>` key in a `[bar.slots]` list this renders into.
+    pub(super) slot: String,
+    pub(super) order: Option<i64>,
+    pub(super) bind: RawBind,
+    pub(super) node: RawNode,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawBind {
+    /// Shell command; its trimmed stdout replaces `{value}` in the tree.
+    pub(super) cmd: String,
+    /// Poll interval — `"500ms"` / `"5s"` / `"2m"`.
+    pub(super) every: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum RawNode {
+    Box {
+        orientation: Option<String>,
+        spacing: Option<i64>,
+        class: Option<String>,
+        #[serde(default)]
+        children: Vec<RawNode>,
+    },
+    Label {
+        text: String,
+        class: Option<String>,
+        color: Option<String>,
+        weight: Option<String>,
+        size: Option<String>,
+    },
+    Icon {
+        name: Option<String>,
+        path: Option<String>,
+        size: Option<i64>,
+        class: Option<String>,
+    },
+    Progress {
+        value: f64,
+        class: Option<String>,
+    },
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -123,7 +202,7 @@ pub(super) struct RawMargin {
     pub(super) bottom: i64,
 }
 
-#[derive(Debug, Default, serde::Deserialize)]
+#[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub(super) struct RawSlots {
     pub(super) left: Vec<String>,
@@ -185,6 +264,20 @@ pub(super) struct RawLauncher {
     pub(super) search_padding_h: Option<i64>,
     pub(super) panel_alpha: Option<f64>,
     pub(super) selection_alpha: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPanel {
+    pub(super) min_width: Option<i64>,
+    pub(super) sections: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawOsd {
+    pub(super) enabled: Option<Vec<String>>,
+    pub(super) dismiss_ms: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -609,6 +702,179 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
     })
 }
 
+fn resolve_widgets(theme_id: &str, raw: &[RawThemeWidget]) -> anyhow::Result<Vec<ThemeWidget>> {
+    let mut out = Vec::with_capacity(raw.len());
+    for w in raw {
+        let every_ms = parse_duration(&w.bind.every).ok_or_else(|| {
+            anyhow!(
+                "theme '{theme_id}': bar.widget '{}' bind.every = \"{}\" is not a duration \
+                 (use \"500ms\" / \"5s\" / \"2m\")",
+                w.id,
+                w.bind.every
+            )
+        })?;
+        if w.bind.cmd.trim().is_empty() {
+            bail!("theme '{theme_id}': bar.widget '{}' bind.cmd is empty", w.id);
+        }
+        let mut count = 0usize;
+        let node = resolve_node(theme_id, &w.id, &w.node, 1, &mut count)?;
+        out.push(ThemeWidget {
+            id: w.id.clone(),
+            slot: w.slot.clone(),
+            order: w.order.unwrap_or(0) as i32,
+            bind: Bind {
+                cmd: w.bind.cmd.clone(),
+                every_ms,
+            },
+            node,
+        });
+    }
+    Ok(out)
+}
+
+fn resolve_node(
+    theme_id: &str,
+    widget_id: &str,
+    raw: &RawNode,
+    depth: usize,
+    count: &mut usize,
+) -> anyhow::Result<ThemeNode> {
+    *count += 1;
+    if depth > super::types::WIDGET_MAX_DEPTH {
+        bail!(
+            "theme '{theme_id}': bar.widget '{widget_id}' node tree deeper than {}",
+            super::types::WIDGET_MAX_DEPTH
+        );
+    }
+    if *count > super::types::WIDGET_MAX_NODES {
+        bail!(
+            "theme '{theme_id}': bar.widget '{widget_id}' node tree has more than {} nodes",
+            super::types::WIDGET_MAX_NODES
+        );
+    }
+    let check = |v: &Option<String>, allowed: &[&str], field: &str| -> anyhow::Result<()> {
+        if let Some(s) = v {
+            if !allowed.contains(&s.as_str()) {
+                bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' node.{field} = \"{s}\" is not {}",
+                    allowed.join("|")
+                );
+            }
+        }
+        Ok(())
+    };
+    Ok(match raw {
+        RawNode::Box {
+            orientation,
+            spacing,
+            class,
+            children,
+        } => {
+            let orientation = match orientation.as_deref() {
+                None | Some("horizontal") => "horizontal".to_string(),
+                Some("vertical") => "vertical".to_string(),
+                Some(o) => bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' node.orientation = \"{o}\" \
+                     is not horizontal|vertical"
+                ),
+            };
+            let children = children
+                .iter()
+                .map(|c| resolve_node(theme_id, widget_id, c, depth + 1, count))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            ThemeNode::Box {
+                orientation,
+                spacing: *spacing,
+                class: class.clone(),
+                children,
+            }
+        }
+        RawNode::Label {
+            text,
+            class,
+            color,
+            weight,
+            size,
+        } => {
+            check(color, super::types::WIDGET_COLORS, "color")?;
+            check(weight, super::types::WIDGET_WEIGHTS, "weight")?;
+            check(size, super::types::WIDGET_SIZES, "size")?;
+            ThemeNode::Label {
+                text: text.clone(),
+                class: class.clone(),
+                color: color.clone(),
+                weight: weight.clone(),
+                size: size.clone(),
+            }
+        }
+        RawNode::Icon {
+            name,
+            path,
+            size,
+            class,
+        } => {
+            if name.is_none() && path.is_none() {
+                bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' icon node has neither name nor path"
+                );
+            }
+            ThemeNode::Icon {
+                name: name.clone(),
+                path: path.clone(),
+                size: *size,
+                class: class.clone(),
+            }
+        }
+        RawNode::Progress { value, class } => ThemeNode::Progress {
+            value: *value,
+            class: class.clone(),
+        },
+    })
+}
+
+fn resolve_panel(theme_id: &str, p: Option<&RawPanel>) -> anyhow::Result<Panel> {
+    let mut out = Panel::default();
+    if let Some(mw) = p.and_then(|p| p.min_width) {
+        out.min_width = mw;
+    }
+    if let Some(sections) = p.and_then(|p| p.sections.clone()) {
+        for s in &sections {
+            if !super::types::PANEL_SECTIONS.contains(&s.as_str()) {
+                bail!(
+                    "theme '{theme_id}': panel.sections has unknown section \"{s}\" \
+                     (valid: {})",
+                    super::types::PANEL_SECTIONS.join("|")
+                );
+            }
+        }
+        out.sections = sections;
+    }
+    Ok(out)
+}
+
+fn resolve_osd(theme_id: &str, o: Option<&RawOsd>) -> anyhow::Result<Osd> {
+    let mut out = Osd::default();
+    if let Some(enabled) = o.and_then(|o| o.enabled.clone()) {
+        for k in &enabled {
+            if !super::types::OSD_KINDS.contains(&k.as_str()) {
+                bail!(
+                    "theme '{theme_id}': osd.enabled has unknown kind \"{k}\" \
+                     (valid: {})",
+                    super::types::OSD_KINDS.join("|")
+                );
+            }
+        }
+        out.enabled = enabled;
+    }
+    if let Some(ms) = o.and_then(|o| o.dismiss_ms) {
+        if ms < 1 {
+            bail!("theme '{theme_id}': osd.dismiss_ms must be >= 1");
+        }
+        out.dismiss_ms = ms;
+    }
+    Ok(out)
+}
+
 fn resolve_surfaces(
     theme_id: &str,
     raw: Option<&HashMap<String, RawSurface>>,
@@ -720,6 +986,12 @@ impl RawManifest {
 
         let modules = resolve_modules(&id, self.modules.as_ref())?;
         let launcher = resolve_launcher(&id, self.launcher.as_ref())?;
+        let panel = resolve_panel(&id, self.panel.as_ref())?;
+        let osd = resolve_osd(&id, self.osd.as_ref())?;
+        let widgets = resolve_widgets(
+            &id,
+            self.bar.as_ref().map(|b| b.widget.as_slice()).unwrap_or(&[]),
+        )?;
         let surfaces = resolve_surfaces(&id, self.surfaces.as_ref())?;
         let compositor = resolve_compositor(self.compositor.as_ref());
 
@@ -731,7 +1003,9 @@ impl RawManifest {
         // matched none of those — a typo, and a hard error rather than a
         // literal `{radus_bar}` in the output.
         let mut pairs = tokens.subst_pairs();
-        pairs.extend(super::style::subst_pairs(&tokens, &modules, &launcher));
+        pairs.extend(super::style::subst_pairs(
+            &tokens, &modules, &launcher, &panel,
+        ));
 
         let mut resolved_css = substitute_pairs(&strip_css_comments(&css_template), pairs.clone());
         if let Some(extra) = &extra_css {
@@ -759,6 +1033,9 @@ impl RawManifest {
             slots,
             modules,
             launcher,
+            panel,
+            osd,
+            widgets,
             surfaces,
             compositor,
             resolved_css,

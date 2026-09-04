@@ -65,6 +65,28 @@ pub fn describe() -> Value {
                 "entry": "a module name, `widget:<key>`, or `\"+\"` (only when the theme `extends` another)",
                 "modules": super::modules::all(),
             },
+            "widget": {
+                "note": "[[bar.widget]] — a live bar widget: a poll + a node tree, rendered where a `widget:<slot>` entry sits",
+                "fields": {
+                    "id":    { "type": "string" },
+                    "slot":  { "type": "string", "note": "must match a widget:<slot> in some [bar.slots] list" },
+                    "order": { "type": "int", "default": 0 },
+                    "bind":  { "cmd": "string (shell; trimmed stdout replaces {value})",
+                               "every": "duration — \"500ms\" / \"5s\" / \"2m\"" },
+                    "node":  { "kind": ["box", "label", "icon", "progress"],
+                               "box":   "orientation?, spacing?, class?, children[]",
+                               "label": "text, class?, color?, weight?, size?",
+                               "icon":  "name? | path?, size?, class?",
+                               "progress": "value, class?" },
+                },
+                "style_vocab": {
+                    "color":  super::types::WIDGET_COLORS,
+                    "weight": super::types::WIDGET_WEIGHTS,
+                    "size":   super::types::WIDGET_SIZES,
+                },
+                "limits": { "max_depth": super::types::WIDGET_MAX_DEPTH,
+                            "max_nodes": super::types::WIDGET_MAX_NODES },
+            },
         },
         "modules": {
             "workspaces": {
@@ -82,6 +104,18 @@ pub fn describe() -> Value {
         "launcher": {
             "mode":  { "type": "enum", "values": ["overlay", "embedded"] },
             "note":  "geometry keys (radius, row_radius, panel_alpha, …) are CSS — see the demos",
+        },
+        "panel": {
+            "min_width": { "type": "int", "unit": "px", "default": super::types::Panel::default().min_width },
+            "sections":  { "type": "list<enum>",
+                           "values": super::types::PANEL_SECTIONS,
+                           "note": "order + membership of the control-panel sections; default = all in this order" },
+        },
+        "osd": {
+            "enabled":    { "type": "list<enum>", "values": super::types::OSD_KINDS,
+                            "note": "default = all" },
+            "dismiss_ms": { "type": "int", "unit": "ms", "default": super::types::Osd::default().dismiss_ms },
+            "note":       "anchor is [surfaces.\"breadbar-osd\"]; radius is the osd_style token",
         },
         "surfaces": {
             "key":    "a layer-shell namespace (breadbar-notif, breadbar-osd, …)",

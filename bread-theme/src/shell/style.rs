@@ -10,7 +10,7 @@
 //! every theme renders from the one template, its differences falling out of
 //! these resolved values.
 
-use super::types::{fmt_f64, BarBorder, Launcher, Modules, Tokens, WorkspaceStyle};
+use super::types::{fmt_f64, BarBorder, Launcher, Modules, Panel, Tokens, WorkspaceStyle};
 
 /// One chip-highlight height per bar, keyed on the workspace style (Trail's
 /// pills are taller than Pill/Dots). Matches `breadbar`'s historical
@@ -26,7 +26,12 @@ pub fn chip_height(style: WorkspaceStyle) -> i64 {
 /// The `{name}` pairs the base template needs beyond the plain `[tokens]`.
 /// Every value is fully resolved to literal CSS (only `@palette` names left);
 /// none references another derived name, so substitution order doesn't matter.
-pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String, String)> {
+pub(super) fn subst_pairs(
+    t: &Tokens,
+    m: &Modules,
+    l: &Launcher,
+    p: &Panel,
+) -> Vec<(String, String)> {
     let light = t.light;
     // `@bg` is a FIXED dark hex and `@on-bg` its computed near-white ink
     // (never pywal-derived). A light theme swaps which plays surface vs ink;
@@ -210,6 +215,7 @@ pub(super) fn subst_pairs(t: &Tokens, m: &Modules, l: &Launcher) -> Vec<(String,
         ("trough_bg".into(), trough_bg),
         ("radius_search".into(), radius_search),
         ("window_chrome".into(), window_chrome),
+        ("panel_min_width".into(), p.min_width.to_string()),
         ("bar_shadow_css".into(), bar_shadow_css),
         ("sep_css".into(), sep_css),
         ("media_eq_css".into(), media_eq_css),

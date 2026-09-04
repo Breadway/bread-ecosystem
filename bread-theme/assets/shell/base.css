@@ -692,7 +692,7 @@ window.wifi-add-dialog headerbar {
 }
 
 .control-panel-inner {
-  min-width: 248px;
+  min-width: {panel_min_width}px;
   padding: {pad}px;
 }
 

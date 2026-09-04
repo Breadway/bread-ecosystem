@@ -266,6 +266,130 @@ pub struct Launcher {
     pub selection_alpha: f64,
 }
 
+/// The named control-panel sections, in the order breadbar builds them by
+/// default. `[panel].sections` may reorder / drop entries from this set;
+/// unknown names are a hard error.
+pub const PANEL_SECTIONS: &[&str] = &[
+    "volume", "output", "brightness", "system", "power", "tray",
+];
+
+/// `[panel]` — the hamburger control-panel popover. `min_width` is CSS
+/// (`.control-panel-inner`); `sections` drives which sub-sections breadbar
+/// assembles and in what order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Panel {
+    pub min_width: i64,
+    pub sections: Vec<String>,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Panel {
+            min_width: 248,
+            sections: PANEL_SECTIONS.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
+/// The OSD kinds breadbar knows how to show.
+pub const OSD_KINDS: &[&str] = &["volume", "brightness"];
+
+/// `[osd]` — the volume/brightness on-screen display. `anchor`/radius are
+/// controlled by `[surfaces."breadbar-osd"]` + the `osd_style` token; this
+/// table adds which kinds are enabled and how long they linger.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Osd {
+    pub enabled: Vec<String>,
+    pub dismiss_ms: i64,
+}
+
+impl Default for Osd {
+    fn default() -> Self {
+        Osd {
+            enabled: OSD_KINDS.iter().map(|s| s.to_string()).collect(),
+            dismiss_ms: 2000,
+        }
+    }
+}
+
+// ---- theme-declared bar widgets (`[[bar.widget]]`) -----------------------
+
+/// Max node-tree depth / count for a theme widget — mirrors
+/// `bread_shared::widget::{MAX_NODE_DEPTH, MAX_NODE_COUNT}` (kept as local
+/// consts so `bread-theme` needs no dependency on `bread-shared`).
+pub const WIDGET_MAX_DEPTH: usize = 4;
+pub const WIDGET_MAX_NODES: usize = 50;
+
+/// The closed `style` vocabularies a `[[bar.widget]]` node may use — the same
+/// names `bread_shared::widget::WidgetStyle` accepts, so breadbar's existing
+/// `apply_style` maps them 1:1 onto the `bread-*` CSS classes.
+pub const WIDGET_COLORS: &[&str] = &[
+    "fg", "dim", "accent", "red", "green", "yellow", "blue", "pink", "teal",
+];
+pub const WIDGET_WEIGHTS: &[&str] = &["normal", "bold"];
+pub const WIDGET_SIZES: &[&str] = &["xs", "sm", "md", "lg", "xl"];
+
+/// A poll binding: run `cmd` every `every_ms`, its trimmed stdout replacing
+/// `{value}` in the widget's node tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bind {
+    pub cmd: String,
+    pub every_ms: u64,
+}
+
+/// One node in a theme widget's render tree — deliberately the same shape as
+/// `bread_shared::widget::WidgetNode` so breadbar maps it mechanically.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThemeNode {
+    Box {
+        /// `"horizontal"` (default) or `"vertical"`.
+        orientation: String,
+        spacing: Option<i64>,
+        class: Option<String>,
+        children: Vec<ThemeNode>,
+    },
+    Label {
+        text: String,
+        class: Option<String>,
+        color: Option<String>,
+        weight: Option<String>,
+        size: Option<String>,
+    },
+    Icon {
+        name: Option<String>,
+        path: Option<String>,
+        size: Option<i64>,
+        class: Option<String>,
+    },
+    Progress {
+        value: f64,
+        class: Option<String>,
+    },
+}
+
+/// A theme-declared live bar widget, fully resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThemeWidget {
+    pub id: String,
+    /// The `widget:<slot>` key it renders into (validated to exist).
+    pub slot: String,
+    pub order: i32,
+    pub bind: Bind,
+    pub node: ThemeNode,
+}
+
+/// Parse `"500ms"` / `"5s"` / `"2m"` into milliseconds. `None` on junk.
+pub(super) fn parse_duration(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let (num, mult): (&str, u64) = s
+        .strip_suffix("ms")
+        .map(|n| (n, 1))
+        .or_else(|| s.strip_suffix('s').map(|n| (n, 1000)))
+        .or_else(|| s.strip_suffix('m').map(|n| (n, 60_000)))?;
+    let v: u64 = num.trim().parse().ok()?;
+    v.checked_mul(mult).filter(|ms| *ms >= 1)
+}
+
 /// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]` —
 /// deliberately the same keyspace as `[compositor.*]` (see module docs)
 /// rather than a role name, so the two tables can be validated against each

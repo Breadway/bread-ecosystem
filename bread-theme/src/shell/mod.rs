@@ -83,6 +83,9 @@ pub struct ShellTheme {
     slots: Slots,
     modules: Modules,
     launcher: Launcher,
+    panel: Panel,
+    osd: Osd,
+    widgets: Vec<ThemeWidget>,
     surfaces: BTreeMap<String, Surface>,
     compositor: BTreeMap<String, LayerRule>,
     /// The theme's full stylesheet, already rendered: `[tokens]` substituted
@@ -114,6 +117,20 @@ impl ShellTheme {
     }
     pub fn launcher(&self) -> &Launcher {
         &self.launcher
+    }
+    /// `[panel]` — the hamburger control-panel popover's `min_width` (CSS)
+    /// and section order.
+    pub fn panel(&self) -> &Panel {
+        &self.panel
+    }
+    /// `[osd]` — which on-screen displays are enabled and their linger time.
+    pub fn osd(&self) -> &Osd {
+        &self.osd
+    }
+    /// `[[bar.widget]]` — theme-declared live bar widgets (each a poll + a
+    /// node tree). Empty for every builtin except where a demo adds one.
+    pub fn widgets(&self) -> &[ThemeWidget] {
+        &self.widgets
     }
     pub fn surfaces(&self) -> &BTreeMap<String, Surface> {
         &self.surfaces
@@ -827,6 +844,131 @@ mod tests {
         );
         let err = diagnose("badsep").expect("bad enum must fail");
         assert!(err.contains("sep_style") && err.contains("line|none|dot"), "{err}");
+    }
+
+    /// Axis 3: `[panel]` / `[osd]` resolve, reorder, and reject typos.
+    #[test]
+    fn panel_and_osd_tables_resolve_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "po",
+            r#"
+                name = "PO"
+                id   = "po"
+                [panel]
+                min_width = 420
+                sections  = ["power", "volume"]
+                [osd]
+                enabled    = ["volume"]
+                dismiss_ms = 600
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "po");
+        let t = load_named("po").unwrap();
+        assert_eq!(t.panel().min_width, 420);
+        assert_eq!(t.panel().sections, vec!["power", "volume"]);
+        assert_eq!(t.osd().enabled, vec!["volume"]);
+        assert_eq!(t.osd().dismiss_ms, 600);
+        // min_width flows into the rendered CSS.
+        assert!(t.css(&crate::Palette::default()).contains("min-width: 420px;"));
+
+        // A default theme keeps every section and both OSDs.
+        let def = load_named("liquid-motion").unwrap();
+        assert_eq!(def.panel().sections.len(), 6);
+        assert_eq!(def.osd().enabled, vec!["volume", "brightness"]);
+
+        write_theme(
+            &xdg,
+            "badpanel",
+            r#"
+                name = "Bad"
+                id   = "badpanel"
+                [panel]
+                sections = ["volume", "teleporter"]
+            "#,
+        );
+        let err = diagnose("badpanel").expect("bad section must fail");
+        assert!(err.contains("teleporter"), "{err}");
+    }
+
+    /// Axis 4: `[[bar.widget]]` resolves, binds parse, the tree + style
+    /// vocab validate, and a missing slot is a hard error.
+    #[test]
+    fn theme_widgets_resolve_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "tw",
+            r#"
+                name = "TW"
+                id   = "tw"
+                [bar.slots]
+                left   = ["workspaces"]
+                centre = ["clock"]
+                right  = ["widget:right_of_clock", "control"]
+                [[bar.widget]]
+                id   = "loadavg"
+                slot = "right_of_clock"
+                bind = { cmd = "cut -d' ' -f1 /proc/loadavg", every = "5s" }
+                node = { kind = "box", children = [
+                    { kind = "icon", name = "cpu" },
+                    { kind = "label", text = "{value}", color = "accent", weight = "bold" },
+                ] }
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "tw");
+        let t = load_named("tw").unwrap();
+        assert_eq!(t.widgets().len(), 1);
+        let w = &t.widgets()[0];
+        assert_eq!(w.slot, "right_of_clock");
+        assert_eq!(w.bind.every_ms, 5000);
+        match &w.node {
+            crate::shell::ThemeNode::Box { children, .. } => assert_eq!(children.len(), 2),
+            _ => panic!("expected box root"),
+        }
+
+        // bad duration
+        write_theme(&xdg, "twbad", r#"
+            name = "B"
+            id = "twbad"
+            [bar.slots]
+            right = ["widget:x"]
+            [[bar.widget]]
+            id = "w"
+            slot = "x"
+            bind = { cmd = "true", every = "soon" }
+            node = { kind = "label", text = "hi" }
+        "#);
+        assert!(diagnose("twbad").unwrap().contains("not a duration"));
+
+        // slot with no widget: entry
+        write_theme(&xdg, "twns", r#"
+            name = "N"
+            id = "twns"
+            [bar.slots]
+            right = ["control"]
+            [[bar.widget]]
+            id = "w"
+            slot = "nowhere"
+            bind = { cmd = "true", every = "1s" }
+            node = { kind = "label", text = "hi" }
+        "#);
+        assert!(diagnose("twns").unwrap().contains("never be shown"));
+
+        // bad style value
+        write_theme(&xdg, "twsty", r#"
+            name = "S"
+            id = "twsty"
+            [bar.slots]
+            right = ["widget:x"]
+            [[bar.widget]]
+            id = "w"
+            slot = "x"
+            bind = { cmd = "true", every = "1s" }
+            node = { kind = "label", text = "hi", color = "chartreuse" }
+        "#);
+        assert!(diagnose("twsty").unwrap().contains("chartreuse"));
     }
 
     // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
