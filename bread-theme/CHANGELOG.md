@@ -1,5 +1,17 @@
 # bread-theme changelog
 
+## 0.7.10
+
+Vertical (side-docked) bars: `[bar.window].anchors` anchored to exactly one
+of `left`/`right` plus both `top` and `bottom` now resolves as a vertical
+dock instead of the usual horizontal top/bottom bar — no new schema field,
+derived from the anchor set itself, so every existing theme is unaffected.
+`width` becomes the dock's fixed thickness in that case (`"fill"` is now a
+hard error there — the fill axis for a side dock is top/bottom, already
+filled by the anchors). New `WindowSpec::orientation()` /
+`WindowOrientation`. See `docs/shell-themes.md`'s `[bar.window]` section.
+Consumer-side layout (breadbar) is a separate release.
+
 ## 0.7.9
 
 `window.breadbar-panel` (the control-panel + connectivity popover) now takes
