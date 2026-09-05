@@ -309,13 +309,27 @@ fn reload_stem_for_event(path: &Path, want_ext: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Choose which path a `FileMonitor::connect_changed` event refers to.
+///
+/// With `GFileMonitorFlags::WATCH_MOVES` set (as `arm_dir_reload_watch`
+/// requests), a rename lands as a single event where `file` is the *source*
+/// path and `other` is the *destination* — this is what `atomic_write`
+/// (`output.rs`) produces on every reload: write to a `.{name}.tmp.{pid}`
+/// sibling, then `rename()` it onto the real `.css`/`.json` target. `other`
+/// is therefore the only field that can carry the right extension for a
+/// rename and takes priority; `file` is the fallback for a direct
+/// CREATE/CHANGED event (e.g. a non-atomic editor write with no rename).
+fn reload_event_path(file: &gio::File, other: Option<&gio::File>) -> Option<std::path::PathBuf> {
+    other.and_then(|f| f.path()).or_else(|| file.path())
+}
+
 fn arm_dir_reload_watch(dir: std::path::PathBuf, want_ext: &'static str) -> Option<gio::FileMonitor> {
     let _ = std::fs::create_dir_all(&dir);
     let monitor = gio::File::for_path(&dir)
         .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
         .ok()?;
     monitor.connect_changed(move |_, file, other, _event| {
-        let path = file.path().or_else(|| other.and_then(|f| f.path()));
+        let path = reload_event_path(file, other);
         let Some(stem) = path.as_deref().and_then(|p| reload_stem_for_event(p, want_ext)) else {
             return;
         };
@@ -657,6 +671,28 @@ mod tests {
     }
 
     #[test]
+    fn reload_event_path_prefers_the_rename_destination_over_the_tmp_source() {
+        // Regression for ECO-14: on a `RENAMED` event (what `atomic_write`'s
+        // write-tmp-then-rename produces under `WATCH_MOVES`), `file` is the
+        // tmp source and `other` is the real destination — only `other`
+        // carries the right extension, so it must win.
+        let tmp = gio::File::for_path("/x/themes/.eDP-1.css.tmp.42");
+        let dest = gio::File::for_path("/x/themes/eDP-1.css");
+        assert_eq!(
+            reload_event_path(&tmp, Some(&dest)).as_deref(),
+            Some(Path::new("/x/themes/eDP-1.css")),
+            "a rename event must resolve to the destination path, not the tmp source"
+        );
+
+        // A direct CREATE/CHANGED event (no rename, e.g. a non-atomic editor
+        // write) carries no `other` — fall back to `file`.
+        assert_eq!(
+            reload_event_path(&dest, None).as_deref(),
+            Some(Path::new("/x/themes/eDP-1.css"))
+        );
+    }
+
+    #[test]
     fn forget_bind_clears_every_record_including_the_surface_keyed_enter_hook() {
         // Regression for finding #2: `ENTER_HOOKED` is keyed by surface pointer,
         // the rest by widget pointer. A destroyed window used to leave its
@@ -721,6 +757,18 @@ mod tests {
         assert!(themes.is_some(), "themes watch failed to arm in a writable dir");
         assert!(palettes.is_some(), "palettes watch failed to arm in a writable dir");
     }
+
+    // A real end-to-end `FileMonitor` + write-then-rename regression test was
+    // tried here and dropped: it pumps the default `glib::MainContext`, same
+    // as `shell::hotreload`'s tests, and the two collide under the default
+    // parallel test runner (`cargo test --workspace --features gtk`, as CI
+    // runs it) — a `FileMonitor` created on one test's thread gets its signal
+    // dispatched while another test's thread is mid-iteration on the same
+    // shared context, which glib's thread guard rejects
+    // ("Value accessed from different thread than where it was created"),
+    // aborting the whole test binary. `reload_event_path` above is the pure
+    // seam this bug actually lives in, and is fully covered without touching
+    // the shared context.
 
     // ---- widget lifecycle --------------------------------------------------
     //
