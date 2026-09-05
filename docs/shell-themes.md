@@ -201,6 +201,35 @@ layer     = "top"                        # top | overlay
 - `exclusive = "none"` + `keyboard = "on_demand"` is the launcher-capsule combo
   (see `spotlight`).
 
+#### Side-docked (vertical) bars
+
+Anchoring to exactly one of `left`/`right` *and* both `top` and `bottom`
+docks the bar to that screen edge instead, filling it top-to-bottom — the
+same "opposing anchors with nothing else fill that axis" rule a horizontal
+bar already uses for `width = "fill"`, applied to the other axis:
+
+```toml
+[bar.window]
+anchors = ["left", "top", "bottom"]   # or "right" for the other edge
+width   = 56                          # required: the dock's fixed thickness
+margin  = { left = 8 }                # right/top/bottom margins still apply normally
+```
+
+- `width` is the dock's thickness and **must be a fixed pixel value** —
+  `"fill"` has nothing to mean on this axis once `top` + `bottom` already
+  fill it (a hard `bread-theme diagnose` error if you set it anyway).
+  `height` is unused for a vertical bar.
+- `[bar.slots]` (below) still names `left`/`centre`/`right` — a vertical bar
+  stacks them top-to-bottom in that same order (`left` at the top,
+  `right`/`bottom` at the... bottom) instead of packing them left-to-right.
+- Switching a *running* bar between horizontal and vertical is one of the
+  few `[bar.window]` changes that isn't live — see the restart table below.
+- The animated pill that slides between workspace buttons on switch
+  (`bar::workspaces::WorkspaceTrail`) still assumes horizontal movement; on
+  a vertical bar it currently jumps to the new workspace instead of
+  sliding. Everything else (window shape, exclusive zone, slot layout) is
+  fully vertical-aware.
+
 ### `[bar.slots]` — what goes in the bar, left to right
 
 Four ordered lists. Each entry is a **module name**, `widget:<key>`, or `"+"`.
@@ -391,16 +420,17 @@ edited on disk, breadbar applies as much as it can **without restarting**:
 | Change | Applied |
 |---|---|
 | `[tokens]` (incl. fonts, chrome tokens), `extra.css`, colours, radii, springs, `light` | **live**, no blink |
-| `[bar.window]` geometry (anchors, size, margin, exclusive zone, layer) | **live** |
+| `[bar.window]` geometry (anchors, size, margin, exclusive zone, layer) — as long as it doesn't flip horizontal↔vertical, see below | **live** |
 | `[bar.slots]` order / membership · `[[bar.widget]]` | **live** |
 | `[surfaces.*]` / `[compositor.*]` · `[panel].min_width` · `[osd].dismiss_ms` | **live** (next time it maps) |
 | `[modules.workspaces].style` or `[modules.clock].style` | **restart** (one blink) |
 | `[launcher].mode` · `[panel].sections` · `[osd].enabled` | **restart** |
+| `[bar.window].anchors` switching the bar between horizontal (top/bottom) and vertical (side-dock) — see [orientation](#bar-window--the-bars-layer-shell-geometry) | **restart** (one blink) |
 
 The restart cases are structural — a widget-type swap, or a section / thread
 set assembled once at launch. `breadbar::theme::needs_restart` is the exact
-rule: `modules()`, `launcher().mode`, `panel().sections`, or `osd().enabled`
-differ.
+rule: `modules()`, `launcher().mode`, `panel().sections`, `osd().enabled`, or
+`window().orientation()` differ.
 
 **Consequence for `extends`:** if your theme leaves `[modules]` and
 `[launcher].mode` identical to another theme's, switching between the two is

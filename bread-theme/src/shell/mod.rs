@@ -550,6 +550,44 @@ mod tests {
     }
 
     #[test]
+    fn left_docked_theme_with_fixed_width_resolves_as_vertical() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "sidedock",
+            r#"
+                id = "sidedock"
+                [bar.window]
+                anchors = ["left", "top", "bottom"]
+                width = 56
+            "#,
+        );
+        let theme = load_named("sidedock").expect("side-docked theme should resolve");
+        assert_eq!(theme.window().orientation(), WindowOrientation::Vertical);
+        assert!(matches!(theme.window().width, Width::Px(56)));
+    }
+
+    #[test]
+    fn vertical_dock_with_fill_width_is_a_hard_error() {
+        // "fill" only means something on the bar's own length axis; for a
+        // side dock that's top/bottom (already filled by the anchors
+        // themselves), so `width = "fill"` here has nothing to apply to.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "badvertical",
+            r#"
+                id = "badvertical"
+                [bar.window]
+                anchors = ["right", "top", "bottom"]
+                width = "fill"
+            "#,
+        );
+        let err = load_named("badvertical").expect_err("fill width on a vertical dock must error");
+        assert!(format!("{err:#}").contains("vertical"));
+    }
+
+    #[test]
     fn builtin_tokens_match_theme_rs_load_css_locals() {
         // theme.rs::load_css: radius="12px", radius_bar="16px",
         // radius_sm="9px", radius_pill="999px", pad="12px".

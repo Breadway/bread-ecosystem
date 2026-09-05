@@ -95,18 +95,53 @@ pub struct Margin {
     pub bottom: i32,
 }
 
+/// Whether a bar docks to the top/bottom edge (spanning left-right) or to
+/// the left/right edge (spanning top-bottom). Deliberately not a schema
+/// field of its own — [`WindowSpec::orientation`] derives it from
+/// `anchors`, so every existing theme's anchor set (e.g.
+/// `["top", "left", "right"]`) resolves to `Horizontal` unchanged, with no
+/// migration needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowOrientation {
+    Horizontal,
+    Vertical,
+}
+
 /// `bar.window` — plan §2: window shape is data, not a closed layout enum.
 /// Island/Edge/Capsule are three *values* of this struct, not three code
 /// paths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowSpec {
     pub anchors: Vec<String>,
+    /// The bar's length axis for a horizontal bar (`Fill` spans the
+    /// anchored left/right edges), or its fixed thickness for a vertical
+    /// one (`width.left ^ right` docked, `top` + `bottom` filling) — see
+    /// [`WindowSpec::orientation`]. A vertical bar's `width` must be
+    /// `Px`; layer-shell has no equivalent of `Fill` for the cross axis.
     pub width: Width,
     pub height: i32,
     pub margin: Margin,
     pub exclusive: Exclusive,
     pub keyboard: Keyboard,
     pub layer: String,
+}
+
+impl WindowSpec {
+    /// See [`WindowOrientation`]. Vertical iff anchored to exactly one of
+    /// `left`/`right` and both `top` and `bottom` — the same anchor set a
+    /// theme already writes to mean "fill this axis" horizontally, applied
+    /// to the other axis.
+    pub fn orientation(&self) -> WindowOrientation {
+        let left = self.anchors.iter().any(|a| a == "left");
+        let right = self.anchors.iter().any(|a| a == "right");
+        let top = self.anchors.iter().any(|a| a == "top");
+        let bottom = self.anchors.iter().any(|a| a == "bottom");
+        if (left ^ right) && top && bottom {
+            WindowOrientation::Vertical
+        } else {
+            WindowOrientation::Horizontal
+        }
+    }
 }
 
 impl Default for WindowSpec {
@@ -798,5 +833,71 @@ impl Tokens {
     /// derivations via [`substitute_pairs`]; this method covers tokens alone.
     pub fn substitute(&self, template: &str) -> String {
         substitute_pairs(template, self.subst_pairs())
+    }
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+
+    fn spec_with_anchors(anchors: &[&str]) -> WindowSpec {
+        WindowSpec {
+            anchors: anchors.iter().map(|s| s.to_string()).collect(),
+            ..WindowSpec::default()
+        }
+    }
+
+    #[test]
+    fn default_top_bar_is_horizontal() {
+        assert_eq!(
+            spec_with_anchors(&["top", "left", "right"]).orientation(),
+            WindowOrientation::Horizontal
+        );
+    }
+
+    #[test]
+    fn bottom_bar_is_horizontal() {
+        assert_eq!(
+            spec_with_anchors(&["bottom", "left", "right"]).orientation(),
+            WindowOrientation::Horizontal
+        );
+    }
+
+    #[test]
+    fn left_docked_full_height_is_vertical() {
+        assert_eq!(
+            spec_with_anchors(&["left", "top", "bottom"]).orientation(),
+            WindowOrientation::Vertical
+        );
+    }
+
+    #[test]
+    fn right_docked_full_height_is_vertical() {
+        assert_eq!(
+            spec_with_anchors(&["right", "top", "bottom"]).orientation(),
+            WindowOrientation::Vertical
+        );
+    }
+
+    #[test]
+    fn both_side_edges_anchored_is_horizontal_not_vertical() {
+        // left + right together describe a horizontal bar's own end pins
+        // (today's normal case), not an (impossible) dock to both sides at
+        // once — the vertical case needs exactly one of left/right.
+        assert_eq!(
+            spec_with_anchors(&["left", "right", "top", "bottom"]).orientation(),
+            WindowOrientation::Horizontal
+        );
+    }
+
+    #[test]
+    fn side_anchor_without_both_top_and_bottom_is_horizontal() {
+        // A capsule/island pinned to one side edge but not spanning the
+        // full height isn't a side-dock — it's still today's fixed-width,
+        // auto-height horizontal shape, just anchored asymmetrically.
+        assert_eq!(
+            spec_with_anchors(&["left", "top"]).orientation(),
+            WindowOrientation::Horizontal
+        );
     }
 }
