@@ -573,7 +573,7 @@ fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
         }
     };
 
-    Ok(WindowSpec {
+    let spec = WindowSpec {
         anchors,
         width,
         height,
@@ -581,7 +581,22 @@ fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
         exclusive,
         keyboard,
         layer,
-    })
+    };
+
+    // A vertical (side-docked) bar fills its length axis via layer-shell
+    // anchors alone (top + bottom both set) — the same mechanism a
+    // horizontal bar already relies on for `width = "fill"` on its own
+    // axis. `width` on a vertical bar means the fixed thickness instead,
+    // so `"fill"` there has no meaning to give it.
+    if spec.orientation() == WindowOrientation::Vertical && spec.width == Width::Fill {
+        bail!(
+            "theme '{theme_id}': bar.window.anchors describes a vertical (left/right) \
+             dock, so bar.window.width must be a fixed pixel thickness, not \"fill\" \
+             (the top+bottom anchors already fill the vertical axis)"
+        );
+    }
+
+    Ok(spec)
 }
 
 fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Modules> {
