@@ -587,6 +587,60 @@ mod tests {
         assert!(format!("{err:#}").contains("vertical"));
     }
 
+    // ---- ECO-17: chip_height must actually reach the CSS it controls ------
+
+    #[test]
+    fn explicit_chip_height_reaches_the_media_widget_and_stat_pair_css() {
+        // Before the fix, `chip_height_px` came from a hardcoded per-style
+        // table, not `tokens.chip_height` — a theme's own value here was
+        // silently ignored (see `resolve_tokens`'s note). A custom font/size
+        // combo that needs a taller chip than the style's demo number had no
+        // way to ask for one.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "tallchips",
+            r#"
+                id = "tallchips"
+                [tokens]
+                chip_height = 50
+                [modules.workspaces]
+                style = "dots"
+            "#,
+        );
+        let theme = load_named("tallchips").expect("theme should resolve");
+        assert_eq!(theme.tokens().chip_height(), 50);
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("min-height: 50px"),
+            "explicit chip_height should reach the rendered CSS"
+        );
+        assert!(
+            !css.contains("min-height: 22px"),
+            "the dots-style hardcoded fallback (22px) must not win over an explicit value"
+        );
+    }
+
+    #[test]
+    fn omitted_chip_height_falls_back_to_the_style_default_not_the_stale_32() {
+        // `Tokens::default().chip_height` is 32 — breadbar's pre-theme-
+        // system global constant, not a sensible size for any one style.
+        // A theme that never mentions chip_height should still get the
+        // per-style demo number (22 for pill), not that stale default.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "nochipheight",
+            r#"
+                id = "nochipheight"
+                [modules.workspaces]
+                style = "pill"
+            "#,
+        );
+        let theme = load_named("nochipheight").expect("theme should resolve");
+        assert_eq!(theme.tokens().chip_height(), 22);
+    }
+
     #[test]
     fn builtin_tokens_match_theme_rs_load_css_locals() {
         // theme.rs::load_css: radius="12px", radius_bar="16px",

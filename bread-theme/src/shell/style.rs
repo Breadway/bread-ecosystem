@@ -147,7 +147,11 @@ pub(super) fn subst_pairs(
         WorkspaceStyle::Dots => radius_pill.clone(),
         _ => radius_sm.clone(),
     };
-    let chip_height_px = format!("{}px", chip_height(style));
+    // `t.chip_height` is already the effective value by this point —
+    // `resolve_tokens` (manifest.rs) fills it from `chip_height(style)`
+    // itself when a theme doesn't set one, so every caller downstream of
+    // resolution (this one included) can just read the token straight.
+    let chip_height_px = format!("{}px", t.chip_height);
     let settle = &t.spring_settle;
     let from = &t.accent_from;
     let to = &t.accent_to;
