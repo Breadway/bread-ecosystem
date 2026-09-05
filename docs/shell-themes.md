@@ -166,7 +166,7 @@ so you only set what you're changing.
 | `accent_from` | palette slot | `accent` | active-workspace fill / gradient start |
 | `accent_to` | palette slot | = `accent_from` | gradient end (Trail workspaces) |
 | `accent2` | palette slot | = `accent_from` | second accent, independent of the workspace one (e.g. media equaliser) |
-| `chip_height` | int px | `32` | bar chip / workspace-pill height |
+| `chip_height` | int px | per-style (26 Trail, 22 Pill/Dots) | bar chip / workspace-pill height — `min-height` on `.media-widget`, `.stat-pair`, and Trail/Pill `.workspace-btn`. Omit it and you get the number above for your `modules.workspaces.style`; set it and that's used as-is, no matter the style — bump it if a custom `font_family`/`font_size_base`/`font_weight` needs more vertical room than the default gives |
 | `icon_px` | int px | `24` | bar icon glyph size |
 | `chip_gap` | int px | `0` | extra left-margin between bar chips |
 | `font_family` | string | `Varela Round, sans-serif` | drives the **whole shell** (bar + launcher) **and** the shared ecosystem stylesheet — a bare face (`IBM Plex Sans`) or a list (`Outfit, sans-serif`) |

@@ -379,10 +379,18 @@ const KNOWN_TOKEN_KEYS: &[&str] = &[
 /// Known keys go to their typed field (leniently coerced — a number written
 /// as a quoted string still parses, matching the pre-typed behaviour);
 /// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
-fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow::Result<Tokens> {
+///
+/// `style` is `modules.workspaces.style` — see the `chip_height_set` note
+/// below for why `resolve_tokens` needs it.
+fn resolve_tokens(
+    theme_id: &str,
+    raw: &HashMap<String, toml::Value>,
+    style: WorkspaceStyle,
+) -> anyhow::Result<Tokens> {
     let mut t = Tokens::default();
     let mut accent_to_set = false;
     let mut accent2_set = false;
+    let mut chip_height_set = false;
 
     let want_i64 = |v: &toml::Value, key: &str| -> anyhow::Result<i64> {
         match v {
@@ -454,7 +462,10 @@ fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow:
             "radius_sm" => t.radius_sm = want_i64(v, k)?,
             "radius_pill" => t.radius_pill = want_i64(v, k)?,
             "pad" => t.pad = want_i64(v, k)?,
-            "chip_height" => t.chip_height = want_i64(v, k)?,
+            "chip_height" => {
+                t.chip_height = want_i64(v, k)?;
+                chip_height_set = true;
+            }
             "icon_px" => t.icon_px = want_i64(v, k)?,
             "font_size_base" => t.font_size_base = want_i64(v, k)?,
             "font_weight" => t.font_weight = want_i64(v, k)?,
@@ -497,6 +508,20 @@ fn resolve_tokens(theme_id: &str, raw: &HashMap<String, toml::Value>) -> anyhow:
     }
     if !accent2_set {
         t.accent2 = t.accent_from.clone();
+    }
+
+    // A theme that omits `chip_height` gets the per-style demo number
+    // instead of `Tokens::default()`'s bare `32` — that default is
+    // breadbar's pre-theme-system stale global constant (see its own doc
+    // comment), never a sensible size for any actual style's chips, so
+    // leaving it in place here left `chip_height` a "restated truth, not a
+    // live input" for every theme that DID set it (every builtin happens to
+    // choose the same number `style::chip_height` already hardcodes, which
+    // is exactly how this went unnoticed) and a real bug for one that
+    // didn't, or set something else — a small custom-font chip label
+    // clipping against a min-height the token was supposed to control.
+    if !chip_height_set {
+        t.chip_height = super::style::chip_height(style);
     }
 
     Ok(t)
@@ -980,7 +1005,11 @@ impl RawManifest {
         let id = self.id.clone().unwrap_or_else(|| requested_id.to_string());
         let name = self.name.clone().unwrap_or_else(|| id.clone());
 
-        let tokens = resolve_tokens(&id, &self.tokens)?;
+        // Resolved before `tokens`: `resolve_tokens` needs the workspace
+        // style to fall back to a sensible per-style `chip_height` when a
+        // theme doesn't set one (see its own comment).
+        let modules = resolve_modules(&id, self.modules.as_ref())?;
+        let tokens = resolve_tokens(&id, &self.tokens, modules.workspaces.style)?;
 
         let window = match self.bar.as_ref().and_then(|b| b.window.as_ref()) {
             Some(w) => resolve_window(&id, w)?,
@@ -998,8 +1027,6 @@ impl RawManifest {
                 drawer: s.drawer.clone(),
             })
             .unwrap_or_default();
-
-        let modules = resolve_modules(&id, self.modules.as_ref())?;
         let launcher = resolve_launcher(&id, self.launcher.as_ref())?;
         let panel = resolve_panel(&id, self.panel.as_ref())?;
         let osd = resolve_osd(&id, self.osd.as_ref())?;
