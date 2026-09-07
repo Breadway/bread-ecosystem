@@ -2,11 +2,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// BOS's fixed dark theme — background, surface, overlay, and foreground never
+/// BOS's fixed dark theme: background, surface, overlay, and foreground never
 /// come from pywal. Only the accent slots (color1-6) track the wallpaper.
 /// Without this, a light or muddy-toned wallpaper (a beige bread photo, a
 /// snapshot, a bright desktop screenshot) makes pywal hand back a light or
-/// off-hue background, and every bread GUI's panels inherit it — the app
+/// off-hue background, and every bread GUI's panels inherit it: the app
 /// stops looking like a dark BOS tool and starts looking like whatever colour
 /// the wallpaper happened to be.
 pub(crate) const FIXED_BACKGROUND: &str = "#0c0c0c";
@@ -15,7 +15,7 @@ pub(crate) const FIXED_SURFACE: &str = "#1a1a1a";
 pub(crate) const FIXED_OVERLAY: &str = "#d8d8d8";
 
 /// Accent fallback when no pywal palette exists yet (fresh install, before
-/// any wallpaper has been set for real) — BOS's own bread-toned accents,
+/// any wallpaper has been set for real): BOS's own bread-toned accents,
 /// matching the curated default `colors.json` baked into every install.
 const DEFAULT_COLOR1: &str = "#b98749";
 const DEFAULT_COLOR2: &str = "#cd9450";
@@ -31,21 +31,21 @@ const DEFAULT_COLOR6: &str = "#eabe82";
 pub struct Palette {
     pub background: String,
     pub foreground: String,
-    /// Fixed — darkest surface / overlay, never pywal-derived.
+    /// Fixed: darkest surface / overlay, never pywal-derived.
     pub color0: String,
-    /// ANSI color1 — red (pywal accent)
+    /// ANSI color1: red (pywal accent)
     pub color1: String,
-    /// ANSI color2 — green (pywal accent)
+    /// ANSI color2: green (pywal accent)
     pub color2: String,
-    /// ANSI color3 — yellow (pywal accent)
+    /// ANSI color3: yellow (pywal accent)
     pub color3: String,
-    /// ANSI color4 — blue / primary accent (pywal accent)
+    /// ANSI color4: blue / primary accent (pywal accent)
     pub color4: String,
-    /// ANSI color5 — pink / magenta (pywal accent)
+    /// ANSI color5: pink / magenta (pywal accent)
     pub color5: String,
-    /// ANSI color6 — teal / cyan (pywal accent)
+    /// ANSI color6: teal / cyan (pywal accent)
     pub color6: String,
-    /// Fixed — light overlay / muted fg, never pywal-derived.
+    /// Fixed: light overlay / muted fg, never pywal-derived.
     pub color7: String,
 }
 
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn wal_json_background_and_surface_ignore_pywal() {
-        // TOKYO_NIGHT's special/color0/color7 must NOT leak through — bg,
+        // TOKYO_NIGHT's special/color0/color7 must NOT leak through: bg,
         // surface, overlay, and fg are always BOS's fixed dark values,
         // whatever pywal extracted from the wallpaper.
         let p = from_wal_json(TOKYO_NIGHT).unwrap();

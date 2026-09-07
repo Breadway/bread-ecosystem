@@ -5,7 +5,7 @@
 //! lookup. `bread-capture` runs every target app inside an isolated,
 //! headless compositor instance of a known, fixed size (see its
 //! `isolation` module), so the caller already knows exactly what region to
-//! grab — there's nothing to query.
+//! grab; there's nothing to query.
 
 use anyhow::{bail, Context, Result};
 use std::path::Path;

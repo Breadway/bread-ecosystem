@@ -12,7 +12,7 @@ pub const CYAN: &str = "\x1b[36m";
 pub const MAGENTA: &str = "\x1b[35m";
 pub const BOLD_CYAN: &str = "\x1b[1;36m";
 
-/// Clap help styling — same cyan headers / green literals / dim placeholders
+/// Clap help styling: same cyan headers / green literals / dim placeholders
 /// as the rest of bakery, so `bakery --help` doesn't look like a different
 /// program from `bakery list`.
 pub const CLAP_STYLES: Styles = Styles::styled()
@@ -25,7 +25,7 @@ pub const CLAP_STYLES: Styles = Styles::styled()
     .invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD));
 
 /// Colors are on only when stdout is a real terminal and `NO_COLOR` isn't
-/// set — the ecosystem's existing CLI (breadcrumbs) hardcodes ANSI
+/// set; the ecosystem's existing CLI (breadcrumbs) hardcodes ANSI
 /// unconditionally, which leaks escape codes into piped/logged output; this
 /// is the hardening fix for that gap.
 pub fn colors_enabled() -> bool {
@@ -60,7 +60,7 @@ pub fn dim(s: &str) -> String {
     style(s, DIM)
 }
 
-/// `" [beta]"` / `" [dev]"`, colored — empty string for `Stable` so the
+/// `" [beta]"` / `" [dev]"`, colored; empty string for `Stable` so the
 /// common-case output is unchanged.
 #[allow(dead_code)]
 pub fn track_badge(track: Track) -> String {
@@ -89,7 +89,7 @@ pub fn fail(s: &str) -> String {
     style(&format!("✗ {s}"), RED)
 }
 
-/// Neutral "nothing to do" glyph, dim rather than green — for steady-state
+/// Neutral "nothing to do" glyph, dim rather than green: for steady-state
 /// noise like "already at latest" in `bakery update --all`, where most
 /// packages hit this every run. Reusing GREEN there drowns out the
 /// packages that actually changed, and meaning shouldn't depend on color
@@ -107,7 +107,7 @@ pub fn note(s: &str) -> String {
     style(&format!("note: {s}"), DIM)
 }
 
-/// Cyan verb + bold name + dim version — the install/update/remove banner.
+/// Cyan verb + bold name + dim version: the install/update/remove banner.
 pub fn action(verb: &str, name: &str, version: Option<&str>) {
     let mut line = format!("{}  {}", style(verb, BOLD_CYAN), style(name, BOLD));
     if let Some(v) = version {
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn unchanged_carries_a_distinct_glyph_from_ok_and_fail() {
         // Meaning must survive even with colors stripped (NO_COLOR, or a
-        // terminal palette that makes ANSI codes look alike) — so the glyph
+        // terminal palette that makes ANSI codes look alike), so the glyph
         // itself has to differ, not just the color.
         assert!(unchanged("foo").contains('·'));
         assert!(!ok("foo").contains('·'));
@@ -421,7 +421,7 @@ mod tests {
         assert!(lines[0].contains("0.7.2-dev.20260815142350+30517f1"));
         assert!(lines[1].contains("Package manager"));
         // Shorter version is padded so the columns stay a block, not a
-        // ragged list — the long bakery version used to overflow `{: <10}`.
+        // ragged list: the long bakery version used to overflow `{: <10}`.
         // Compare display columns, not byte offsets: the installed glyph
         // is a 3-byte checkmark sitting in a 1-column slot.
         let bakery_col = visible_len(&lines[0][..lines[0].find("0.7.2-dev").unwrap()]);

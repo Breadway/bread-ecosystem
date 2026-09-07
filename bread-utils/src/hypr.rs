@@ -4,7 +4,7 @@
 //! The socket-path resolution + raw request/response round trip was
 //! duplicated near-verbatim in `breadbox/src/main.rs` (`get_active_workspace`,
 //! lines 26-42) and `breadclip/src/position.rs` (`hyprctl_json`, lines
-//! 58-71) — same `HYPRLAND_INSTANCE_SIGNATURE`/`XDG_RUNTIME_DIR` env lookup,
+//! 58-71): same `HYPRLAND_INSTANCE_SIGNATURE`/`XDG_RUNTIME_DIR` env lookup,
 //! same `.socket.sock` path format, same connect/write/shutdown-write/
 //! read-to-string sequence. `breadmon/src/main.rs`'s `hyprland_socket2_path`
 //! duplicates just the path-resolution half for the event socket.
@@ -12,7 +12,7 @@
 //! `active_window`'s `fullscreen` field deserializes leniently as either a
 //! JSON bool or integer: Hyprland has changed this field's type across
 //! versions (older releases emit a bool, `0`/`1`; newer ones emit an
-//! integer fullscreen *mode* — `0` none, `1` maximized, `2` fullscreen), and
+//! integer fullscreen *mode*: `0` none, `1` maximized, `2` fullscreen), and
 //! a client hard-coded to one shape silently misreads the other instead of
 //! erroring. `breadclip`'s own version (`as_i64().unwrap_or(0) != 0`) only
 //! handles the integer shape; a bool `true` would `.as_i64()` to `None` and
@@ -35,7 +35,7 @@ pub enum Socket {
 /// Resolve the path to one of Hyprland's IPC sockets from
 /// `HYPRLAND_INSTANCE_SIGNATURE` + `XDG_RUNTIME_DIR`. Returns `None` if
 /// `HYPRLAND_INSTANCE_SIGNATURE` isn't set (Hyprland isn't running, or we're
-/// not inside a Hyprland session) — `XDG_RUNTIME_DIR` falls back to
+/// not inside a Hyprland session); `XDG_RUNTIME_DIR` falls back to
 /// `/run/user/<uid>` (this process's real uid, or the historical
 /// `/run/user/1000` if that can't be read) when unset.
 pub fn socket_path(kind: Socket) -> Option<PathBuf> {
@@ -70,13 +70,13 @@ fn fallback_runtime_dir() -> String {
 }
 
 /// Send `request` (e.g. `"j/activewindow"`, `"j/monitors"`) to the socket1
-/// IPC socket and return the raw response body. Blocking/synchronous — this
+/// IPC socket and return the raw response body. Blocking/synchronous: this
 /// matches every current consumer (breadbox, breadclip), which call it from
 /// non-async GTK app code.
 ///
 /// Read/write timeouts are set on the socket (both original hand-rolled
-/// implementations this replaces — breadbox's `get_active_workspace`,
-/// breadclip's `hyprctl_json` — had none): a Hyprland instance that's
+/// implementations this replaces, breadbox's `get_active_workspace`,
+/// breadclip's `hyprctl_json`, had none): a Hyprland instance that's
 /// wedged or mid-reload could otherwise hang this call, and every current
 /// caller runs it on the GTK main thread, so a hang here freezes the whole
 /// UI, not just this query.
@@ -102,7 +102,7 @@ pub fn request_json(request_str: &str) -> Option<serde_json::Value> {
 }
 
 /// Connect to the socket2 event stream. Callers read newline-delimited
-/// `EVENT>>DATA` lines from the returned stream themselves — event framing
+/// `EVENT>>DATA` lines from the returned stream themselves; event framing
 /// and reconnect/backoff policy are genuinely per-consumer (see
 /// `breadmon`'s hotplug listener), so this only replaces the duplicated
 /// path-resolution + connect boilerplate, not a full event-loop
@@ -179,7 +179,7 @@ pub struct Monitor {
 }
 
 /// Query the currently active (focused) window. Returns `None` if the
-/// window is fullscreen or no window is focused — same "centre the popup
+/// window is fullscreen or no window is focused: same "centre the popup
 /// instead" contract `breadclip`'s original `get_active_window` had.
 pub fn active_window() -> Option<ActiveWindow> {
     let win: ActiveWindow = serde_json::from_value(request_json("j/activewindow")?).ok()?;

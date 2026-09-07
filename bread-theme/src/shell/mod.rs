@@ -1,4 +1,4 @@
-//! `bread_theme::shell` — the shell theme manifest system (Phase 1 of the
+//! `bread_theme::shell`: the shell theme manifest system (Phase 1 of the
 //! `THEME_SYSTEM_PLAN.md` design: manifest types, discovery, `extends`
 //! merge, validation, `css()`, `watch()`, and the one compiled-in
 //! `liquid-motion` builtin describing breadbar/breadbox as they exist
@@ -6,7 +6,7 @@
 //!
 //! This module is intentionally gtk-free except for [`watch`] (only
 //! compiled under the `gtk` feature, since `gio::FileMonitor` is a gtk4
-//! dependency) — `bread` (the daemon) and `breadcrumbs` (the CLI) can read
+//! dependency); `bread` (the daemon) and `breadcrumbs` (the CLI) can read
 //! and validate a theme without linking GTK at all.
 //!
 //! ## Discovery (plan §4)
@@ -17,27 +17,27 @@
 //! 3. the compiled-in builtin (currently only `liquid-motion`)
 //!
 //! The *active* id comes from `~/.config/bread/shell.toml`'s `active = "..."`
-//! key — this is the **primary, shared selector**: every host reads the same
+//! key: this is the **primary, shared selector**: every host reads the same
 //! file, so it's the only mechanism that can coordinate two already-running
 //! processes (breadbar and breadbox) onto the same theme. It can be
 //! overridden by `$BREAD_SHELL_THEME`, but that override is a
-//! **single-process convenience for testing/development only** — it's read
+//! **single-process convenience for testing/development only**: it's read
 //! once per process (`active_theme_id`), so setting it in one shell before
 //! launching breadbar has no effect on a separately-launched breadbox unless
 //! both processes' launch environments happen to inherit it from the same
 //! place (e.g. a compositor-wide `exec-once environment` directive). Do not
 //! rely on it to switch themes for a running system; edit `shell.toml`
 //! instead (the `--theme` CLI flag mentioned in the plan is a consumer-side
-//! concern — breadbar/breadbox would set `$BREAD_SHELL_THEME` themselves
+//! concern; breadbar/breadbox would set `$BREAD_SHELL_THEME` themselves
 //! before calling [`load`], rather than this crate parsing argv).
 //!
 //! ## `extends` (plan §4/§11)
 //!
 //! One level, deep-merged: a theme's raw TOML is merged over its `extends`
-//! target's raw TOML (child wins key-by-key, recursing into tables; arrays —
-//! including slot lists — are replaced wholesale, not concatenated). If the
+//! target's raw TOML (child wins key-by-key, recursing into tables; arrays,
+//! including slot lists, are replaced wholesale, not concatenated). If the
 //! base itself declares `extends`, that second-level `extends` is dropped
-//! before merging — chains longer than one level are not supported, by
+//! before merging: chains longer than one level are not supported, by
 //! design (plan explicitly scopes this to "one level").
 //!
 //! ## Never fails (plan §4/§5)
@@ -45,7 +45,7 @@
 //! [`load`] cannot fail: a missing or malformed *active* theme falls back to
 //! the compiled-in builtin, logging once via `tracing::warn!`
 //! ([`load_named`] is the fallible primitive underneath, for callers that
-//! want to know *why* — e.g. a "broken theme" banner in bos-settings).
+//! want to know *why*, e.g. a "broken theme" banner in bos-settings).
 
 mod builtin;
 mod manifest;
@@ -72,7 +72,7 @@ use manifest::RawManifest;
 
 /// A theme, fully resolved: every default filled, every enum validated.
 /// Built once by [`load`]/[`load_named`] and handed to consumers as an
-/// immutable snapshot — a theme *change* (edit, `extends` retarget, hot
+/// immutable snapshot: a theme *change* (edit, `extends` retarget, hot
 /// reload) produces a new `ShellTheme` rather than mutating this one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShellTheme {
@@ -118,16 +118,16 @@ impl ShellTheme {
     pub fn launcher(&self) -> &Launcher {
         &self.launcher
     }
-    /// `[panel]` — the hamburger control-panel popover's `min_width` (CSS)
+    /// `[panel]`: the hamburger control-panel popover's `min_width` (CSS)
     /// and section order.
     pub fn panel(&self) -> &Panel {
         &self.panel
     }
-    /// `[osd]` — which on-screen displays are enabled and their linger time.
+    /// `[osd]`: which on-screen displays are enabled and their linger time.
     pub fn osd(&self) -> &Osd {
         &self.osd
     }
-    /// `[[bar.widget]]` — theme-declared live bar widgets (each a poll + a
+    /// `[[bar.widget]]`: theme-declared live bar widgets (each a poll + a
     /// node tree). Empty for every builtin except where a demo adds one.
     pub fn widgets(&self) -> &[ThemeWidget] {
         &self.widgets
@@ -139,7 +139,7 @@ impl ShellTheme {
         &self.compositor
     }
 
-    /// The theme's full stylesheet — `[tokens]` substituted into the CSS
+    /// The theme's full stylesheet: `[tokens]` substituted into the CSS
     /// template with the optional `extra.css` overlay appended. Rendered once
     /// at resolve time (see `RawManifest::resolve`); this is a cheap clone.
     ///
@@ -155,13 +155,13 @@ impl ShellTheme {
         self.resolved_css.clone()
     }
 
-    /// The rendered stylesheet without the clone — for callers that only read.
+    /// The rendered stylesheet without the clone, for callers that only read.
     pub fn css_str(&self) -> &str {
         &self.resolved_css
     }
 }
 
-/// Where a discovered theme's manifest text came from — also [`ThemeSummary`]'s
+/// Where a discovered theme's manifest text came from: also [`ThemeSummary`]'s
 /// `source` field for a picker UI (bos-settings, plan §5 `list()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeSource {
@@ -208,7 +208,7 @@ enum Source {
     User(PathBuf),
     System(PathBuf),
     /// Carries the id rather than being a bare unit variant now that there's
-    /// more than one compiled-in theme — [`read_source`]/[`css_template_for`]
+    /// more than one compiled-in theme: [`read_source`]/[`css_template_for`]
     /// need to know *which* builtin's assets to hand back.
     Builtin(String),
 }
@@ -259,7 +259,7 @@ fn css_template_for(id: &str) -> String {
 
 /// The fallible primitive: look up `id` through discovery, apply one level
 /// of `extends`, validate, and resolve. Returns `Err` (naming the offending
-/// key/path) rather than falling back — [`load`] is the caller that turns a
+/// key/path) rather than falling back; [`load`] is the caller that turns a
 /// failure into the builtin.
 pub fn load_named(id: &str) -> anyhow::Result<ShellTheme> {
     resolve_theme(id, 0)
@@ -267,7 +267,7 @@ pub fn load_named(id: &str) -> anyhow::Result<ShellTheme> {
 
 /// `None` if theme `id` resolves cleanly, otherwise a one-line reason
 /// (`"theme 'x': tokens.bar_border = \"…\" is not full|bottom|segmented"`,
-/// `"…references unknown module \"teleporter\""`, …) — for a settings UI
+/// `"…references unknown module \"teleporter\""`, …), for a settings UI
 /// showing why a theme is broken instead of silently falling back to the
 /// builtin ([`load`]'s behaviour). Same check [`load_named`] runs.
 pub fn diagnose(id: &str) -> Option<String> {
@@ -330,12 +330,12 @@ fn resolve_theme(id: &str, extends_depth: u8) -> anyhow::Result<ShellTheme> {
 }
 
 /// Bypasses discovery entirely and resolves straight from the compiled-in
-/// `liquid-motion` assets — used as [`load`]'s fallback specifically
+/// `liquid-motion` assets, used as [`load`]'s fallback specifically
 /// *because* it cannot be affected by a broken user override file at the
 /// same id (unlike calling `load_named("liquid-motion")` again, which would
 /// hit that same broken file first via discovery and fail identically).
 /// Deliberately always `liquid-motion`, not "whichever theme was active" or
-/// "the first entry in `builtin::ALL`" — this is the one theme every other
+/// "the first entry in `builtin::ALL`": this is the one theme every other
 /// fallback path in this module bottoms out at, so its identity has to stay
 /// pinned regardless of how many more builtins `glass-workbench` grows
 /// siblings.
@@ -356,7 +356,7 @@ fn resolve_builtin() -> ShellTheme {
 static FALLBACK_LOGGED: std::sync::Once = std::sync::Once::new();
 
 /// The active theme. Never fails: a missing or malformed active theme logs
-/// once (`tracing::warn!`) and falls back to the compiled-in builtin — "the
+/// once (`tracing::warn!`) and falls back to the compiled-in builtin: "the
 /// shell must never fail to start because a theme file is malformed" (plan
 /// §4).
 pub fn load() -> ShellTheme {
@@ -377,7 +377,7 @@ pub fn load() -> ShellTheme {
 }
 
 /// `$BREAD_SHELL_THEME`, else `shell.toml`'s `active` key, else the builtin
-/// default — see the module doc's "Discovery" section for which of these is
+/// default; see the module doc's "Discovery" section for which of these is
 /// the primary/shared selector (`shell.toml`) versus a per-process testing
 /// override (`$BREAD_SHELL_THEME`) that cannot coordinate more than one
 /// already-running process.
@@ -435,7 +435,7 @@ fn scan_theme_dir(
     }
 }
 
-/// Every theme discoverable across user config, system dir, and builtins —
+/// Every theme discoverable across user config, system dir, and builtins:
 /// for a picker UI (plan §5: "bos-settings picker"). User shadows system
 /// shadows builtin for the same id, matching [`load_named`]'s discovery
 /// order.
@@ -492,7 +492,7 @@ mod tests {
     /// guard's lifetime.
     fn isolated_xdg() -> EnvGuard {
         // Shared with `layerrules::tests`, which also isolates
-        // XDG_CONFIG_HOME — see `crate::test_support` for why this must be
+        // XDG_CONFIG_HOME; see `crate::test_support` for why this must be
         // the *same* lock rather than a module-private one.
         let lock = crate::test_support::XDG_CONFIG_HOME_LOCK
             .lock()
@@ -672,7 +672,7 @@ mod tests {
     #[test]
     fn builtin_launcher_matches_liquid_motion_demo_geometry() {
         // bos-ui-demos/proposed/liquid-motion.html's `.bx` block is the spec
-        // as of the launcher-core redesign — radius=20/icon_px=28, not the
+        // as of the launcher-core redesign: radius=20/icon_px=28, not the
         // old pre-redesign hardcoded CSS's 8/32 (see git history for that
         // era's `builtin_launcher_matches_current_breadbox_geometry`).
         let theme = resolve_builtin();
@@ -706,7 +706,7 @@ mod tests {
         assert_eq!(l.icon_px, 22);
         assert!(
             !l.sections,
-            "glass-workbench is a flat list — no Recent/Apps headers"
+            "glass-workbench is a flat list, no Recent/Apps headers"
         );
         assert_eq!(l.row_radius, 6);
         assert_eq!(l.row_inset, 6);
@@ -759,7 +759,7 @@ mod tests {
 
     /// Golden snapshot of every builtin's rendered stylesheet
     /// (`ShellTheme::css` against the default palette). The `.expected.css`
-    /// files are the reviewable record of what each theme actually paints —
+    /// files are the reviewable record of what each theme actually paints:
     /// diff them in review when a template or a token default changes.
     /// Regenerate after an intended change with `BLESS_GOLDEN=1 cargo test`.
     #[test]
@@ -778,7 +778,7 @@ mod tests {
             }
             let want = std::fs::read_to_string(&path).unwrap_or_else(|_| {
                 panic!(
-                    "missing golden {} — run `BLESS_GOLDEN=1 cargo test -p bread-theme`",
+                    "missing golden {}: run `BLESS_GOLDEN=1 cargo test -p bread-theme`",
                     path.display()
                 )
             });
@@ -826,7 +826,7 @@ mod tests {
         assert!(sheet.contains("font-size: 17px; font-weight: 650;"));
 
         // A standalone theme (no `extends`) still renders the full shell from
-        // the shared base template, so its own CSS carries the font too — the
+        // the shared base template, so its own CSS carries the font too, the
         // live-switch path breadbar reloads on a `shell.toml` edit.
         let css = load_named("testfont").unwrap().css(&crate::Palette::default());
         assert!(
@@ -1025,7 +1025,7 @@ mod tests {
                 .any(|s| s.id == "glass-workbench" && s.source == ThemeSource::Builtin),
             "glass-workbench missing from list(): {summaries:?}"
         );
-        // Both builtins must be listed side by side — Phase 5 must not have
+        // Both builtins must be listed side by side; Phase 5 must not have
         // dropped liquid-motion in the process of adding a second theme.
         assert!(summaries
             .iter()
@@ -1097,7 +1097,7 @@ mod tests {
         );
         assert!(
             !css.contains("#7a9a88"),
-            "the demo's sage hex must never leak into the manifest — pywal theming depends on \
+            "the demo's sage hex must never leak into the manifest, pywal theming depends on \
              this staying a palette token name:\n{css}"
         );
     }
@@ -1117,7 +1117,7 @@ mod tests {
                 .any(|s| s.id == "spotlight" && s.source == ThemeSource::Builtin),
             "spotlight missing from list(): {summaries:?}"
         );
-        // All three builtins must be listed side by side — adding the third
+        // All three builtins must be listed side by side; adding the third
         // must not have displaced either of the first two.
         for id in ["liquid-motion", "glass-workbench"] {
             assert!(
@@ -1133,7 +1133,7 @@ mod tests {
     fn spotlight_window_is_a_centred_capsule_not_a_full_width_bar() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
         let w = theme.window();
-        // Anchored top ONLY — neither left nor right, which is what makes
+        // Anchored top ONLY: neither left nor right, which is what makes
         // gtk4-layer-shell centre the surface instead of stretching it
         // (THEME_SYSTEM_PLAN.md §7).
         assert_eq!(w.anchors, vec!["top"]);
@@ -1206,7 +1206,7 @@ mod tests {
     #[test]
     fn launcher_search_geometry_defaults_to_idle_values_when_unset() {
         // liquid-motion's own [launcher] table never sets search_width/
-        // search_radius — a theme that omits them must fall back to "no
+        // search_radius; a theme that omits them must fall back to "no
         // change while searching", not some hardcoded magic number.
         let theme = resolve_builtin();
         let l = theme.launcher();
@@ -1247,7 +1247,7 @@ mod tests {
         );
         assert!(
             !css.contains("#e87898"),
-            "the demo's pink hex must never leak into the manifest — pywal theming depends on \
+            "the demo's pink hex must never leak into the manifest, pywal theming depends on \
              this staying a palette token name:\n{css}"
         );
     }
@@ -1315,7 +1315,7 @@ mod tests {
         ] {
             assert!(
                 !rules[ns].blur,
-                "compositor.{ns}.blur must be false under daylight — a theme must be able \
+                "compositor.{ns}.blur must be false under daylight: a theme must be able \
                  to DISABLE a compositor rule, not just tune it"
             );
         }
@@ -1384,7 +1384,7 @@ mod tests {
         );
         assert!(
             !css.contains("#2f6d7a") && !css.contains("#c2683c"),
-            "the demo's teal/amber hex must never leak into the manifest — pywal theming \
+            "the demo's teal/amber hex must never leak into the manifest, pywal theming \
              depends on this staying palette token names:\n{css}"
         );
     }
@@ -1397,7 +1397,7 @@ mod tests {
         let gw = load_named(builtin::GLASS_WORKBENCH_ID).expect("gw should resolve");
 
         assert_eq!(loaf.name(), "Loaf");
-        // Inherited from glass-workbench, untouched by loaf's theme.toml —
+        // Inherited from glass-workbench, untouched by loaf's theme.toml:
         // which is what makes a glass-workbench <-> loaf switch a *live* one
         // (breadbar `theme::needs_restart` keys off `modules()`).
         assert_eq!(loaf.modules(), gw.modules());
@@ -1423,7 +1423,7 @@ mod tests {
         assert_eq!(loaf.slots().centre, vec!["clock", "widget:right_of_clock"]);
         assert_eq!(loaf.slots().right, vec!["wifi", "battery", "control"]);
 
-        // Renders from the shared base template — no per-theme CSS file.
+        // Renders from the shared base template, no per-theme CSS file.
         // Renders from the shared base template (no per-theme CSS file), and
         // `resolve` already guarantees no `{token}` is left unsubstituted.
         let css = loaf.css(&crate::Palette::default());
@@ -1444,7 +1444,7 @@ mod tests {
 
     #[test]
     fn light_token_defaults_false_for_every_other_builtin() {
-        // The other three builtins must render unchanged — this flag must
+        // The other three builtins must render unchanged; this flag must
         // not flip anything unless a theme explicitly opts in.
         for id in [
             builtin::LIQUID_MOTION_ID,
@@ -1605,7 +1605,7 @@ mod tests {
         let theme = load_named("child").expect("child theme should resolve");
         // Only one level is honored: child merges with parent (pad=2), and
         // parent's own `extends = "grandparent"` is dropped rather than
-        // chased — the grandparent's pad=1 never applies.
+        // chased; the grandparent's pad=1 never applies.
         assert_eq!(theme.tokens().pad(), 2);
     }
 
@@ -1757,7 +1757,7 @@ mod tests {
     #[test]
     fn malformed_active_theme_falls_back_to_builtin_without_panicking() {
         let xdg = isolated_xdg();
-        // A broken override sitting at the *active* id's own path — this is
+        // A broken override sitting at the *active* id's own path: this is
         // the case resolve_builtin() exists to survive without re-touching
         // the same broken file.
         write_theme(&xdg, "liquid-motion", "this is not [valid toml");
@@ -1888,7 +1888,7 @@ mod tests {
     // isolation but fails `resolve_theme` at runtime (bad slot name, an
     // unrecognized field after a schema change, a broken `extends`), so
     // `load()` silently falls back to liquid-motion. breadbar has no tracing
-    // subscriber, so that fallback's `warn!` goes nowhere — the shell just
+    // subscriber, so that fallback's `warn!` goes nowhere; the shell just
     // quietly ignores `active = "spotlight"`. CI must catch it instead.
 
     #[test]

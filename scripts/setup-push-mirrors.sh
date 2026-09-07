@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# setup-push-mirrors.sh — provision Forgejo native Push Mirrors to GitHub for
+# setup-push-mirrors.sh: provision Forgejo native Push Mirrors to GitHub for
 # every repo under the Breadway account, replacing the old per-repo
 # .forgejo/workflows/mirror.yml + MIRROR_TOKEN pattern.
 #
 # THIS SCRIPT MUTATES LIVE FORGEJO STATE WHEN RUN WITHOUT --dry-run.
 # Always run with --dry-run first and review the output before running for
-# real. Nothing in this script deletes anything — see the separate
+# real. Nothing in this script deletes anything; see the separate
 # cleanup-old-mirror-workflows.sh for removing the old mirror.yml files,
 # which should only be run after confirming push mirrors are syncing.
 #
 # What it does, per repo returned by the Forgejo API:
-#   1. GET  /repos/{owner}/{repo}/push_mirrors  — list existing push mirrors
+#   1. GET  /repos/{owner}/{repo}/push_mirrors: list existing push mirrors
 #   2. If one already targets https://github.com/<gh-owner>/<repo>.git, skip
-#      (idempotent — safe to re-run).
+#      (idempotent, safe to re-run).
 #   3. Otherwise POST /repos/{owner}/{repo}/push_mirrors to create one, with
 #      sync_on_commit=true and a periodic interval as belt-and-suspenders.
 #
@@ -41,11 +41,11 @@
 #                              (including full request bodies except the
 #                              GitHub token, which is redacted) without
 #                              actually issuing any POST. GETs (listing repos,
-#                              listing existing push mirrors) always happen —
+#                              listing existing push mirrors) always happen;
 #                              they're read-only and needed to print accurate
 #                              dry-run output.
 #   --include-private          By default, private Forgejo repos are SKIPPED
-#                              and reported, not mirrored — pushing a private
+#                              and reported, not mirrored: pushing a private
 #                              repo's history to a public GitHub repo is a
 #                              one-way disclosure decision this script should
 #                              never make silently. Pass this flag to include
@@ -117,7 +117,7 @@ api() {
     fi
 }
 
-# Determine whether FORGEJO_OWNER is an org or a user — orgs and users use
+# Determine whether FORGEJO_OWNER is an org or a user; orgs and users use
 # different list-repos endpoints.
 owner_kind="org"
 if ! curl -fsS -o /dev/null -H "Authorization: token ${FORGEJO_TOKEN}" \

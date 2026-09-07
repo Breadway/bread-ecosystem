@@ -92,7 +92,7 @@ fn reload_app() {
 /// `bread-theme` writes the file with write-tmp-then-rename (atomic), which
 /// *replaces the inode*. A monitor on the file itself dies after the first
 /// replace (inotify reports DELETE_SELF and never re-arms), so we monitor the
-/// parent *directory* and filter for the stylesheet's filename — that fires
+/// parent *directory* and filter for the stylesheet's filename; that fires
 /// reliably on every reload. Returns the monitor (keep it alive to stay armed).
 fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
     let target = crate::shared_css_path();
@@ -117,7 +117,7 @@ fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
 /// Apply an app's *own* stylesheet and keep it live across palette changes.
 ///
 /// `build` is called now to produce the app-specific CSS, and again every time
-/// the shared theme file is rewritten — i.e. whenever `bread-theme reload` (or
+/// the shared theme file is rewritten, i.e. whenever `bread-theme reload` (or
 /// `generate`) runs after pywal changes. The app recolours in place, no restart.
 ///
 /// This is the counterpart to [`apply_shared`]: that hot-reloads the *shared*
@@ -137,7 +137,7 @@ pub fn apply_app_css<F: Fn() -> String + 'static>(build: F) {
 /// Load the ecosystem's shared stylesheet (the file written by
 /// `bread-theme generate`, or a freshly rendered fallback if absent) at
 /// APPLICATION priority, and watch the file so the whole UI recolours live when
-/// the palette changes — no app rebuild or restart needed.
+/// the palette changes: no app rebuild or restart needed.
 ///
 /// Call once at startup; then add the app's own CSS provider *after* this so
 /// app-specific rules win on equal specificity.
@@ -169,7 +169,7 @@ pub fn apply_css(css: &str, provider: &RefCell<Option<CssProvider>>) {
 
 /// A filter/tag chip using the shared `.chip` stylesheet rule (an
 /// `@overlay`-filled pill, `@accent`-filled when the `active` CSS class is
-/// set) instead of a fresh literal color — this is the fix for the same
+/// set) instead of a fresh literal color: this is the fix for the same
 /// component drifting to three different fills across breadclip (grey),
 /// breadpad, and breadman (both cream), none of which agreed with each
 /// other or with the shared token.
@@ -180,7 +180,7 @@ pub fn chip(label: &str) -> gtk4::Button {
         .build()
 }
 
-/// Toggles a chip's (or any widget's) `active` CSS class — the `.chip.active`
+/// Toggles a chip's (or any widget's) `active` CSS class: the `.chip.active`
 /// stylesheet rule fills it with the accent instead of the neutral overlay.
 /// Wiring *when* a chip becomes active (single-select filter, multi-select
 /// tags, etc.) is genuinely per-app, so that stays the caller's job; this is
@@ -227,7 +227,7 @@ thread_local! {
     static AUTO_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     static MAP_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     /// Surfaces whose `enter-monitor` we've already hooked, keyed by
-    /// `GdkSurface` pointer (not widget pointer — a widget can be re-realized
+    /// `GdkSurface` pointer (not widget pointer: a widget can be re-realized
     /// onto a fresh surface).
     static ENTER_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     /// widget pointer -> the surface pointer currently in [`ENTER_HOOKED`] for
@@ -313,7 +313,7 @@ fn reload_stem_for_event(path: &Path, want_ext: &str) -> Option<String> {
 ///
 /// With `GFileMonitorFlags::WATCH_MOVES` set (as `arm_dir_reload_watch`
 /// requests), a rename lands as a single event where `file` is the *source*
-/// path and `other` is the *destination* — this is what `atomic_write`
+/// path and `other` is the *destination*: this is what `atomic_write`
 /// (`output.rs`) produces on every reload: write to a `.{name}.tmp.{pid}`
 /// sibling, then `rename()` it onto the real `.css`/`.json` target. `other`
 /// is therefore the only field that can carry the right extension for a
@@ -356,7 +356,7 @@ fn try_arm_palettes_watch() -> Option<gio::FileMonitor> {
 
 /// Also watch `palettes/<output>.json` (finding #6): the CLI writes the `.json`
 /// and the `.css` together, but third-party tooling that only rewrites the
-/// palette JSON would otherwise leave every bound window stale — the reload
+/// palette JSON would otherwise leave every bound window stale; the reload
 /// path re-reads the JSON via `load_palette_for` regardless, so reacting to
 /// either file is correct (a paired write just reloads twice, harmlessly).
 fn ensure_palettes_watch() {
@@ -392,8 +392,8 @@ fn reattach_bound_tree(root: &gtk4::Widget) {
 
 /// Recursively hook `observe_children` on `widget` *and every current
 /// descendant container*, so a subtree added lazily at **any** depth after the
-/// bind — a popover's contents, menu items, rows appended into an existing box
-/// — gets the per-output provider too (finding #3).
+/// bind (a popover's contents, menu items, rows appended into an existing box)
+/// gets the per-output provider too (finding #3).
 ///
 /// The pre-fix code only watched the root's *direct* children, so anything
 /// deeper than one level that appeared after bind/map silently rendered with
@@ -498,7 +498,7 @@ fn bind_window_inner(
 }
 
 fn ensure_map_reattach(widget: &gtk4::Widget) {
-    // `connect_map` once per widget — re-bind already lives in BINDS. Covers the
+    // `connect_map` once per widget; re-bind already lives in BINDS. Covers the
     // whole-window-remapped case; `watch_subtree` covers lazily-grown subtrees.
     // `MAP_HOOKED` is cleared by `forget_bind` on destroy.
     let key = widget_key(widget);
@@ -674,7 +674,7 @@ mod tests {
     fn reload_event_path_prefers_the_rename_destination_over_the_tmp_source() {
         // Regression for ECO-14: on a `RENAMED` event (what `atomic_write`'s
         // write-tmp-then-rename produces under `WATCH_MOVES`), `file` is the
-        // tmp source and `other` is the real destination — only `other`
+        // tmp source and `other` is the real destination: only `other`
         // carries the right extension, so it must win.
         let tmp = gio::File::for_path("/x/themes/.eDP-1.css.tmp.42");
         let dest = gio::File::for_path("/x/themes/eDP-1.css");
@@ -685,7 +685,7 @@ mod tests {
         );
 
         // A direct CREATE/CHANGED event (no rename, e.g. a non-atomic editor
-        // write) carries no `other` — fall back to `file`.
+        // write) carries no `other`; fall back to `file`.
         assert_eq!(
             reload_event_path(&dest, None).as_deref(),
             Some(Path::new("/x/themes/eDP-1.css"))
@@ -762,7 +762,7 @@ mod tests {
     // tried here and dropped: it pumps the default `glib::MainContext`, same
     // as `shell::hotreload`'s tests, and the two collide under the default
     // parallel test runner (`cargo test --workspace --features gtk`, as CI
-    // runs it) — a `FileMonitor` created on one test's thread gets its signal
+    // runs it): a `FileMonitor` created on one test's thread gets its signal
     // dispatched while another test's thread is mid-iteration on the same
     // shared context, which glib's thread guard rejects
     // ("Value accessed from different thread than where it was created"),
@@ -773,7 +773,7 @@ mod tests {
     // ---- widget lifecycle --------------------------------------------------
     //
     // These need a real GDK display *and* call `gtk4::init()`, which acquires
-    // the thread-default glib main context — running them alongside the rest of
+    // the thread-default glib main context; running them alongside the rest of
     // the suite (where `shell::hotreload` tests pump that context to receive
     // `FileMonitor` events) deadlocks those. So they're `#[ignore]`d by default
     // and the `--features gtk` CI/pre-push command skips them; run them on
@@ -785,7 +785,7 @@ mod tests {
 
     // One test only: `gtk4::init()` binds GTK to the calling thread for the
     // life of the process and panics ("two different threads") if any *other*
-    // test thread calls it afterwards — so all the widget-level assertions
+    // test thread calls it afterwards, so all the widget-level assertions
     // share a single init here.
     #[test]
     #[ignore = "needs a GDK display + exclusive glib main context; run alone (see module note)"]

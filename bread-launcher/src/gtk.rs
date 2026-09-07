@@ -1,5 +1,5 @@
 //! GTK4 results-list widget: the "row-building half" of what used to be
-//! breadbox's `run_ui` (`THEME_SYSTEM_PLAN.md` §3) — desktop-entry rows,
+//! breadbox's `run_ui` (`THEME_SYSTEM_PLAN.md` §3): desktop-entry rows,
 //! fuzzy filtering, match/history sorting, and keyboard-style selection
 //! movement, packaged as [`ResultsList`] so any host window can embed it.
 //! breadbox wraps it in a full-screen overlay window today; breadbar's
@@ -72,7 +72,7 @@ fn build_row(entry: &DesktopEntry, idx: u32, icon_px: i32) -> ListBoxRow {
 }
 
 /// A non-selectable, non-activatable "Recent"/"Apps" label row (plan phase
-/// 6c, `[launcher].sections`) — deliberately carries no `"entry"` row data,
+/// 6c, `[launcher].sections`): deliberately carries no `"entry"` row data,
 /// which is exactly what [`row_entry`] (and everything downstream of it:
 /// `set_query`'s filter, `select_next`/`select_prev`'s traversal) already
 /// uses to tell a header apart from a real app row.
@@ -89,20 +89,20 @@ fn build_header_row(label: &str, idx: u32) -> ListBoxRow {
     row
 }
 
-/// Reads the [`DesktopEntry`] a row was built from — e.g. from a
+/// Reads the [`DesktopEntry`] a row was built from, e.g. from a
 /// `ListBox::connect_row_activated` handler, which hands back a row
 /// reference rather than going through [`ResultsList::selected_entry`].
 pub fn row_entry(row: &ListBoxRow) -> Option<DesktopEntry> {
     unsafe { row.data::<DesktopEntry>("entry").map(|p| p.as_ref().clone()) }
 }
 
-/// A scrollable, filterable, rankable list of desktop-entry rows — the
+/// A scrollable, filterable, rankable list of desktop-entry rows: the
 /// widget breadbox's overlay wraps today and breadbar's capsule will embed
 /// next (`THEME_SYSTEM_PLAN.md` §7). A host drives it through
 /// [`set_query`](Self::set_query) (wire to a search entry's `changed`
 /// signal), [`select_next`](Self::select_next)/[`select_prev`](Self::select_prev)
 /// (wire to arrow keys), and reads the current pick via
-/// [`selected_entry`](Self::selected_entry) — `list`/`scroller` are exposed
+/// [`selected_entry`](Self::selected_entry); `list`/`scroller` are exposed
 /// directly for anything else a host needs (e.g. `connect_row_activated`
 /// for click-to-launch, or placing `scroller` in a slot).
 #[derive(Clone)]
@@ -114,15 +114,15 @@ pub struct ResultsList {
 }
 
 impl ResultsList {
-    /// Builds one row per entry (in `entries`' given order — that order is
+    /// Builds one row per entry (in `entries`' given order; that order is
     /// also the fallback sort when the query is empty) and wires up sorting
     /// against `history`'s launch counts.
     ///
     /// `sections` (`[launcher].sections`, plan phase 6c): when true, the
     /// idle (empty-query) view groups `entries` into "Recent"/"Apps"
     /// [`build_header_row`]s via [`split_sections`] instead of one flat
-    /// list. Sections disappear the moment a query is typed — `set_query`
-    /// falls back to the same flat fuzzy-ranked list either way — so this
+    /// list. Sections disappear the moment a query is typed; `set_query`
+    /// falls back to the same flat fuzzy-ranked list either way, so this
     /// only changes the initial build order and the header rows' presence,
     /// never the (unchanged) search behaviour. `false` reproduces the
     /// exact pre-phase-6c flat list breadbox's own overlay still uses.
@@ -176,7 +176,7 @@ impl ResultsList {
                     };
                     return oa.cmp(&ob).into();
                 }
-                // A header row carries no "entry" data — sort it after any
+                // A header row carries no "entry" data: sort it after any
                 // real row rather than treating the comparison as `Equal`,
                 // though `set_query` also hides every header outright once
                 // a query is non-empty, so this only matters for the
@@ -219,7 +219,7 @@ impl ResultsList {
     /// Re-filters (fuzzy match against name, `wm_class`, and `exec`) and
     /// re-sorts by `query`, then selects the first visible row. A header
     /// row (see [`build_header_row`]) only ever shows in the idle
-    /// (empty-query) browse view — it has no name/`wm_class`/`exec` of its
+    /// (empty-query) browse view; it has no name/`wm_class`/`exec` of its
     /// own to filter against.
     pub fn set_query(&self, query: &str) {
         *self.query.borrow_mut() = query.to_string();
@@ -248,7 +248,7 @@ impl ResultsList {
     }
 
     /// Moves the selection to the next visible row, if any. Skips header
-    /// rows even though they may be visible (the idle browse view) —
+    /// rows even though they may be visible (the idle browse view):
     /// `set_selectable(false)` alone doesn't stop a programmatic
     /// `select_row` call from landing on one.
     pub fn select_next(&self) {
@@ -288,7 +288,7 @@ impl ResultsList {
 
     /// Records `entry` as launched in the shared history and persists it.
     /// Call before actually launching (matching breadbox's original
-    /// increment-then-launch ordering) — history and launching are separate
+    /// increment-then-launch ordering): history and launching are separate
     /// concerns, so this doesn't call [`crate::do_launch`] itself.
     pub fn record_launch(&self, entry: &DesktopEntry) {
         self.history.borrow_mut().increment(&entry.name);

@@ -4,20 +4,20 @@
 //! `breadbox/src/main.rs` and `breadclip/src/main.rs`:
 //!
 //! - Layer-shell window setup: `breadbox/src/main.rs:357-365` /
-//!   `breadclip/src/main.rs:231-239` — identical `init_layer_shell` +
+//!   `breadclip/src/main.rs:231-239`: identical `init_layer_shell` +
 //!   namespace + `Layer::Overlay` + `KeyboardMode::Exclusive` + anchor all
 //!   four edges + zero exclusive zone.
 //! - Up/Down navigation loop: `breadbox/src/main.rs:515-546` /
-//!   `breadclip/src/main.rs:423-454` — byte-for-byte identical "find the
+//!   `breadclip/src/main.rs:423-454`: byte-for-byte identical "find the
 //!   next/previous *visible* row" loop (breadclip's own comment even reads
 //!   `// ---- Keyboard handler (capture phase, same as breadbox) ----`).
 //! - Click-outside-close: `breadbox/src/main.rs:566-581` /
-//!   `breadclip/src/main.rs:474-...` — identical bounds-check against a
+//!   `breadclip/src/main.rs:474-...`: identical bounds-check against a
 //!   content widget (breadclip: `// ---- Click outside panel → close (same
 //!   pattern as breadbox) ----`).
 //!
 //! Deliberately *not* extracted: the rest of each app's `EventControllerKey`
-//! handling (Enter/Delete semantics, filter chips, search) — those differ
+//! handling (Enter/Delete semantics, filter chips, search): those differ
 //! per app (`do_launch` vs `do_copy`+`Delete`-to-remove) and forcing them
 //! into one callback-owning "scaffold" struct would be a leakier
 //! abstraction than the ~5 free functions below.
@@ -48,7 +48,7 @@ pub fn new_overlay_window(app: &gtk4::Application, namespace: &str) -> Applicati
 }
 
 /// Select the next *visible* row after the current selection (rows can be
-/// hidden by a live search filter — a plain "select index + 1" would land
+/// hidden by a live search filter; a plain "select index + 1" would land
 /// on a filtered-out row). No-op if there is no next visible row.
 pub fn select_next_visible(list: &gtk4::ListBox) {
     let cur = list.selected_row().map(|r| r.index()).unwrap_or(-1);

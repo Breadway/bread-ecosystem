@@ -1,14 +1,14 @@
 //! The set of bar-module names a `[bar.slots]` entry may reference.
 //!
 //! A slot entry is one of:
-//! - a **built-in module name** ([`BUILTIN_MODULES`]) — a widget the shell app
+//! - a **built-in module name** ([`BUILTIN_MODULES`]): a widget the shell app
 //!   constructs itself;
-//! - a name the app **registered at startup** ([`register`]) — how a new
+//! - a name the app **registered at startup** ([`register`]): how a new
 //!   built-in module is added without editing this crate (plan §2 phase 3);
-//! - a `widget:<key>` entry — a Lua-declared widget or a `WidgetPlacement`
+//! - a `widget:<key>` entry: a Lua-declared widget or a `WidgetPlacement`
 //!   alias, validated only by its `widget:` prefix (the suffix is open);
 //! - the `"+"` splice marker inside a theme that `extends` another (replaced
-//!   at merge time — see `manifest::merge_values`).
+//!   at merge time, see `manifest::merge_values`).
 //!
 //! `list()` / the `bread` daemon load themes without an app, so they see only
 //! [`BUILTIN_MODULES`] plus whatever any in-process [`register`] call added.
@@ -50,7 +50,7 @@ where
     }
 }
 
-/// Every module name a slot entry may currently reference — built-ins plus
+/// Every module name a slot entry may currently reference: built-ins plus
 /// anything [`register`]ed. For a settings UI enumerating what a theme may
 /// put in a slot (bos-settings, plan §5).
 pub fn all() -> Vec<String> {
@@ -66,7 +66,7 @@ pub fn all() -> Vec<String> {
 }
 
 /// Whether `name` is a currently-valid slot-entry module (not counting the
-/// `widget:` prefix or the `"+"` marker — the caller handles those).
+/// `widget:` prefix or the `"+"` marker; the caller handles those).
 pub(super) fn is_known(name: &str) -> bool {
     BUILTIN_MODULES.contains(&name)
         || REGISTERED
@@ -93,7 +93,7 @@ mod tests {
         assert!(is_known("git-branch"));
         let all = all();
         assert_eq!(all.iter().filter(|m| *m == "git-branch").count(), 1);
-        // `cpu` is a builtin — not duplicated into the registered list.
+        // `cpu` is a builtin, not duplicated into the registered list.
         assert_eq!(all.iter().filter(|m| *m == "cpu").count(), 1);
     }
 }

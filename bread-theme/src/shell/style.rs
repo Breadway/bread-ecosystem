@@ -1,10 +1,10 @@
-//! Derived style values — the branching that used to live in
+//! Derived style values: the branching that used to live in
 //! `breadbar::theme::load_css` (one function rendering all four themes with
 //! `if light` / `if segmented` / per-`WorkspaceStyle` arms).
 //!
-//! These are computed from the *declarative* inputs a theme already sets —
+//! These are computed from the *declarative* inputs a theme already sets:
 //! `tokens.light`, `tokens.bar_border`, `modules.workspaces.style`,
-//! `launcher.search_radius` — and handed to [`crate::shell::ShellTheme::css`]
+//! `launcher.search_radius`, and handed to [`crate::shell::ShellTheme::css`]
 //! as extra `{name}` substitution pairs on top of [`Tokens::subst_pairs`], so
 //! the shared `assets/shell/base.css` template needs no conditional syntax:
 //! every theme renders from the one template, its differences falling out of
@@ -194,7 +194,7 @@ pub(super) fn subst_pairs(
         ),
     };
 
-    // breadbox's overlay-launcher geometry — every value straight off
+    // breadbox's overlay-launcher geometry: every value straight off
     // `[launcher]`, the `{launcher_footer_case}` fragment its one derivation
     // (`sections` also drives the uppercase footer, as in the demos).
     let footer_case = if l.sections {

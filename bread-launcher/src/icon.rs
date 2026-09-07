@@ -5,7 +5,7 @@ pub struct IconCache {
 }
 
 impl IconCache {
-    /// `app` picks the cache subdirectory (see [`crate::cache_dir`]) — pass
+    /// `app` picks the cache subdirectory (see [`crate::cache_dir`]): pass
     /// the same name across a process's calls so `path_for` and
     /// `manifest_path` agree on where icons live.
     pub fn new(app: &str) -> Self {

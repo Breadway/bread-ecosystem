@@ -4,14 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Headless app-launcher core (desktop-entry discovery, fuzzy matching/ranking, launch history, launching) plus an optional GTK4 results-list widget — the shared logic behind breadbox's overlay window and breadbar's embedded capsule"
+description = "Headless app-launcher core (desktop-entry discovery, fuzzy matching/ranking, launch history, launching) plus an optional GTK4 results-list widget: the shared logic behind breadbox's overlay window and breadbar's embedded capsule"
 repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
 keywords = ["launcher", "desktop-entry", "gtk4", "wayland"]
 
 [dependencies]
 serde_json = { workspace = true }
 # `do_launch`/`emit_launched` publish a `bread.<app>.launched` event over
-# breadd's IPC socket after a successful spawn, fire-and-forget — this was
+# breadd's IPC socket after a successful spawn, fire-and-forget; this was
 # already breadbox's behaviour (`BreadClient::emit` never blocks or errors
 # the launching caller), just relocated. Not optional: launching is core,
 # headless functionality, unlike the GTK widget below.

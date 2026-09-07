@@ -3,15 +3,15 @@
 //! Drives each target app's `--screenshot <view> --output <path>` mode (see
 //! `bread-screenshots` for what that mode does inside the app) and reports
 //! pass/fail per view/app. Plain `bread-capture` with no flags captures
-//! every known app's every view in one run — each app's binary is resolved
+//! every known app's every view in one run: each app's binary is resolved
 //! by its own bare name via `$PATH`, same as running it directly by name
 //! would. `--app <name>` restricts to one app; `--app-path <path>`
 //! overrides where its binary is found (and, without `--app`, also selects
-//! which app by its file stem — so `--app-path ./target/release/breadbox`
+//! which app by its file stem, so `--app-path ./target/release/breadbox`
 //! alone still works); `--view <name>` further restricts to one view. The
 //! view list for each app is looked up from [`TARGETS`] below. Each app
-//! gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<view>.png`)
-//! — no versioned `screenshots/vX.Y.Z/latest` structure or manifest file
+//! gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<view>.png`),
+//! no versioned `screenshots/vX.Y.Z/latest` structure or manifest file
 //! yet, since that's still not earning its complexity over a handful of
 //! apps.
 //!
@@ -19,7 +19,7 @@
 //! (see [`isolation`]) rather than the operator's live desktop, so another
 //! window (or their own differently-themed real bar) can't leak into a
 //! capture. `--no-isolate` skips that and captures directly against whatever
-//! session bread-capture itself is running in — useful for debugging the
+//! session bread-capture itself is running in; useful for debugging the
 //! capture sequence itself, since you can then actually watch it happen.
 
 mod isolation;
@@ -33,7 +33,7 @@ use std::time::Duration;
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Per-app (view name, output filename) lists. Keyed by the app's binary
-/// name — see `--app-name`. Filenames are plain (no app prefix): each app
+/// name; see `--app-name`. Filenames are plain (no app prefix): each app
 /// gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<file>`),
 /// so the prefix would just be redundant with the folder name.
 const TARGETS: &[(&str, &[(&str, &str)])] = &[
@@ -51,12 +51,12 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("osd-brightness", "osd-brightness.png"),
             ("wifi-add-dialog", "wifi-add-dialog.png"),
             // Theme 04/spotlight's embedded capsule (only rendered under
-            // `BREAD_SHELL_THEME=spotlight` — every other theme's [bar.slots]
+            // `BREAD_SHELL_THEME=spotlight`; every other theme's [bar.slots]
             // never places launcher_entry/launcher_results anywhere).
             ("capsule-collapsed", "capsule-collapsed.png"),
             ("capsule-expanded", "capsule-expanded.png"),
             // Phase 6c: query sections (idle "Recent"/"Apps" headers) and
-            // the `=` calc mode — see breadbar's own `screenshot::KNOWN_VIEWS`
+            // the `=` calc mode; see breadbar's own `screenshot::KNOWN_VIEWS`
             // doc comment for why the search-state width/radius change
             // (item E) doesn't need a view of its own.
             ("capsule-sections", "capsule-sections.png"),
@@ -140,7 +140,7 @@ struct Cli {
 
     /// Path to that app's binary (resolved via $PATH if not a path).
     /// Without `--app`, this also selects *which* app by its file stem
-    /// (e.g. `./target/release/breadbox` -> `breadbox`) — so a single-app
+    /// (e.g. `./target/release/breadbox` -> `breadbox`), so a single-app
     /// run never needs both flags. Ignored (with a warning) if given
     /// together with a multi-app run (no `--app`, and the path isn't
     /// resolvable to exactly one app).
@@ -219,7 +219,7 @@ fn main() -> Result<ExitCode> {
 
     // Bound, not dropped-and-discarded: `_isolation`'s teardown (kill the
     // compositor, remove its socket/config) must run via Drop regardless of
-    // how this function returns below — returning an ExitCode rather than
+    // how this function returns below: returning an ExitCode rather than
     // calling `std::process::exit` (which skips destructors entirely) is
     // what makes that true on the failure path too.
     let _isolation = if cli.no_isolate {

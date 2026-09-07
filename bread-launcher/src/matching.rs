@@ -25,7 +25,7 @@ pub fn fuzzy_matches(pattern: &str, text: &str) -> bool {
     true
 }
 
-/// Ranks how well `query` matches `entry` — lower is better. Exact match (by
+/// Ranks how well `query` matches `entry`: lower is better. Exact match (by
 /// name or `wm_class`) sorts first, then name-prefix, then name-contains,
 /// then `wm_class`-prefix/contains, then everything else that still passed
 /// [`fuzzy_matches`] (a subsequence match with no stronger relationship).
@@ -145,14 +145,14 @@ pub fn load_sorted_entries(
 pub const MAX_RECENT: usize = 4;
 
 /// Splits `entries` (already ordered by [`load_sorted_entries`]) into a
-/// "recent" section — the entries `history` has any launch count for, most-
-/// launched first, capped at [`MAX_RECENT`] — and an "apps" section: every
+/// "recent" section (the entries `history` has any launch count for, most-
+/// launched first, capped at [`MAX_RECENT`]) and an "apps" section: every
 /// other entry, in its existing relative order. No new tracking beyond
 /// `LaunchHistory`'s existing counts (THEME_SYSTEM_PLAN.md phase 6c task
 /// notes: "`LaunchHistory` already tracks counts for a recents list").
 ///
 /// Only meaningful when `entries` has no priority-ranked prefix (breadbar's
-/// capsule calls [`load_sorted_entries`] with an empty `priority` list) —
+/// capsule calls [`load_sorted_entries`] with an empty `priority` list);
 /// with a non-empty priority list, priority-ranked entries still sort first
 /// and would be treated as "apps" here even if launched often, since this
 /// function has no way to tell "sorted first because launched a lot" from
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn multibyte_term_that_fails_word_boundary_does_not_panic() {
         // "é" occurs in "café" but is preceded by an alphanumeric, so the
-        // whole-word check fails and the scan must continue — landing mid
+        // whole-word check fails and the scan must continue, landing mid
         // character before the fix.
         assert!(!super::matches_term("café", "é"));
         assert!(!super::matches_term("naïve café", "ï"));
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn matches_term_rejects_substring_of_a_larger_word() {
-        // "code" must not match inside "vscodium" — this is the whole
+        // "code" must not match inside "vscodium"; this is the whole
         // reason matches_term exists instead of a plain `contains`.
         assert!(!matches_term("vscodium", "code"));
     }

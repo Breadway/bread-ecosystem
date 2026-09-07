@@ -1,4 +1,4 @@
-//! A machine-readable description of the `theme.toml` schema — the token
+//! A machine-readable description of the `theme.toml` schema: the token
 //! fields with their types and defaults, the closed enum vocabularies, and
 //! the currently-known slot module names.
 //!
@@ -66,13 +66,13 @@ pub fn describe() -> Value {
                 "modules": super::modules::all(),
             },
             "widget": {
-                "note": "[[bar.widget]] — a live bar widget: a poll + a node tree, rendered where a `widget:<slot>` entry sits",
+                "note": "[[bar.widget]]: a live bar widget, a poll + a node tree, rendered where a `widget:<slot>` entry sits",
                 "fields": {
                     "id":    { "type": "string" },
                     "slot":  { "type": "string", "note": "must match a widget:<slot> in some [bar.slots] list" },
                     "order": { "type": "int", "default": 0 },
                     "bind":  { "cmd": "string (shell; trimmed stdout replaces {value})",
-                               "every": "duration — \"500ms\" / \"5s\" / \"2m\"" },
+                               "every": "duration: \"500ms\" / \"5s\" / \"2m\"" },
                     "node":  { "kind": ["box", "label", "icon", "progress"],
                                "box":   "orientation?, spacing?, class?, children[]",
                                "label": "text, class?, color?, weight?, size?",
@@ -103,7 +103,7 @@ pub fn describe() -> Value {
         },
         "launcher": {
             "mode":  { "type": "enum", "values": ["overlay", "embedded"] },
-            "note":  "geometry keys (radius, row_radius, panel_alpha, …) are CSS — see the demos",
+            "note":  "geometry keys (radius, row_radius, panel_alpha, …) are CSS; see the demos",
         },
         "panel": {
             "min_width": { "type": "int", "unit": "px", "default": super::types::Panel::default().min_width },

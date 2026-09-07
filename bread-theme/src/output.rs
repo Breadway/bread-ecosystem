@@ -25,14 +25,14 @@ pub(crate) fn runtime_bread_dir() -> PathBuf {
 /// Turn an output/connector name into a single path segment for
 /// `palettes/<name>.json` / `themes/<name>.css`.
 ///
-/// Keep `[A-Za-z0-9._-]` verbatim (every real Hyprland connector — `eDP-1`,
-/// `HDMI-A-1`, `DP-2` — is already only those); **percent-encode** every other
+/// Keep `[A-Za-z0-9._-]` verbatim (every real Hyprland connector, `eDP-1`,
+/// `HDMI-A-1`, `DP-2`, is already only those); **percent-encode** every other
 /// byte as `%XX` (upper-hex). Percent-encoding is injective, so two different
 /// connectors can never land on the same file: the old scheme mapped `/`, `:`
 /// and space all to `_`, so `a/b` and `a:b` both became `a_b` and silently
 /// shared one palette + stylesheet, last writer wins. `%` itself is not in the
 /// keep-set, so it encodes to `%25` and the mapping stays reversible in
-/// principle (nothing needs to decode today — [`reload_binds_for_sanitized`]
+/// principle (nothing needs to decode today; [`reload_binds_for_sanitized`]
 /// only compares `sanitize_output(name)` against the on-disk file stem).
 pub fn sanitize_output(output: &str) -> String {
     if output.is_empty() {
@@ -71,7 +71,7 @@ pub(crate) fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
     }
     // Pad the temp name with the pid (matching `bread_utils::atomic`) so two
     // concurrent writers for the same target can't race on one shared `.tmp`
-    // file — e.g. two `bread-theme generate-output` runs writing the same
+    // file, e.g. two `bread-theme generate-output` runs writing the same
     // `themes/<output>.css` at once.
     let tmp = match path.file_name().and_then(|n| n.to_str()) {
         Some(name) => path.with_file_name(format!(".{name}.tmp.{}", std::process::id())),
@@ -82,7 +82,7 @@ pub(crate) fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Accents only — never persist pywal's light background/surface/overlay/fg.
+/// Accents only: never persist pywal's light background/surface/overlay/fg.
 #[derive(Serialize)]
 struct StoredColors {
     color1: String,

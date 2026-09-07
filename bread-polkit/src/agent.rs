@@ -174,18 +174,18 @@ impl Agent {
 }
 
 const INVALID_USER_MESSAGE: &str =
-    "That user is not one of the identities this request offered — use the prefilled user.";
+    "That user is not one of the identities this request offered; use the prefilled user.";
 
 /// Choose the username to authenticate as from the prompt input.
 ///
 /// Empty input falls back to `default`. Non-empty input must be one of
-/// `allowed` — the `unix-user` identities polkit actually offered in
-/// `BeginAuthentication` — otherwise it returns `None`. Without this, a
+/// `allowed` (the `unix-user` identities polkit actually offered in
+/// `BeginAuthentication`), otherwise it returns `None`. Without this, a
 /// request scoped to specific accounts (say, `root` only) could have its
 /// editable username field redirected to an arbitrary local user, kicking
 /// off a PAM conversation for an account the request never offered.
 /// (`auth::authenticate`'s PAM result still has to clear polkit's own
-/// authorization, but this closes the obvious foot-gun at the agent — the
+/// authorization, but this closes the obvious foot-gun at the agent: the
 /// one place the identity list is actually known.)
 fn resolve_user(default: &str, allowed: &[String], input: &str) -> Option<String> {
     if input.is_empty() {

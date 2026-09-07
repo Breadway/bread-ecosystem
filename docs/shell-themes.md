@@ -1,7 +1,7 @@
 # Authoring a BOS shell theme
 
 A **shell theme** is a single `theme.toml` file that describes the whole BOS
-shell — the bar's shape and contents (`breadbar`), the app launcher
+shell: the bar's shape and contents (`breadbar`), the app launcher
 (`breadbox`), the notification / OSD / control-panel surfaces, and the
 compositor rules that go with them. As of `bread-ecosystem` **v0.7.8** the
 manifest drives rendering end to end: geometry, structure, style, typography,
@@ -21,8 +21,8 @@ optionally `extra.css`:
 
 ```
 <id>/
-├── theme.toml      # required — the manifest
-└── extra.css       # optional — a raw-CSS overlay (see "extra.css" below)
+├── theme.toml      # required: the manifest
+└── extra.css       # optional: a raw-CSS overlay (see "extra.css" below)
 ```
 
 A theme id resolves through these locations, **first hit wins**:
@@ -33,8 +33,8 @@ A theme id resolves through these locations, **first hit wins**:
 | 2 | `/usr/share/bread/themes/<id>/theme.toml` (system / BOS package) |
 | 3 | a compiled-in builtin |
 
-The five builtins — `liquid-motion` (default), `glass-workbench`, `spotlight`,
-`daylight`, `loaf` — have no on-disk directory; their `theme.toml` text lives
+The five builtins (`liquid-motion` (default), `glass-workbench`, `spotlight`,
+`daylight`, `loaf`) have no on-disk directory; their `theme.toml` text lives
 in `bread-theme/assets/shell/<id>/theme.toml` and is the best set of worked
 examples to read.
 
@@ -49,18 +49,18 @@ active = "loaf"
 
 Every bread app reads this same file, so it is the only mechanism that keeps
 two already-running processes (breadbar and breadbox) on the same theme. Edit
-it and save — the running shell picks up the change (see
+it and save: the running shell picks up the change (see
 [Live switch vs. restart](#live-switch-vs-restart)).
 
 `$BREAD_SHELL_THEME` overrides `active` for **one process only**, read once at
 launch. It is a development convenience for `breadbar --screenshot` and the
-like — not a way to switch a running system.
+like, not a way to switch a running system.
 
 ---
 
 ## Quick start
 
-The builtins are compiled into `bread-theme` — they have no on-disk copy to
+The builtins are compiled into `bread-theme`: they have no on-disk copy to
 `cp`. The two starting points are: **extend a builtin** and override only what
 you're changing (best for a tweak), or **copy a builtin's source** from
 `bread-ecosystem/bread-theme/assets/shell/<id>/theme.toml` (best for a
@@ -99,12 +99,12 @@ bread-theme diagnose mytheme
 sed -i 's/^active = .*/active = "mytheme"/' ~/.config/bread/shell.toml
 ```
 
-If step 3 fails, the message names the offending key — a typo'd token, an
+If step 3 fails, the message names the offending key: a typo'd token, an
 unknown enum value, or a `{ref}` in your CSS that matched nothing.
 
 A directory under `themes/` with no `theme.toml` in it is ignored, so empty
 `glass-workbench/`, `loaf/` etc. dirs (other tools sometimes create them) are
-harmless — discovery falls straight through to the compiled-in builtin.
+harmless: discovery falls straight through to the compiled-in builtin.
 
 ---
 
@@ -117,7 +117,7 @@ name = "My Theme"      # display name (bos-settings, pickers)
 id   = "mytheme"        # must match the directory name
 ```
 
-### `extends` — inherit from another theme
+### `extends`: inherit from another theme
 
 ```toml
 extends = "glass-workbench"
@@ -126,7 +126,7 @@ extends = "glass-workbench"
 One level deep, deep-merged: your file is layered over the base's, key by key,
 recursing into tables. **Scalars and whole tables** merge (child wins);
 **arrays replace wholesale** unless you use the splice marker (below). A chain
-longer than one level is not followed — if the base itself has `extends`, that
+longer than one level is not followed; if the base itself has `extends`, that
 is dropped before merging.
 
 #### The `"+"` slot splice
@@ -145,10 +145,10 @@ right  = ["widget:logo", "+"]              # prepend to the inherited list
 `"+"` without `extends` (or extending a theme that has nothing in that slot) is
 a hard error.
 
-### `[tokens]` — the style knobs
+### `[tokens]`: the style knobs
 
 Typed. A misspelled key is a hard error (it does **not** silently become a
-custom value — see [extra.css](#extracss) for that). Every token has a default,
+custom value, see [extra.css](#extracss) for that). Every token has a default,
 so you only set what you're changing.
 
 | Token | Type | Default | Notes |
@@ -161,28 +161,28 @@ so you only set what you're changing.
 | `bg_alpha` | float `0.0–1.0` | `0.72` | bar / segment fill opacity (Hyprland blur shows through) |
 | `light` | bool | `false` | flips the shell to ink-on-paper (light surfaces, dark text) |
 | `bar_border` | enum | `full` | `full` (floating island, border all round) · `bottom` (flush edge-to-edge, hairline underneath) · `segmented` (transparent window, each slot-group is its own pill) |
-| `spring` | cubic-bezier | `cubic-bezier(0.22, 1.35, 0.36, 1)` | overshoot curve — flips, pop-ins, trail draw |
-| `spring_settle` | cubic-bezier | `cubic-bezier(0.22, 1.2, 0.36, 1)` | flatter curve — hovers, stat transitions |
+| `spring` | cubic-bezier | `cubic-bezier(0.22, 1.35, 0.36, 1)` | overshoot curve: flips, pop-ins, trail draw |
+| `spring_settle` | cubic-bezier | `cubic-bezier(0.22, 1.2, 0.36, 1)` | flatter curve: hovers, stat transitions |
 | `accent_from` | palette slot | `accent` | active-workspace fill / gradient start |
 | `accent_to` | palette slot | = `accent_from` | gradient end (Trail workspaces) |
 | `accent2` | palette slot | = `accent_from` | second accent, independent of the workspace one (e.g. media equaliser) |
 | `chip_height` | int px | `32` | bar chip / workspace-pill height |
 | `icon_px` | int px | `24` | bar icon glyph size |
 | `chip_gap` | int px | `0` | extra left-margin between bar chips |
-| `font_family` | string | `Varela Round, sans-serif` | drives the **whole shell** (bar + launcher) **and** the shared ecosystem stylesheet — a bare face (`IBM Plex Sans`) or a list (`Outfit, sans-serif`) |
+| `font_family` | string | `Varela Round, sans-serif` | drives the **whole shell** (bar + launcher) **and** the shared ecosystem stylesheet: a bare face (`IBM Plex Sans`) or a list (`Outfit, sans-serif`) |
 | `font_fallback` | string | `sans-serif` | fallback stack, appended and de-duped |
 | `font_size_base` | int px | `14` | base font size for the bar + launcher |
 | `font_weight` | int `100–900` | `400` | base font weight (`.bread-weight-*` on a widget node still overrides per element) |
-| `sep_style` | enum | `line` | bar stat-chip divider — `line` · `none` · `dot` |
-| `bar_shadow` | enum | `none` | drop shadow under the bar / segments — `none` · `soft` · `hard` |
+| `sep_style` | enum | `line` | bar stat-chip divider: `line` · `none` · `dot` |
+| `bar_shadow` | enum | `none` | drop shadow under the bar / segments: `none` · `soft` · `hard` |
 | `ws_gradient_angle` | int deg | `90` | Trail workspace gradient direction (`accent_from → accent_to`) |
-| `media_eq_style` | enum | `bars` | media-widget equaliser — `bars` (animated) · `none` |
-| `osd_style` | enum | `pill` | OSD shape — `pill` (`radius_pill`) · `bar` (`radius_card`) |
+| `media_eq_style` | enum | `bars` | media-widget equaliser: `bars` (animated) · `none` |
+| `osd_style` | enum | `pill` | OSD shape: `pill` (`radius_pill`) · `bar` (`radius_card`) |
 
-`accent_*` values are **palette slot names, never hex** — see
+`accent_*` values are **palette slot names, never hex**; see
 [Palette slots](#palette-slots).
 
-### `[bar.window]` — the bar's layer-shell geometry
+### `[bar.window]`: the bar's layer-shell geometry
 
 ```toml
 [bar.window]
@@ -204,7 +204,7 @@ layer     = "top"                        # top | overlay
 #### Side-docked (vertical) bars
 
 Anchoring to exactly one of `left`/`right` *and* both `top` and `bottom`
-docks the bar to that screen edge instead, filling it top-to-bottom — the
+docks the bar to that screen edge instead, filling it top-to-bottom: the
 same "opposing anchors with nothing else fill that axis" rule a horizontal
 bar already uses for `width = "fill"`, applied to the other axis:
 
@@ -215,22 +215,22 @@ width   = 56                          # required: the dock's fixed thickness
 margin  = { left = 8 }                # right/top/bottom margins still apply normally
 ```
 
-- `width` is the dock's thickness and **must be a fixed pixel value** —
+- `width` is the dock's thickness and **must be a fixed pixel value**:
   `"fill"` has nothing to mean on this axis once `top` + `bottom` already
   fill it (a hard `bread-theme diagnose` error if you set it anyway).
   `height` is unused for a vertical bar.
-- `[bar.slots]` (below) still names `left`/`centre`/`right` — a vertical bar
+- `[bar.slots]` (below) still names `left`/`centre`/`right`: a vertical bar
   stacks them top-to-bottom in that same order (`left` at the top,
   `right`/`bottom` at the... bottom) instead of packing them left-to-right.
 - Switching a *running* bar between horizontal and vertical is one of the
-  few `[bar.window]` changes that isn't live — see the restart table below.
+  few `[bar.window]` changes that isn't live; see the restart table below.
 - The animated pill that slides between workspace buttons on switch
   (`bar::workspaces::WorkspaceTrail`) still assumes horizontal movement; on
   a vertical bar it currently jumps to the new workspace instead of
   sliding. Everything else (window shape, exclusive zone, slot layout) is
   fully vertical-aware.
 
-### `[bar.slots]` — what goes in the bar, left to right
+### `[bar.slots]`: what goes in the bar, left to right
 
 Four ordered lists. Each entry is a **module name**, `widget:<key>`, or `"+"`.
 
@@ -250,7 +250,7 @@ cpu  ram  launcher_entry  launcher_results
 ```
 
 A module that breadbar builds but that no slot list names is simply never
-placed — omitting `media` from every list is how `glass-workbench` drops the
+placed: omitting `media` from every list is how `glass-workbench` drops the
 media widget. `tray` is not a slot entry; it lives in the control-panel
 popover.
 
@@ -272,10 +272,10 @@ dot_widths = [8, 13, 17, 22]   # dots only: px width for 0/1/2/3+ windows
 style     = "plain"        # flip | plain | none
 format    = "%H:%M"        # plain only
 show_date = true           # plain only
-placeholder_clock = true   # none only — the launcher entry's placeholder is the clock
+placeholder_clock = true   # none only: the launcher entry's placeholder is the clock
 ```
 
-**Changing `style` here forces a restart** (widget-type swap) — see
+**Changing `style` here forces a restart** (widget-type swap); see
 [Live switch vs. restart](#live-switch-vs-restart).
 
 ### `[launcher]`
@@ -285,14 +285,14 @@ placeholder_clock = true   # none only — the launcher entry's placeholder is t
 mode = "overlay"           # overlay (breadbox window) | embedded (breadbar capsule)
 ```
 
-`mode` is the only structural key. Everything else — `width`, `top`, `radius`,
-`icon_px`, `row_radius`, `panel_alpha`, `selection_alpha`, … — is launcher CSS
+`mode` is the only structural key. Everything else, `width`, `top`, `radius`,
+`icon_px`, `row_radius`, `panel_alpha`, `selection_alpha`, …, is launcher CSS
 read by breadbox; copy a builtin's block and adjust. `search_width` /
 `search_radius` apply only to `mode = "embedded"`.
 
 **Changing `mode` forces a restart.**
 
-### `[surfaces."<namespace>"]` — the auxiliary windows
+### `[surfaces."<namespace>"]`: the auxiliary windows
 
 Keyed by layer-shell namespace: `breadbar-notif`, `breadbar-osd`,
 `breadbar-panel`, `breadbar-dismiss` (and `breadbox`).
@@ -309,9 +309,9 @@ layer  = "overlay"         # top | overlay
 Rule of thumb for `offset`'s vertical value: your bar's far edge
 (`margin + height`) plus an ~8–12px gap.
 
-### `[compositor."<namespace>"]` — Hyprland layer rules
+### `[compositor."<namespace>"]`: Hyprland layer rules
 
-Appearance only — never placement, workspace, or focus.
+Appearance only; never placement, workspace, or focus.
 
 ```toml
 [compositor."breadbar"]
@@ -321,10 +321,10 @@ blur_popups  = true
 animation    = "slide top" # or: no_anim = true
 ```
 
-Blur *strength* is global (a known limitation) — this is on/off, `ignore_alpha`
+Blur *strength* is global (a known limitation); this is on/off, `ignore_alpha`
 and slide direction per namespace.
 
-### `[panel]` — the control-panel popover
+### `[panel]`: the control-panel popover
 
 ```toml
 [panel]
@@ -339,7 +339,7 @@ Default = all six, in the order above.
 **Changing `sections` forces a restart** (the body is assembled once at
 launch). `min_width` is CSS → live.
 
-### `[osd]` — the volume / brightness on-screen display
+### `[osd]`: the volume / brightness on-screen display
 
 ```toml
 [osd]
@@ -353,7 +353,7 @@ The OSD's *position* is `[surfaces."breadbar-osd"]` and its *radius* is the
 **Changing `enabled` forces a restart** (the watcher threads start at launch).
 `dismiss_ms` applies to the next OSD.
 
-### `[[bar.widget]]` — a live bar widget, no Lua
+### `[[bar.widget]]`: a live bar widget, no Lua
 
 Declare a small widget inline: a poll command plus a node tree. It renders
 through the same path as a `bread` daemon widget, wherever a `widget:<slot>`
@@ -372,7 +372,7 @@ node = { kind = "box", spacing = 4, class = "bread-chip", children = [
 ```
 
 - `bind.cmd` runs under `sh -c` with **your** privileges (same trust as a
-  `~/.config/bread` Lua module — no sandbox). Its trimmed stdout replaces
+  `~/.config/bread` Lua module, no sandbox). Its trimmed stdout replaces
   every `{value}` in the tree on each `every` tick.
 - `node.kind` is `box` (`orientation`, `spacing`, `class`, `children`),
   `label` (`text`, `class`, `color`, `weight`, `size`), `icon` (`name` |
@@ -383,7 +383,7 @@ node = { kind = "box", spacing = 4, class = "bread-chip", children = [
   anything else needs `path`.
 - Tree limits: depth ≤ 4, ≤ 50 nodes.
 
-**`[[bar.widget]]` changes apply live** — the poller set is rebuilt on a
+**`[[bar.widget]]` changes apply live**: the poller set is rebuilt on a
 theme switch, no restart.
 
 ### `css = "extra.css"`
@@ -407,7 +407,7 @@ on-bg  on-surface  on-accent  on-red  on-overlay
 
 In `[tokens]`, `accent_from = "yellow"` means "use pywal's yellow". In CSS
 (base sheet or `extra.css`) the same slots are available as `@yellow`,
-`@on-bg`, etc. — GTK resolves them per output. Writing a literal hex in a
+`@on-bg`, etc.; GTK resolves them per output. Writing a literal hex in a
 theme breaks per-monitor theming; don't.
 
 ---
@@ -420,21 +420,21 @@ edited on disk, breadbar applies as much as it can **without restarting**:
 | Change | Applied |
 |---|---|
 | `[tokens]` (incl. fonts, chrome tokens), `extra.css`, colours, radii, springs, `light` | **live**, no blink |
-| `[bar.window]` geometry (anchors, size, margin, exclusive zone, layer) — as long as it doesn't flip horizontal↔vertical, see below | **live** |
+| `[bar.window]` geometry (anchors, size, margin, exclusive zone, layer): as long as it doesn't flip horizontal↔vertical, see below | **live** |
 | `[bar.slots]` order / membership · `[[bar.widget]]` | **live** |
 | `[surfaces.*]` / `[compositor.*]` · `[panel].min_width` · `[osd].dismiss_ms` | **live** (next time it maps) |
 | `[modules.workspaces].style` or `[modules.clock].style` | **restart** (one blink) |
 | `[launcher].mode` · `[panel].sections` · `[osd].enabled` | **restart** |
-| `[bar.window].anchors` switching the bar between horizontal (top/bottom) and vertical (side-dock) — see [orientation](#bar-window--the-bars-layer-shell-geometry) | **restart** (one blink) |
+| `[bar.window].anchors` switching the bar between horizontal (top/bottom) and vertical (side-dock); see [orientation](#bar-window--the-bars-layer-shell-geometry) | **restart** (one blink) |
 
-The restart cases are structural — a widget-type swap, or a section / thread
+The restart cases are structural: a widget-type swap, or a section / thread
 set assembled once at launch. `breadbar::theme::needs_restart` is the exact
 rule: `modules()`, `launcher().mode`, `panel().sections`, `osd().enabled`, or
 `window().orientation()` differ.
 
 **Consequence for `extends`:** if your theme leaves `[modules]` and
 `[launcher].mode` identical to another theme's, switching between the two is
-fully live. `loaf` does this deliberately — it `extends = "glass-workbench"`
+fully live. `loaf` does this deliberately: it `extends = "glass-workbench"`
 and never touches `[modules]`, so `glass-workbench ↔ loaf` is a live morph.
 
 ---
@@ -455,7 +455,7 @@ css = "extra.css"
 
 It's appended verbatim after the rendered base sheet, so it wins on
 specificity ties. `@palette` slot names work. `{token}` placeholders do
-**not** — but any key you put in `[tokens]` that isn't a known token is
+**not**, but any key you put in `[tokens]` that isn't a known token is
 carried through as a `{name}` substitution available to `extra.css` only:
 
 ```toml
@@ -467,7 +467,7 @@ my_glow_px = 40         # unknown token → ignored by the renderer, exposed to 
 ```
 
 A `{name}` in `extra.css` that matches neither a known token nor an `[tokens]`
-key is a hard error at load — that's the typo guard.
+key is a hard error at load; that's the typo guard.
 
 ---
 
@@ -482,22 +482,22 @@ key is a hard error at load — that's the typo guard.
 
 Common failures:
 
-- **"CSS template references unknown name(s): …"** — a `{ref}` in your
+- **"CSS template references unknown name(s): …"**: a `{ref}` in your
   `extra.css` matched no token and no `[tokens]` key. Fix the spelling or add
   the key.
-- **"modules.workspaces.style = "…" is not trail|pill|dots"** and similar —
+- **"modules.workspaces.style = "…" is not trail|pill|dots"** and similar:
   an enum typo. The message lists the valid values.
-- **Shell shows `liquid-motion` after you set `active`** — the theme failed to
+- **Shell shows `liquid-motion` after you set `active`**: the theme failed to
   load and fell back silently. Run `bread-theme diagnose <id>` to see the
   reason.
-- **Colours look wrong / don't follow the wallpaper** — a literal hex where a
+- **Colours look wrong / don't follow the wallpaper**: a literal hex where a
   palette slot name belongs.
 
 ---
 
 ## See also
 
-- `bread-theme/assets/shell/*/theme.toml` — the five builtins, heavily
+- `bread-theme/assets/shell/*/theme.toml`: the five builtins, heavily
   commented, as reference implementations. `loaf` is the minimal one; `daylight`
   exercises every axis (light, bottom-anchored, segmented, blur-off).
-- `docs/release-channels.md` — how a theme change in this repo reaches users.
+- `docs/release-channels.md`: how a theme change in this repo reaches users.

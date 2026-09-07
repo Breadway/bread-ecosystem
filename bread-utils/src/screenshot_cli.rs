@@ -4,7 +4,7 @@
 //! The same clap block (`--screenshot`, `--output`, `--width`, `--height`)
 //! plus a 300ms settle after GTK `map` is cloned across breadbar, breadbox,
 //! breadclip, breadpad, breadman, breadsearch, and breadhelp. This module
-//! is the next-pin target for that duplication — consumers this cycle still
+//! is the next-pin target for that duplication; consumers this cycle still
 //! pin an older bread-utils tag and will not see it until a future release.
 //!
 //! Zero extra deps: no clap, no GTK. Apps keep (or flatten) the four `#[arg]`
@@ -20,7 +20,7 @@
 //! - `breadhelp/src/screenshot.rs`
 //!
 //! Do not fold `bread-screenshots` or `bread-capture`'s `TARGETS` table into
-//! this module — those are the capture primitive and the orchestrator, not
+//! this module: those are the capture primitive and the orchestrator, not
 //! the per-app CLI flags.
 
 use std::path::{Path, PathBuf};
@@ -41,7 +41,7 @@ pub const DEFAULT_HEIGHT: u32 = 1080;
 /// parsed from an app's CLI.
 ///
 /// `screenshot` and `output` must both be present (a capture run) or both
-/// absent (a normal run) — see [`ScreenshotCli::validate`].
+/// absent (a normal run); see [`ScreenshotCli::validate`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenshotCli {
     /// Named view to capture (`--screenshot`). `None` for a normal run.

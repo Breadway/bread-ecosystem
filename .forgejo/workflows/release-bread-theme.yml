@@ -33,10 +33,10 @@ jobs:
           ln -sfn "${VERSION}" "/srv/breadway-dl/bread-theme/latest"
 
       # Signs the bread-theme binary with the shared bakery ecosystem signing
-      # key (same key that signs index.json — get.sh / manifest.rs pin the
+      # key (same key that signs index.json; get.sh / manifest.rs pin the
       # matching public key). BAKERY_MINISIGN_SEC_KEY_PATH is a *path on this
       # runner's disk* (the runner has persistent storage, unlike a fresh
-      # GitHub-hosted runner), not the key contents — see the handoff note
+      # GitHub-hosted runner), not the key contents: see the handoff note
       # in scripts/gen-index.sh. Dormant (binary ships unsigned, as today)
       # until that secret is provisioned.
       - name: sign release binary
@@ -51,7 +51,7 @@ jobs:
               -x "${PKG_DIR}/bread-theme-x86_64.minisig" </dev/null
             echo "signed bread-theme-x86_64"
           else
-            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set — shipping bread-theme-x86_64 UNSIGNED"
+            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set: shipping bread-theme-x86_64 UNSIGNED"
           fi
 
       - name: regenerate index.json
@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
-            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate stable index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the stable track)"
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set: refusing to regenerate stable index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the stable track)"
             exit 1
           fi
           cd src && bash scripts/gen-index.sh

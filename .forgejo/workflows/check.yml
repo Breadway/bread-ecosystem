@@ -1,13 +1,13 @@
 name: check
 
-# Lint + test on short-lived work branches AND on `main` — a push to `main`
+# Lint + test on short-lived work branches AND on `main`: a push to `main`
 # triggers a dev-track publish (dev-bakery.yml / dev-bread-theme.yml), and
 # those only run `cargo build --bin`, so without this nothing here is ever
 # clippy'd or tested in CI. The `--features gtk` pass matters: the entire
 # per-monitor GTK bind module in bread-theme is gated behind it and would
 # otherwise never compile in CI, let alone run its tests.
 #
-# fmt is deliberately NOT gated yet — the tree isn't `cargo fmt` clean and a
+# fmt is deliberately NOT gated yet: the tree isn't `cargo fmt` clean and a
 # mass reformat mid-review would collide with every open PR. Add a fmt step
 # once the tree has been normalised in its own change.
 on:

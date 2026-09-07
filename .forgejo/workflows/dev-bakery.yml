@@ -1,6 +1,6 @@
 name: dev bakery
 
-# Publishes a dev-track build on every push to `main` (the trunk branch —
+# Publishes a dev-track build on every push to `main` (the trunk branch;
 # there is no separate `dev` branch). See docs/release-channels.md for the
 # release-track policy this is part of.
 on:
@@ -31,7 +31,7 @@ jobs:
         run: cd src && cargo test --release --locked -p bakery
 
       # Auto-bumps the patch version from Cargo.toml and appends a
-      # timestamp+sha dev suffix — no developer discipline required, and the
+      # timestamp+sha dev suffix: no developer discipline required, and the
       # result is visibly "ahead of" the last stable patch release while
       # staying valid semver (comparable within the dev track by bakery's
       # `is_newer`).
@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           cd src
           # Base the dev version off the latest published stable tag,
-          # not Cargo.toml — Cargo.toml can go stale relative to the last
+          # not Cargo.toml: Cargo.toml can go stale relative to the last
           # real release (seen in practice: breadbox/breadpad/breadcrumbs/
           # breadpaper), which would make a dev build sort as OLDER than
           # what's already installed and bakery would correctly refuse it.
@@ -80,10 +80,10 @@ jobs:
               -x "${PKG_DIR}/bakery-x86_64.minisig" </dev/null
             echo "signed bakery-x86_64"
           else
-            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set — shipping bakery-x86_64 UNSIGNED"
+            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set: shipping bakery-x86_64 UNSIGNED"
           fi
 
-      # No GitHub Release upload step here, unlike release-bakery.yml — dev
+      # No GitHub Release upload step here, unlike release-bakery.yml: dev
       # builds happen on every push and would spam a release per commit, so
       # dl.breadway.dev/dev/ is the only distribution point for this track.
       - name: regenerate dev index.json
@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
-            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set: refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
             exit 1
           fi
           cd src && bash scripts/gen-index.sh
