@@ -49,7 +49,7 @@ enum Cmd {
     Remove {
         package: String,
         /// Also remove the license file, desktop entry, and data dir
-        /// ($prefix/share/<pkg>/) — config is still preserved
+        /// ($prefix/share/<pkg>/); config is still preserved
         #[arg(long)]
         purge: bool,
     },
@@ -100,7 +100,7 @@ enum Cmd {
 enum TrackCmd {
     /// Show the currently selected track
     Show,
-    /// Switch tracks. Only changes the preference — run `bakery update --all`
+    /// Switch tracks. Only changes the preference; run `bakery update --all`
     /// afterwards to actually install builds from the new track.
     Set { track: Track },
 }
@@ -137,7 +137,7 @@ fn main() -> Result<()> {
         Cmd::Doctor { package } => cmd_doctor(package.as_deref(), track, &layout),
         Cmd::Verify { package } => cmd_verify(package.as_deref(), &layout.bin_dir),
         Cmd::Rollback { package } => cmd_rollback(&package, &layout.bin_dir),
-        // Same update logic as `bakery update bakery` — this is just a
+        // Same update logic as `bakery update bakery`; this is just a
         // documented, discoverable entry point for it, since overwriting
         // bakery's own running binary via a normal update already works
         // (rename-over-running-binary is safe on Linux) but wasn't a real
@@ -247,7 +247,7 @@ fn install_with_deps(
 
     let previous = state.packages.get(name);
 
-    // Already installed and not older than the index — nothing to do. This
+    // Already installed and not older than the index: nothing to do. This
     // doubles as the implicit upgrade path when the index has something
     // newer, so `bakery install <pkg>` is safe to run repeatedly instead of
     // silently reinstalling (and potentially downgrading) every time.
@@ -315,7 +315,7 @@ fn install_with_deps(
 
 /// Prints what `install_with_deps`/`cmd_update` would do for `pkg` under
 /// `--dry-run`, once the version-comparison decision to actually act has
-/// already been made — this only renders that decision, it never
+/// already been made; this only renders that decision, it never
 /// recomputes it, so dry-run and real runs can't drift apart on "would this
 /// update happen at all".
 fn print_dry_run_plan(pkg: &manifest::Package) {
@@ -406,7 +406,7 @@ fn cmd_update(
         // beta RC that shares a base version with the installed stable).
         let track_switch = installed.track != track;
         if !should_update(&installed.version, installed.track, track, &latest.version) {
-            // DIM, not GREEN — this is the steady-state common case (most
+            // DIM, not GREEN: this is the steady-state common case (most
             // packages, most runs), and reusing GREEN here drowns out the
             // packages that actually changed below. The glyph itself
             // (rather than just color) keeps that distinction legible even
@@ -467,7 +467,7 @@ fn cmd_update(
             eprintln!(
                 "  {}",
                 ui::fail(&format!(
-                    "missing deps for {pkg_name}: {} — skipping update",
+                    "missing deps for {pkg_name}: {}, skipping update",
                     rep.missing.join(", ")
                 ))
             );
@@ -528,7 +528,7 @@ fn should_update(
     is_newer(installed_version, latest_version)
 }
 
-/// Is `latest` newer than `installed`? Real semver comparison — the
+/// Is `latest` newer than `installed`? Real semver comparison: the
 /// previous plain string-equality check couldn't tell "different" from
 /// "actually newer", so it would happily "update" a package to a lexically
 /// different but not-newer version. Falls back to a simple inequality check
@@ -544,7 +544,7 @@ fn is_newer(installed: &str, latest: &str) -> bool {
             if installed != latest {
                 eprintln!(
                     "  warning: cannot determine if '{latest}' is newer than '{installed}' \
-                     (not valid semver) — proceeding on inequality alone, this could be a downgrade"
+                     (not valid semver); proceeding on inequality alone, this could be a downgrade"
                 );
             }
             installed != latest
@@ -608,8 +608,8 @@ fn cmd_list(installed_only: bool, track: Track) -> Result<()> {
     Ok(())
 }
 
-/// Case-insensitive substring match against a package's name or description
-/// — split out from `cmd_search` so the matching rule itself is testable
+/// Case-insensitive substring match against a package's name or description.
+/// Split out from `cmd_search` so the matching rule itself is testable
 /// without a real index load.
 fn matches_search(name: &str, description: &str, needle_lower: &str) -> bool {
     name.to_lowercase().contains(needle_lower) || description.to_lowercase().contains(needle_lower)
@@ -724,7 +724,7 @@ fn cmd_doctor(name: Option<&str>, track: Track, layout: &prefix::Layout) -> Resu
         ui::heading("Doctor", &["no packages"]);
         report_layout(layout);
         println!();
-        println!("{}", ui::dim("no packages installed — nothing to check"));
+        println!("{}", ui::dim("no packages installed, nothing to check"));
         return Ok(());
     }
 
@@ -757,9 +757,9 @@ fn cmd_doctor(name: Option<&str>, track: Track, layout: &prefix::Layout) -> Resu
         }
 
         // System-deps checks alone can't catch a partially-broken install
-        // (e.g. a binary manually deleted after install) — also confirm
+        // (e.g. a binary manually deleted after install); also confirm
         // every binary this package recorded is still on disk. Existence
-        // only, not a checksum re-verification — see `bakery verify` for that.
+        // only, not a checksum re-verification: see `bakery verify` for that.
         if let Some(installed) = state.packages.get(pkg_name) {
             for bin in &installed.binaries {
                 let path = layout.bin_dir.join(bin);
@@ -788,14 +788,14 @@ enum VerifyStatus {
     Ok,
     Missing,
     Tampered,
-    /// `binary_sha256` has no entry for this binary — an install that
+    /// `binary_sha256` has no entry for this binary: an install that
     /// predates `bakery verify` support. Reported plainly rather than
     /// folded into `Ok`, since there's nothing to actually compare against.
     Unknown,
 }
 
 /// Recomputes `binary_name`'s on-disk sha256 in `bin_dir` and compares it
-/// against `expected` — the hash recorded in `InstalledPackage::
+/// against `expected`: the hash recorded in `InstalledPackage::
 /// binary_sha256` at install time, not a fresh index lookup. The index
 /// only carries the checksum for whatever the *current latest* release is,
 /// which may not be what's actually installed if the user hasn't updated
@@ -831,7 +831,7 @@ fn cmd_verify(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
     };
 
     if targets.is_empty() {
-        println!("{}", ui::dim("no packages installed — nothing to verify"));
+        println!("{}", ui::dim("no packages installed, nothing to verify"));
         return Ok(());
     }
 
@@ -886,11 +886,11 @@ fn cmd_verify(name: Option<&str>, bin_dir: &std::path::Path) -> Result<()> {
 }
 
 /// Copies each of `binaries` from `backup_dir` into `bin_dir` (atomic,
-/// executable — same as a normal install), returning the sha256 of each
+/// executable, same as a normal install), returning the sha256 of each
 /// restored binary so the caller can update `InstalledPackage::
 /// binary_sha256` to match what's now actually on disk. The hash is
 /// computed from the trusted local backup bytes directly, not re-verified
-/// against any network source — see `install::backup_current_binary` for
+/// against any network source; see `install::backup_current_binary` for
 /// why rollback is backup-based rather than a network re-pin in the first
 /// place. Pure with respect to global state (caller supplies both dirs), so
 /// this is the piece of `bakery rollback` that's directly unit-testable.
@@ -921,13 +921,13 @@ fn restore_binaries(
 
 /// Rolls `pkg_name` back to its previously installed version, restoring
 /// binaries from the local pre-update backup `install::install_package`
-/// made — not by re-fetching the old version from `dl.breadway.dev`.
+/// made, not by re-fetching the old version from `dl.breadway.dev`.
 /// Deliberately backup-based: `index.json`'s minisign signature only covers
 /// the *current* published version's checksums, so verifying an old version
 /// pulled fresh from the server would only be checkable against its
 /// unsigned per-version `.sha256` sidecar file, a materially weaker
 /// guarantee than bakery's normal trust model. The local backup sidesteps
-/// that gap — it's bytes bakery itself copied from a binary that was
+/// that gap: it's bytes bakery itself copied from a binary that was
 /// already verified against a signed index at the time it was installed.
 fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
     let installed = state::State::load()?
@@ -937,7 +937,7 @@ fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("{pkg_name} is not installed"))?;
 
     let target_version = installed.previous_version.clone().ok_or_else(|| {
-        anyhow::anyhow!("no previous version recorded for {pkg_name} — nothing to roll back to")
+        anyhow::anyhow!("no previous version recorded for {pkg_name}, nothing to roll back to")
     })?;
 
     ui::action("Rolling back", pkg_name, Some(&target_version));
@@ -945,7 +945,7 @@ fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
     let backup_dir = state::backup_dir(pkg_name, &target_version);
     if !backup_dir.exists() {
         bail!(
-            "no local backup found for {pkg_name} {target_version} at {} — cannot roll back",
+            "no local backup found for {pkg_name} {target_version} at {}, cannot roll back",
             backup_dir.display()
         );
     }
@@ -962,7 +962,7 @@ fn cmd_rollback(pkg_name: &str, bin_dir: &std::path::Path) -> Result<()> {
         Ok(())
     })?;
 
-    // Best-effort — a leftover backup dir after a successful rollback just
+    // Best-effort: a leftover backup dir after a successful rollback just
     // wastes disk, it's not a correctness problem, so a failure here
     // shouldn't fail the rollback itself.
     let _ = std::fs::remove_dir_all(&backup_dir);

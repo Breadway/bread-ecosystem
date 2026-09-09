@@ -3,10 +3,10 @@
 //! Extracted from `bos-settings/src/config/mod.rs` (`load_doc`/`save_doc`)
 //! and `breadhelp/src/config.rs`, which re-implemented the exact same
 //! function bodies in the same fix pass that introduced `bos-settings`'s
-//! version — right down to the eprintln wording template. Both parse into a
+//! version, right down to the eprintln wording template. Both parse into a
 //! `toml_edit::DocumentMut` (preserving keys/comments/formatting this app
 //! doesn't model) and back up a file that exists but fails to parse, once,
-//! before falling back to an empty document — so a bad edit is always
+//! before falling back to an empty document, so a bad edit is always
 //! recoverable from `<path>.bak` instead of silently destroying whatever the
 //! file used to hold.
 //!
@@ -43,7 +43,7 @@ pub fn load_doc(app: &str, path: &Path) -> DocumentMut {
 }
 
 /// Write the document back to disk atomically (temp-then-rename), backing up
-/// whatever was there before overwriting it — see
+/// whatever was there before overwriting it: see
 /// [`crate::atomic::write_atomic_backed_up`].
 pub fn save_doc(path: &Path, doc: &DocumentMut) -> std::io::Result<()> {
     super::atomic::write_atomic_backed_up(path, &doc.to_string())

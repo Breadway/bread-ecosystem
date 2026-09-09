@@ -18,7 +18,7 @@ pub use output::{
 pub use palette::{load_palette, Palette};
 
 /// Env-var locks shared by any test module that mutates process-global
-/// state (`std::env::set_var`) — `cargo test` runs a crate's tests in
+/// state (`std::env::set_var`): `cargo test` runs a crate's tests in
 /// parallel by default, so every module touching the *same* env var must
 /// serialize through the *same* lock or their mutations race each other's
 /// reads. `bread_theme::output`'s own `XDG_ENV_LOCK` guards `XDG_RUNTIME_DIR`
@@ -57,7 +57,7 @@ fn css_font_family() -> String {
     font_family_css(tokens::FONT_FAMILY, "sans-serif")
 }
 
-/// The CSS generic font families — left unquoted; everything else is a named
+/// The CSS generic font families, left unquoted; everything else is a named
 /// face and gets quoted.
 fn is_generic_family(s: &str) -> bool {
     matches!(
@@ -108,7 +108,7 @@ pub fn font_family_css(primary: &str, fallback: &str) -> String {
     segs.join(", ")
 }
 
-/// Resolved typography for the shared component stylesheet — the CSS
+/// Resolved typography for the shared component stylesheet: the CSS
 /// `font-family` value, base size, and weight. Built from the **active shell
 /// theme**'s `[tokens]` via [`Typography::active`], so a theme's
 /// `font_family` / `font_fallback` / `font_size_base` / `font_weight` reach
@@ -159,7 +159,7 @@ impl Default for Typography {
 /// Kept for API compatibility with older callers that only want the color
 /// variables (not the full [`stylesheet`] component rules). It used to carry
 /// its own hand-written `@define-color` block that predated the `accent` and
-/// computed-ink (`on-*`) colors — that duplication is exactly what let it
+/// computed-ink (`on-*`) colors; that duplication is exactly what let it
 /// drift out of sync and reintroduce the illegible-text bug (light pywal
 /// colors + no computed ink meant white-on-white / black-on-black text
 /// wherever a caller's own CSS referenced `@on-surface`, `@on-accent`, etc.,
@@ -191,7 +191,7 @@ pub fn luminance(hex: &str) -> f32 {
 
 /// Pick a legible ink (near-black or near-white) for text drawn on `hex`.
 /// 0.179 is the WCAG crossover where contrast against black equals contrast
-/// against white — so whichever side we pick always wins. This is what keeps
+/// against white, so whichever side we pick always wins. This is what keeps
 /// text readable no matter how light or dark pywal makes a given palette slot,
 /// without altering the palette colours themselves.
 pub fn ink_on(hex: &str) -> &'static str {
@@ -208,13 +208,13 @@ pub fn ink_on(hex: &str) -> &'static str {
 /// whole ecosystem recolours together.
 ///
 /// The `on-*` colours are computed ink (black/white) guaranteed to be legible on
-/// the matching background — use `on-surface` for text on a `surface` panel,
+/// the matching background: use `on-surface` for text on a `surface` panel,
 /// `on-accent` on an `accent` button, etc. They exist because pywal can emit a
 /// light value in any slot, and white text on a light surface disappears.
 ///
 /// [`define_colors`] (GTK `@define-color`) and [`css_custom_properties`] (web
 /// `:root { --name: ... }`) both format this same list rather than each
-/// hand-writing their own — see `css_vars_and_stylesheet_agree_on_color_block`
+/// hand-writing their own, see `css_vars_and_stylesheet_agree_on_color_block`
 /// and `css_custom_properties_matches_define_colors_name_set` for the
 /// regression tests this exists to satisfy.
 fn color_pairs(p: &Palette) -> [(&'static str, String); 16] {
@@ -248,7 +248,7 @@ fn define_colors(p: &Palette) -> String {
 
 /// CSS custom-properties block (`:root { --bg: ...; --on-accent: ...; }`) for
 /// web frontends (Tauri), using the exact same names as [`define_colors`] so
-/// the GTK and web outputs cannot drift apart independently — both are
+/// the GTK and web outputs cannot drift apart independently: both are
 /// generated from [`color_pairs`], not two hand-written copies.
 pub fn css_custom_properties(p: &Palette) -> String {
     let vars: String = color_pairs(p)
@@ -258,7 +258,7 @@ pub fn css_custom_properties(p: &Palette) -> String {
     format!(":root {{\n{vars}}}\n")
 }
 
-/// CSS custom-properties for [`tokens`] (font, spacing, radii) — the web
+/// CSS custom-properties for [`tokens`] (font, spacing, radii): the web
 /// counterpart to [`tokens`] being hand-read by GTK code, so a web frontend
 /// isn't hand-copying the same numbers into a second source of truth.
 pub fn css_tokens() -> String {
@@ -293,12 +293,12 @@ pub fn css_tokens() -> String {
     )
 }
 
-/// The full shared component stylesheet — the single source of truth for how
+/// The full shared component stylesheet: the single source of truth for how
 /// every bread GUI (bos-settings, breadbar, breadbox, breadpad, breadman) styles
 /// common widgets. Apps load this, then append only their own *layout* rules.
 ///
 /// Built from the [`Palette`] (`@define-color`), the spacing/radius design
-/// tokens, and the active shell theme's [`Typography`] — so changing the
+/// tokens, and the active shell theme's [`Typography`]: so changing the
 /// palette recolours every app and changing the shell theme's
 /// `font_family` / `font_size_base` / `font_weight` re-fonts every app.
 pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
@@ -308,7 +308,7 @@ pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
          * {{ font-family: {font}; font-size: {base}px; font-weight: {weight}; }}\n\
          /* Colour is set on containers; labels inherit it, so text on any panel,\
             button, or accent is always the legible ink for that background. Bare\
-            `label {{ color }}` is deliberately avoided — as a type selector it\
+            `label {{ color }}` is deliberately avoided: as a type selector it\
             would override a container's colour on its own child labels. */\n\
          window {{ background-color: @bg; color: @on-bg; }}\n\
          .dim-label, .dim {{ opacity: 0.6; font-size: {sec}px; }}\n\
@@ -354,7 +354,7 @@ pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
          switch:checked {{ background-color: @accent; }}\n\
          switch slider {{ background-color: @on-surface; border-radius: {pill}px; }}\n\
          /* GtkScale (sliders) render with GTK's own default accent (a fixed\
-            blue, independent of the app's theme) unless styled explicitly —\
+            blue, independent of the app's theme) unless styled explicitly:\
             every app with a volume/brightness slider was silently showing\
             that default instead of the palette's accent until this rule\
             existed. */\n\
@@ -424,14 +424,14 @@ pub fn write_shared_css() -> std::io::Result<std::path::PathBuf> {
 /// (`gtk::bind_window*` / `reload_binds_for_sanitized`), which attaches it as a
 /// widget-tree `CssProvider` for one output's palette. Two things matter there:
 ///
-/// 1. Every rule body is already hex (longer names first — `on-surface` before
-///    `surface`, `on-bg` before `bg` — so a prefix match cannot half-replace
+/// 1. Every rule body is already hex (longer names first: `on-surface` before
+///    `surface`, `on-bg` before `bg`, so a prefix match cannot half-replace
 ///    `@on-bg`), so the sheet needs no `@define-color` block to resolve.
 /// 2. `@define-color` in GTK4 is **stylesheet-global**, not provider- or
 ///    subtree-scoped (confirmed by GTK's CSS maintainers). A per-monitor
 ///    provider that still emitted the block would redefine the display-global
 ///    `@accent`/`@bg`/`@on-*` to *this* monitor's palette on every bind and
-///    every per-output reload — so `apply_shared`, `apply_app_css`,
+///    every per-output reload, so `apply_shared`, `apply_app_css`,
 ///    `apply_user_css` and any CSS parsed afterwards in another window would
 ///    resolve their named colours against whichever monitor bound last. That is
 ///    exactly the "wrong monitor's accent leaks" failure the hex-inlining was
@@ -439,7 +439,7 @@ pub fn write_shared_css() -> std::io::Result<std::path::PathBuf> {
 ///
 /// The display-global sheet ([`stylesheet`] / [`render`], loaded by
 /// [`gtk::apply_shared`] at APPLICATION priority) keeps its `@define-color`
-/// block — that is the one provider that is *supposed* to own those names.
+/// block; that is the one provider that is *supposed* to own those names.
 pub fn stylesheet_resolved(ty: &Typography, p: &Palette) -> String {
     let resolved = resolve_color_names(&stylesheet(ty, p), p);
     let mut out: String = resolved
@@ -508,7 +508,7 @@ mod tests {
         // @define-color block that predated `accent` and the computed `on-*`
         // ink colors. Any caller whose own CSS referenced `@on-surface` /
         // `@on-accent` etc. against that older block would hit an undefined
-        // color name — the illegible-text bug. css_vars() must now emit
+        // color name: the illegible-text bug. css_vars() must now emit
         // exactly the same color set as the full stylesheet.
         let css = css_vars(&Palette::default());
         for name in &[
@@ -649,7 +649,7 @@ mod tests {
     #[test]
     fn stylesheet_has_no_blanket_label_color_rule() {
         // A bare `label { color: ... }` would override container colours on child
-        // labels — the bug that made coloured-background text illegible.
+        // labels: the bug that made coloured-background text illegible.
         let css = stylesheet(&Typography::default(), &Palette::default());
         assert!(
             !css.contains("label { color:"),
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn render_and_stylesheet_keep_define_color_block() {
         // The display-global sheet is the one provider that *should* own the
-        // @define-color names — only the per-bind `_resolved` variant drops it.
+        // @define-color names; only the per-bind `_resolved` variant drops it.
         assert!(render().contains("@define-color accent "));
         assert!(stylesheet(&Typography::default(), &Palette::default())
             .contains("@define-color accent "));

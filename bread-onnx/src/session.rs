@@ -2,7 +2,7 @@
 //!
 //! Builds one `ort::session::Session` whose execution-provider dispatch
 //! list is exactly `providers` (in order) with an implicit `CPU` appended
-//! if the caller didn't already include one — ONNX Runtime tries each
+//! if the caller didn't already include one: ONNX Runtime tries each
 //! listed EP per-node and falls through the list on failure, so this
 //! mirrors (and replaces) the identical `.with_execution_providers([primary,
 //! CPU])` pattern already proven out in `breadmill/src/embed.rs::rocm_session`
@@ -18,7 +18,7 @@ use crate::provider::Provider;
 /// Build a session, trying each of `providers` in order (ONNX Runtime falls
 /// through per-node on registration failure) with a trailing `CPU` fallback
 /// implicitly appended if not already present. Always logs which provider
-/// was requested — see [`Provider::log_selection`] — regardless of whether
+/// was requested (see [`Provider::log_selection`]) regardless of whether
 /// `tracing_subscriber` is initialized, so at minimum the *attempt* is
 /// visible even without wired-up logging; the actual per-EP success/failure
 /// detail only surfaces once a subscriber is listening.

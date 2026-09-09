@@ -2,11 +2,11 @@
 //! `BOS.COMMANDS`, THEME_SYSTEM_PLAN.md phase 6c): a leading `=`/`>`/`.`
 //! switches the launcher from filtering apps to evaluating an arithmetic
 //! expression, listing bread commands, or treating the rest of the query as
-//! a URL to open. Pure/headless — no GTK here — so both breadbar's embedded
+//! a URL to open. Pure/headless (no GTK here), so both breadbar's embedded
 //! capsule and (per the module doc comment on `crate`) breadbox's own
 //! overlay window can adopt the same parsing/eval/filter logic. A host is
 //! expected to gate which prefixes it actually acts on against its theme's
-//! `[launcher].modes` list — this module recognizes all four kinds
+//! `[launcher].modes` list; this module recognizes all four kinds
 //! unconditionally and leaves that gating to the caller.
 
 use crate::matching::fuzzy_matches;
@@ -15,13 +15,13 @@ use crate::matching::fuzzy_matches;
 /// leading character (mirrors `BOS.parseQuery`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryKind {
-    /// No recognized prefix — the ordinary app-filter query.
+    /// No recognized prefix: the ordinary app-filter query.
     Apps,
-    /// Leading `=` — the rest is an arithmetic expression for [`eval_calc`].
+    /// Leading `=`: the rest is an arithmetic expression for [`eval_calc`].
     Calc,
-    /// Leading `>` — the rest filters [`builtin_commands`].
+    /// Leading `>`: the rest filters [`builtin_commands`].
     Cmd,
-    /// Leading `.` — the rest is a URL to open.
+    /// Leading `.`: the rest is a URL to open.
     Url,
 }
 
@@ -61,7 +61,7 @@ pub fn parse_query(raw: &str) -> ParsedQuery {
 /// "∞", an expression containing anything outside `[0-9.\s+\-*/()]`
 /// returns "bad expr", and anything else that fails to parse or evaluate
 /// (unbalanced parens, division producing NaN, trailing garbage) returns
-/// "err". `None` only for an empty/whitespace-only expression — the
+/// "err". `None` only for an empty/whitespace-only expression: the
 /// caller's "nothing typed after `=` yet" case, which has no result to
 /// show at all (the demo's own `if (!expr) return null;`).
 pub fn eval_calc(expr: &str) -> Option<String> {
@@ -85,7 +85,7 @@ pub fn eval_calc(expr: &str) -> Option<String> {
 }
 
 /// Rounds to 8 decimal places and formats without a trailing `.0` for whole
-/// numbers — `String(Math.round(n * 1e8) / 1e8)` in JS, `{}` on `f64`
+/// numbers: `String(Math.round(n * 1e8) / 1e8)` in JS, `{}` on `f64`
 /// already behaves the same way in Rust (`format!("{}", 4.0_f64)` == "4").
 fn format_calc_result(n: f64) -> String {
     let rounded = (n * 1e8).round() / 1e8;
@@ -214,7 +214,7 @@ pub struct Command {
     pub exec: &'static str,
 }
 
-/// A small, real bread-ecosystem command palette — deliberately not the
+/// A small, real bread-ecosystem command palette: deliberately not the
 /// demo's placeholder set (`Lock session`/`Open settings`/`Test
 /// notification` map to nothing real in this codebase). `loginctl
 /// lock-session` and `bread reload` are both already-documented, safe,
@@ -235,7 +235,7 @@ pub fn builtin_commands() -> &'static [Command] {
 }
 
 /// Fuzzy-filters `commands` by `query` against each command's `name` (same
-/// subsequence match [`crate::fuzzy_matches`] uses for app rows) — an empty
+/// subsequence match [`crate::fuzzy_matches`] uses for app rows), an empty
 /// query matches everything, same as the app list's own empty-query case.
 pub fn filter_commands(query: &str, commands: &[Command]) -> Vec<Command> {
     commands

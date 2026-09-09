@@ -8,7 +8,7 @@
 # Usage: ci/build.sh <product-name> <product-repo-root> <cargo-command...>
 #   e.g. ci/build.sh breadpad /path/to/breadpad cargo build --release --locked
 #
-# <product-name> is used verbatim as the image tag and cache-volume name —
+# <product-name> is used verbatim as the image tag and cache-volume name;
 # it must be passed explicitly rather than derived from <product-repo-root>'s
 # basename, because every product's CI checks out into a directory literally
 # named `src`, which would otherwise collide across every product sharing
@@ -21,7 +21,7 @@
 # Cargo's registry/git caches are shared across all products (same crates
 # regardless of which app is building); CARGO_TARGET_DIR is cached
 # per-product. Both persist as host directories under CACHE_ROOT (bind
-# mounts, not named docker volumes — see the --user note below) across runs.
+# mounts, not named docker volumes, see the --user note below) across runs.
 set -euo pipefail
 
 if [ $# -lt 3 ]; then

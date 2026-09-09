@@ -1,7 +1,7 @@
 # Bread Ecosystem
 
 A collection of Rust tools for the Linux desktop (Hyprland / Wayland / Arch).
-Install any product with a single command — no Rust toolchain required.
+Install any product with a single command, no Rust toolchain required.
 
 ```sh
 curl -fsSL https://get.breadway.dev | sh
@@ -30,8 +30,8 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadshot` | Screenshot utility for the bread ecosystem |
 | `bos-settings` | System settings app for Bread OS |
 | `breadhelp` | Onboarding and help center for Bread OS |
-| `breadcast` | Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup — Bakery product; not included in the BOS ISO |
-| `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement — release watching, matching, grabbing, importing, and a terminal UI, no web UI — Homelab, not shipped on BOS |
+| `breadcast` | Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup (Bakery product; not included in the BOS ISO) |
+| `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI (Homelab, not shipped on BOS) |
 
 <!-- gen-readme-products:end -->
 
@@ -42,9 +42,9 @@ conventional bindings (used by BOS and recommended for any install):
 
 | Keys | Action |
 |------|--------|
-| `SUPER+Space` | `breadbox` — app launcher |
-| `SUPER+U` | `breadpad` — quick-capture notes/reminders |
-| `SUPER+M` | `breadman` — note viewer / manager |
+| `SUPER+Space` | `breadbox`: app launcher |
+| `SUPER+U` | `breadpad`: quick-capture notes/reminders |
+| `SUPER+M` | `breadman`: note viewer / manager |
 | `SUPER+,` | settings (`bos-settings`, where installed) |
 
 `breadbar` and `breadd` are services started at login (`exec-once`), not bound
@@ -85,7 +85,7 @@ spacing, radii, colour roles) the stylesheet is built from.
 ### Shell themes
 
 Beyond the shared colour stylesheet, a **shell theme** (`theme.toml`) describes
-the whole shell's shape and structure — the bar's geometry and contents, the
+the whole shell's shape and structure: the bar's geometry and contents, the
 launcher, the notification/OSD/panel surfaces, and their compositor rules. The
 active one is selected in `~/.config/bread/shell.toml` (`active = "<id>"`);
 five are built in (`liquid-motion`, `glass-workbench`, `spotlight`, `daylight`,
@@ -136,7 +136,7 @@ user units to `/usr/lib/systemd/user`. Per-user state (`installed.json`,
 update backups) stays in `~/.local/state/bakery`. Writes that need root use
 `sudo -n`, then `pkexec`. `bakery doctor` prints the active prefix.
 
-Hermes and `get.sh` are unchanged — they keep the user-local default. See
+Hermes and `get.sh` are unchanged; they keep the user-local default. See
 [`bakery/README.md`](bakery/README.md).
 
 ## System dependencies by product
@@ -145,7 +145,7 @@ Hermes and `get.sh` are unchanged — they keep the user-local default. See
 
 | Package | Required | Optional |
 |---------|----------|---------|
-| `bakery` | _(statically linked, none)_ | — |
+| `bakery` | _(statically linked, none)_ | none |
 | `bread` | `systemd-libs` `openssl` `zlib` | `bluez` `hyprland` |
 | `breadbar` | `gtk4` `gtk4-layer-shell` `iw` `libpulse` | `hyprland` |
 | `breadbox` | `gtk4` `gtk4-layer-shell` `librsvg` | `hyprland` |
@@ -170,7 +170,7 @@ bread-ecosystem/
 ├── bread-onnx/          # shared ONNX runtime helpers
 ├── bread-screenshots/   # grim capture primitive used by app `--screenshot` modes
 ├── bread-capture/       # orchestrator that drives those `--screenshot` modes
-├── registry/            # bread-ecosystem.toml — product registry
+├── registry/            # bread-ecosystem.toml: product registry
 └── scripts/
     ├── get.sh                   # curl | sh bootstrap
     ├── gen-index.sh             # generates dl.breadway.dev/index.json from release artifacts
@@ -194,14 +194,14 @@ tree; `bread-polkit` is the first in-tree consumer.
 A session PolicyKit authentication agent (password prompt, cancel,
 identity). Not a wrapper around `polkit-gnome`. `bread-polkit/bakery.toml`
 exists so it can be published via bakery; it is not in
-`registry/bread-ecosystem.toml` and is therefore unpublished — not on the
+`registry/bread-ecosystem.toml` and is therefore unpublished: not on the
 bakery index and not on the BOS ISO lockfile.
 
 ```sh
 cargo run -p bread-polkit
 ```
 
-Autostart — pick one:
+Autostart, pick one:
 
 ```sh
 cp bread-polkit/contrib/bread-polkit.desktop ~/.config/autostart/
@@ -224,7 +224,7 @@ and mirrors the binary to GitHub Releases as a fallback.
 to the GitHub Release URL recorded in the manifest.
 
 Beyond stable releases, most products also publish **dev** and **beta**
-tracks — continuous builds off `main` (dev) and `vX.Y.Z-rc.N` tags (beta).
+tracks: continuous builds off `main` (dev) and `vX.Y.Z-rc.N` tags (beta).
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the branch/release workflow and
 [`docs/release-channels.md`](docs/release-channels.md) for the full track
 policy. Switch tracks with `bakery track set <stable|beta|dev>`.
@@ -241,7 +241,7 @@ the binary to `dl.breadway.dev/<name>/<version>/`:
 | `*.service` | systemd unit files installed by `bakery install` |
 | `*.example.toml` / `config.example.toml` | Example configs copied on first install |
 
-`gen-index.sh` **fails loudly** if `bakery.toml` is missing — this is by
+`gen-index.sh` **fails loudly** if `bakery.toml` is missing: this is by
 design to catch omissions in the release workflow before they silently
 produce empty metadata in production.
 

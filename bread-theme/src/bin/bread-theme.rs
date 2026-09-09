@@ -1,4 +1,4 @@
-//! `bread-theme` — generates the ecosystem's shared GTK stylesheet from the
+//! `bread-theme`: generates the ecosystem's shared GTK stylesheet from the
 //! current pywal palette and writes it to the canonical path that every bread
 //! GUI loads. Run it at session start, and again after the wallpaper/palette
 //! changes (e.g. from a pywal hook); apps watch the file and recolour live.
@@ -32,7 +32,7 @@ fn write_and_report(verb: &str) -> ExitCode {
 fn print_help_to(mut w: impl std::io::Write) {
     let _ = write!(
         &mut w,
-        "bread-theme — shared stylesheet generator\n\n\
+        "bread-theme: shared stylesheet generator\n\n\
          USAGE:\n\
          \x20 bread-theme [generate|reload|path|print|layerrules]\n\
          \x20 bread-theme generate-output <OUTPUT> --image <PATH> [--shared]\n\
@@ -46,7 +46,7 @@ fn print_help_to(mut w: impl std::io::Write) {
          \x20                --from-json  wal colors.json or a color1-6 object\n\
          \x20                --shared     also write the session-global theme.css\n\
          layerrules        write the active shell theme's [compositor] table to\n\
-         \x20                {} —\n\
+         \x20                {}:\n\
          \x20                scripts/ui/rules.lua reads it for per-namespace blur/\n\
          \x20                animation, falling back to its hardcoded rules if this\n\
          \x20                is missing or malformed\n\
@@ -79,7 +79,7 @@ fn generate_output_cmd() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if args.is_empty() {
-        // Missing arguments is an error, not a help request — usage goes to
+        // Missing arguments is an error, not a help request; usage goes to
         // stderr.
         print_help_err();
         return ExitCode::FAILURE;
@@ -222,11 +222,11 @@ fn main() -> ExitCode {
         // `reload` is `generate` from the caller's view, but it's the verb to use
         // after changing pywal colours: rewriting the file (atomic rename) trips
         // the file monitor in every running bread GUI, so they all re-read the
-        // palette and recolour live — shared widgets *and* each app's own rules.
+        // palette and recolour live: shared widgets *and* each app's own rules.
         "reload" => write_and_report("reloaded"),
         "generate-output" => generate_output_cmd(),
         "layerrules" => layerrules_cmd(),
-        // Machine-readable `theme.toml` schema — token fields with types and
+        // Machine-readable `theme.toml` schema: token fields with types and
         // defaults, the closed enum vocabularies, the known slot modules. For
         // a theme editor (bos-settings).
         "describe" => {

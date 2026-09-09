@@ -26,10 +26,10 @@ builtin is byte-identical.
 
 Vertical (side-docked) bars: `[bar.window].anchors` anchored to exactly one
 of `left`/`right` plus both `top` and `bottom` now resolves as a vertical
-dock instead of the usual horizontal top/bottom bar — no new schema field,
+dock instead of the usual horizontal top/bottom bar: no new schema field,
 derived from the anchor set itself, so every existing theme is unaffected.
 `width` becomes the dock's fixed thickness in that case (`"fill"` is now a
-hard error there — the fill axis for a side dock is top/bottom, already
+hard error there, the fill axis for a side dock is top/bottom, already
 filled by the anchors). New `WindowSpec::orientation()` /
 `WindowOrientation`. See `docs/shell-themes.md`'s `[bar.window]` section.
 Consumer-side layout (breadbar) is a separate release.
@@ -38,27 +38,27 @@ Consumer-side layout (breadbar) is a separate release.
 
 `window.breadbar-panel` (the control-panel + connectivity popover) now takes
 its corner radius from `radius_card`, like every other popover card
-(`window.breadbar-history`, `.notification-card`, `window.wifi-add-dialog`)
-— it was the one surface still hardcoded to `14px`, so a hard-edged theme's
+(`window.breadbar-history`, `.notification-card`, `window.wifi-add-dialog`),
+it was the one surface still hardcoded to `14px`, so a hard-edged theme's
 panel came out rounded. Default (`liquid-motion`) 14→12px.
 
 ## 0.7.8
 
 Expanded shell-theme UI control (four axes):
 
-- **Typography** — `font_family` / `font_fallback` / `font_size_base` and a
+- **Typography**: `font_family` / `font_fallback` / `font_size_base` and a
   new `font_weight` token now drive the whole bar + launcher **and** the
   shared ecosystem stylesheet (`stylesheet()` takes a `Typography` resolved
   from `shell::load()`), not just breadbox's launcher panel. `font_family_css`
   builds a well-formed quoted family list. `liquid-motion` pinned to the
   historical `tokens::FONT_*` values so a default install is unchanged;
   glass-workbench / spotlight / daylight render their intended fonts.
-- **Chrome tokens** — `sep_style`, `bar_shadow`, `chip_gap`,
+- **Chrome tokens**: `sep_style`, `bar_shadow`, `chip_gap`,
   `ws_gradient_angle`, `media_eq_style`, `osd_style`, all defaulting to the
   current rendering.
-- **`[panel]` / `[osd]`** — `[panel]` `min_width` + `sections` (reorder / drop
+- **`[panel]` / `[osd]`**: `[panel]` `min_width` + `sections` (reorder / drop
   the control-panel body sections); `[osd]` `enabled` + `dismiss_ms`.
-- **`[[bar.widget]]`** — a theme can declare a live bar widget inline: a
+- **`[[bar.widget]]`**: a theme can declare a live bar widget inline: a
   `bind = { cmd, every }` poll + a box/label/icon/progress node tree with
   `{value}` substitution, rendered through breadbar's existing `WidgetSpec`
   path. Node depth/count bounded (4/50); style vocab validated.
@@ -72,13 +72,13 @@ Expanded shell-theme UI control (four axes):
 Per-output (per-monitor) theming. Session-global `theme.css` remains the
 fallback / focused-monitor sheet; each Hyprland/GDK connector can now have
 its own palette and stylesheet. BOS still keeps bg/surface/overlay/fg
-fixed — only color1–6 come from the wallpaper.
+fixed: only color1–6 come from the wallpaper.
 
 On disk under `$XDG_RUNTIME_DIR/bread/` (same fallback as `shared_css_path`):
 
-- `palettes/<sanitized-output>.json` — accents only (round-trips through
+- `palettes/<sanitized-output>.json`: accents only (round-trips through
   `from_wal_json` / a color1–6 object; never persists pywal's light bg)
-- `themes/<sanitized-output>.css` — `stylesheet()` for that palette
+- `themes/<sanitized-output>.css`: `stylesheet()` for that palette
 
 New lib API:
 
@@ -88,7 +88,7 @@ New lib API:
   `write_shared_css_from`
 - `palette_from_image` (isolated `wal -i`, does not touch `~/.cache/wal`),
   `generate_output`, `palette_from_json`
-- `stylesheet_resolved` — inlines `@accent` / `@on-bg` / … to hex so GTK's
+- `stylesheet_resolved`: inlines `@accent` / `@on-bg` / … to hex so GTK's
   display-global `@define-color` cannot leak the wrong monitor's accent
 
 GTK (`gtk` feature): `bind_window`, `bind_window_with_app_css`,

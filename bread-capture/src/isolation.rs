@@ -6,14 +6,14 @@
 //! This replaced an earlier nested-Hyprland approach (see git history for
 //! `feature/capture-isolation` if you want the gory details). That worked,
 //! but Hyprland's own backend library (Aquamarine) has no genuinely headless
-//! mode when a live session already holds the seat — the only path was
+//! mode when a live session already holds the seat: the only path was
 //! nesting a full second Hyprland as an ordinary Wayland *client* of the
 //! outer session, which meant: the outer compositor deciding the nested
 //! window's pixel size (so every capture needed an outer-session
 //! float+resize dispatch), the outer compositor throttling frame callbacks
 //! for occluded surfaces (so the nested window also had to be *focused*, or
 //! `grim` run inside it hung forever waiting on a frame that never came),
-//! and — the thing that ultimately motivated dropping this approach — no way
+//! and, the thing that ultimately motivated dropping this approach, no way
 //! to fully suppress the brief real, visible flash of that window on the
 //! operator's actual screen (Lua-config Hyprland has no `keyword`-based
 //! pre-emptive windowrule injection, and parking it on an untoggled special
@@ -22,7 +22,7 @@
 //! wlroots (which Sway, not Hyprland, is built directly on) has a real
 //! headless backend: `WLR_BACKENDS=headless` skips DRM and Wayland-client
 //! backends entirely and synthesizes a virtual output with no seat/DRM-master
-//! claim at all — no fight with logind over the live session's seat, and no
+//! claim at all: no fight with logind over the live session's seat, and no
 //! window anywhere, nested or otherwise, for the operator to ever see. Empirically
 //! confirmed on this machine: zero visible footprint, `zwlr_layer_shell_v1`
 //! and `zwlr_screencopy_manager_v1` both present (so a layer-shell bar and
@@ -32,7 +32,7 @@
 //! One consequence of not nesting inside Hyprland at all: breadbar's
 //! workspace list (`src/bar/workspaces.rs`, via the `hyprland` crate) talks
 //! to whatever `HYPRLAND_INSTANCE_SIGNATURE` points at. Left alone, that
-//! still points at the operator's real, live Hyprland instance — a data leak
+//! still points at the operator's real, live Hyprland instance: a data leak
 //! into an otherwise-isolated capture (real workspace names/count showing up
 //! in a bar screenshot that's supposed to be clean). Sway has no equivalent
 //! IPC this needs to keep working, so [`Isolation::start`] unsets it;
@@ -40,7 +40,7 @@
 //! gracefully (it survives Hyprland restarting), so this just exercises that
 //! same fallback path instead of a real error case.
 //!
-//! The background is a generated rainbow gradient, not a flat colour —
+//! The background is a generated rainbow gradient, not a flat colour,
 //! deliberately: a solid fill can't tell you whether a window that's
 //! *supposed* to be translucent (breadbox/breadclip/breadsearch's
 //! full-screen overlay windows, breadbar's notification/OSD surfaces) is
@@ -109,7 +109,7 @@ impl Isolation {
             Ok(name) => isolation.wayland_display = name,
             Err(e) => {
                 // Best-effort teardown of the half-started instance before
-                // propagating — the normal Drop impl still runs too, but
+                // propagating: the normal Drop impl still runs too, but
                 // doing it here as well means a failure this early doesn't
                 // depend on isolation ever being bound to a variable that
                 // outlives this function.
@@ -132,8 +132,8 @@ impl Drop for Isolation {
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.config_path);
         let _ = std::fs::remove_file(&self.background_path);
-        // Killing sway doesn't unlink the socket it bound — confirmed
-        // empirically, a killed instance leaves both files behind — so
+        // Killing sway doesn't unlink the socket it bound: confirmed
+        // empirically, a killed instance leaves both files behind, so
         // without this, every capture run permanently orphans a
         // `wayland-N`/`wayland-N.lock` pair in the runtime dir.
         if !self.wayland_display.is_empty() {
@@ -156,7 +156,7 @@ fn write_headless_config(width: u32, height: u32, background_path: &Path) -> Res
 
 /// Renders a diagonal rainbow (full hue sweep, both x and y contribute) to a
 /// PNG at exactly `width`x`height`, for use as the isolated canvas's
-/// background — see the module doc for why a gradient instead of a flat
+/// background, see the module doc for why a gradient instead of a flat
 /// colour. Diagonal rather than a simple left-to-right sweep so a capture
 /// showing color variation isn't just luck-of-the-x-position: a purely
 /// horizontal gradient would still make a tall, narrow surface look like a

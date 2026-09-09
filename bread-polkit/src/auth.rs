@@ -77,7 +77,7 @@ where
                 writer.flush().await?;
             }
             HelperLine::PromptEchoOn(_) => {
-                // Visible prompt (username, etc.) — we already sent the
+                // Visible prompt (username, etc.): we already sent the
                 // identity in the handshake. An empty line is safer than
                 // echoing the password.
                 writer.write_all(b"\n").await?;

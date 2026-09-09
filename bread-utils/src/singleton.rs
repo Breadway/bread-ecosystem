@@ -6,7 +6,7 @@
 //!
 //! The old pattern: read the PID file, `/proc/<pid>/comm`-check whether it's
 //! still this app, `kill` it if so, otherwise `fs::write` our own PID over
-//! it. That's three separate, non-atomic steps — two instances launched at
+//! it. That's three separate, non-atomic steps: two instances launched at
 //! once can both read "no valid PID" and both proceed as the "first"
 //! instance; a stale PID file left by a crash can also collide with an
 //! unrelated process that was later assigned the same PID by the kernel,
@@ -15,7 +15,7 @@
 //! This module instead holds an exclusive, kernel-atomic advisory lock
 //! (`std::fs::File::try_lock`, i.e. `flock(2)`) on the PID file for the
 //! entire lifetime of the process that acquires it. Lock ownership itself
-//! *is* the liveness check — there is no window where two processes can
+//! *is* the liveness check: there is no window where two processes can
 //! both believe they're the sole instance, and a crashed process's lock is
 //! released by the kernel the instant it dies, so there's no stale-lock
 //! case to reason about at all.
@@ -63,14 +63,14 @@ pub enum Toggle {
 }
 
 /// `$XDG_RUNTIME_DIR/<app>.pid` (falling back to `/tmp`, matching every
-/// existing consumer's own fallback) — same location `breadbox`/`breadclip`
+/// existing consumer's own fallback), same location `breadbox`/`breadclip`
 /// already used.
 pub fn pid_file_path(app: &str) -> PathBuf {
     crate::xdg::runtime_dir().join(format!("{app}.pid"))
 }
 
 /// Try to become the single instance of `app`, with no side effects beyond
-/// the lock/file itself — in particular, unlike [`toggle_or_kill`], this
+/// the lock/file itself; in particular, unlike [`toggle_or_kill`], this
 /// never signals another process. Prefer this if your app wants different
 /// behavior than "kill the existing instance" (e.g. just refuse to start a
 /// second copy).
@@ -103,8 +103,8 @@ pub fn try_acquire(app: &str) -> std::io::Result<Acquire> {
 
 /// Toggle behavior: acquire the single-instance lock for `app`. If already
 /// held by another live process, signal it to quit (`SIGTERM` via `kill`)
-/// and return [`Toggle::KilledExisting`] — the caller should exit. Otherwise
-/// take the lock and return [`Toggle::Started`] — the caller should proceed
+/// and return [`Toggle::KilledExisting`]: the caller should exit. Otherwise
+/// take the lock and return [`Toggle::Started`]: the caller should proceed
 /// and keep the guard alive.
 pub fn toggle_or_kill(app: &str) -> std::io::Result<Toggle> {
     Ok(match try_acquire(app)? {
@@ -120,7 +120,7 @@ pub fn toggle_or_kill(app: &str) -> std::io::Result<Toggle> {
 #[cfg(unix)]
 fn kill(pid: u32) {
     // Shells out rather than binding libc directly, matching how every
-    // existing consumer already did this (`Command::new("kill")`) — no new
+    // existing consumer already did this (`Command::new("kill")`); no new
     // dependency for a one-shot signal.
     let _ = std::process::Command::new("kill")
         .arg(pid.to_string())
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn first_acquire_succeeds_and_releases_on_drop() {
         // Guards against `hypr`'s env-var test concurrently pointing
-        // XDG_RUNTIME_DIR at a nonexistent path mid-test — see `env_test_lock`.
+        // XDG_RUNTIME_DIR at a nonexistent path mid-test; see `env_test_lock`.
         let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
         let app = unique_app("first");
         match try_acquire(&app).unwrap() {
@@ -164,7 +164,7 @@ mod tests {
         };
 
         // A second attempt while the first guard is still held must not be
-        // able to acquire the lock too — that's the whole point. No signal
+        // able to acquire the lock too: that's the whole point. No signal
         // is sent by `try_acquire` itself (that's `toggle_or_kill`'s job),
         // so this is safe to assert without affecting the test process.
         match try_acquire(&app).unwrap() {

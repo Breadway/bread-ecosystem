@@ -6,7 +6,7 @@ use std::str::FromStr;
 /// Which build of a package bakery follows: the tagged stable release, a
 /// deliberately-promoted beta, or the continuously-published `dev` branch
 /// build. Not to be confused with the *distribution* channel (bakery vs.
-/// pacman) documented in `docs/release-channels.md` — that's an orthogonal,
+/// pacman) documented in `docs/release-channels.md`; that's an orthogonal,
 /// pre-existing use of the word "channel", which is why this is called a
 /// "track" instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, ValueEnum)]
@@ -42,7 +42,7 @@ impl FromStr for Track {
             "stable" => Ok(Track::Stable),
             "beta" => Ok(Track::Beta),
             "dev" => Ok(Track::Dev),
-            other => Err(format!("unknown track '{other}' — expected stable, beta, or dev")),
+            other => Err(format!("unknown track '{other}': expected stable, beta, or dev")),
         }
     }
 }

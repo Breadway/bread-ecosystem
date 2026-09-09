@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# doctor-channels.sh — detect drift between a repo's declared distribution
+# doctor-channels.sh: detect drift between a repo's declared distribution
 # channel(s) and its actual .forgejo/workflows/ + packaging metadata.
 #
 # See docs/release-channels.md for the policy this checks against.
@@ -15,13 +15,13 @@
 #   scripts/doctor-channels.sh ~/Projects
 #
 # Also checks every registry product's Forgejo repo for the
-# BAKERY_MINISIGN_SEC_KEY_PATH Actions secret (via the Forgejo API) — a
+# BAKERY_MINISIGN_SEC_KEY_PATH Actions secret (via the Forgejo API): a
 # split-out product repo silently missing this secret is exactly the gotcha
 # that bit breadcast's onboarding: its release workflows would either fail
 # the hard-fail guard (dev/rc-style workflows) or, worse, publish unsigned
 # (older release.yml-style workflows without that guard). Skipped with a
 # warning (not a failure) if ~/.config/forgejo/token doesn't exist, so this
-# still runs for anyone without API access — set SKIP_SECRETS_CHECK=1 to
+# still runs for anyone without API access; set SKIP_SECRETS_CHECK=1 to
 # skip it deliberately (e.g. offline).
 #
 # Exits 0 if no drift found, 1 if any repo has drift (so it's CI-friendly).
@@ -63,7 +63,7 @@ is_in_registry() {
 PACKAGE_CHECK_EXEMPT=("bos")   # ships an ISO via release-iso.yml; its PKGBUILDs
                                 # under packaging/*/ build bundled AUR deps
                                 # (bibata, calamares, ...), each with its own
-                                # dedicated workflow — not a pacman-channel package.
+                                # dedicated workflow, not a pacman-channel package.
 
 is_package_check_exempt() {
     local name="$1"
@@ -80,7 +80,7 @@ for dir in "${BASE_DIR}"/*/; do
     name="$(basename "${dir}")"
     name="${name%-fix-worktree}"   # normalize worktree checkouts back to the repo name
     [[ -d "${dir}/.git" || -f "${dir}/.git" ]] || continue
-    # Skip bread-ecosystem itself — it's a multi-product repo the registry
+    # Skip bread-ecosystem itself: it's a multi-product repo the registry
     # membership check above doesn't map 1:1, and it's already reviewed by
     # hand above (bakery + bread-theme products).
     # Prefix match, not exact: bread-ecosystem-breadcast, bread-ecosystem-onboard,
@@ -176,7 +176,7 @@ except json.JSONDecodeError:
 print(1 if any(s.get('name') == 'BAKERY_MINISIGN_SEC_KEY_PATH' for s in secrets) else 0)
 " 2>/dev/null || echo 0)"
         if [[ "${has_key}" != 1 ]]; then
-            echo "${slug}: missing BAKERY_MINISIGN_SEC_KEY_PATH Actions secret — release CI will fail closed (or worse, publish unsigned on an older workflow shape) until it's set"
+            echo "${slug}: missing BAKERY_MINISIGN_SEC_KEY_PATH Actions secret; release CI will fail closed (or worse, publish unsigned on an older workflow shape) until it's set"
             secrets_missing=1
         fi
     done
@@ -191,6 +191,6 @@ fi
 if [[ "${drift}" == 0 ]]; then
     echo "no channel drift found"
 else
-    echo "drift found — see docs/release-channels.md for the policy"
+    echo "drift found: see docs/release-channels.md for the policy"
 fi
 exit "${drift}"

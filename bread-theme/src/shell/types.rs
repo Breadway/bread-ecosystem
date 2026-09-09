@@ -1,4 +1,4 @@
-//! Fully-resolved shell theme types — see `bread-theme/src/shell/mod.rs` for
+//! Fully-resolved shell theme types; see `bread-theme/src/shell/mod.rs` for
 //! the module overview and `manifest.rs` for how these are built from TOML.
 //!
 //! Every type here has all defaults filled in; there is no further "is this
@@ -26,12 +26,12 @@ pub enum ClockStyle {
 }
 
 /// Dot pill widths (px) for 0/1/2/3-or-more open windows, `style = "dots"`
-/// (theme 04/spotlight). Index 3 covers "3 or more" — the demo's own dots
+/// (theme 04/spotlight). Index 3 covers "3 or more": the demo's own dots
 /// never grow past that fourth width. Unused by `Trail`/`Pill`.
 pub type DotWidths = [i32; 4];
 
 /// The demo's own numbers (`04-spotlight.html`'s `.dots button[data-n="N"]`
-/// rules) — the default a theme gets if it sets `style = "dots"` but omits
+/// rules): the default a theme gets if it sets `style = "dots"` but omits
 /// `dot_widths`.
 pub const DEFAULT_DOT_WIDTHS: DotWidths = [6, 10, 14, 18];
 
@@ -72,7 +72,7 @@ pub enum Exclusive {
 }
 
 /// A satellite surface's width: unlike the bar window, a satellite can also
-/// be `Auto` — sized by its own content/CSS with no `set_default_width` call
+/// be `Auto`: sized by its own content/CSS with no `set_default_width` call
 /// at all. `breadbar-panel` is exactly this today (popover content decides
 /// its width via `.control-panel-inner`/`.wifi-popover-inner` min-width, not
 /// the layer-shell window).
@@ -97,7 +97,7 @@ pub struct Margin {
 
 /// Whether a bar docks to the top/bottom edge (spanning left-right) or to
 /// the left/right edge (spanning top-bottom). Deliberately not a schema
-/// field of its own — [`WindowSpec::orientation`] derives it from
+/// field of its own; [`WindowSpec::orientation`] derives it from
 /// `anchors`, so every existing theme's anchor set (e.g.
 /// `["top", "left", "right"]`) resolves to `Horizontal` unchanged, with no
 /// migration needed.
@@ -107,7 +107,7 @@ pub enum WindowOrientation {
     Vertical,
 }
 
-/// `bar.window` — plan §2: window shape is data, not a closed layout enum.
+/// `bar.window`: plan §2: window shape is data, not a closed layout enum.
 /// Island/Edge/Capsule are three *values* of this struct, not three code
 /// paths.
 #[derive(Debug, Clone, PartialEq)]
@@ -115,7 +115,7 @@ pub struct WindowSpec {
     pub anchors: Vec<String>,
     /// The bar's length axis for a horizontal bar (`Fill` spans the
     /// anchored left/right edges), or its fixed thickness for a vertical
-    /// one (`width.left ^ right` docked, `top` + `bottom` filling) — see
+    /// one (`width.left ^ right` docked, `top` + `bottom` filling); see
     /// [`WindowSpec::orientation`]. A vertical bar's `width` must be
     /// `Px`; layer-shell has no equivalent of `Fill` for the cross axis.
     pub width: Width,
@@ -128,7 +128,7 @@ pub struct WindowSpec {
 
 impl WindowSpec {
     /// See [`WindowOrientation`]. Vertical iff anchored to exactly one of
-    /// `left`/`right` and both `top` and `bottom` — the same anchor set a
+    /// `left`/`right` and both `top` and `bottom`: the same anchor set a
     /// theme already writes to mean "fill this axis" horizontally, applied
     /// to the other axis.
     pub fn orientation(&self) -> WindowOrientation {
@@ -145,7 +145,7 @@ impl WindowSpec {
 }
 
 impl Default for WindowSpec {
-    /// Generic baseline for a theme that omits `[bar.window]` entirely —
+    /// Generic baseline for a theme that omits `[bar.window]` entirely:
     /// deliberately the plan §4 schema example's numbers, not necessarily
     /// any particular shipped theme's. `liquid-motion` sets every field
     /// explicitly, so it never falls through to this.
@@ -167,7 +167,7 @@ impl Default for WindowSpec {
     }
 }
 
-/// `bar.slots` — plan §2: structure is slots, not layout code. `drawer` is
+/// `bar.slots`: plan §2: structure is slots, not layout code. `drawer` is
 /// the only thing Capsule/theme-04 adds over Island, and it's just an
 /// (empty, for now) slot list, not a code path.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -182,7 +182,7 @@ pub struct Slots {
 pub struct WorkspacesModule {
     pub style: WorkspaceStyle,
     pub show_empty: bool,
-    /// `style = "dots"` only — see [`DotWidths`]. Trail/Pill ignore this.
+    /// `style = "dots"` only; see [`DotWidths`]. Trail/Pill ignore this.
     pub dot_widths: DotWidths,
 }
 
@@ -190,7 +190,7 @@ pub struct WorkspacesModule {
 pub struct ClockModule {
     pub style: ClockStyle,
     /// Consumed only by `ClockStyle::Plain` (`breadbar::bar::clock`'s
-    /// `formatted()`, called from `main.rs` only in the `Plain` arm) —
+    /// `formatted()`, called from `main.rs` only in the `Plain` arm):
     /// `Flip` and `None` never read it; `Flip`'s own `time()` hardcodes a
     /// 24h `HH:MM` layout regardless of this field. All three built-in
     /// themes set `format = "%H:%M"` (which happens to match `Flip`'s
@@ -199,7 +199,7 @@ pub struct ClockModule {
     /// honour this.
     pub format: String,
     /// Consumed only by `ClockStyle::Plain`, same scoping as
-    /// [`Self::format`] — `date_lbl` is only ever attached under the
+    /// [`Self::format`]: `date_lbl` is only ever attached under the
     /// `Plain` arm's box, so this value can never be observed under
     /// `Flip`/`None`. Currently harmless in practice (every built-in theme
     /// that isn't `Plain` sets this `false`, so there's nothing to ignore),
@@ -207,7 +207,7 @@ pub struct ClockModule {
     /// applies.
     pub show_date: bool,
     /// `style = "none"` + this `true`: no module renders a clock label of
-    /// its own — `launcher_entry`'s placeholder text becomes the time
+    /// its own; `launcher_entry`'s placeholder text becomes the time
     /// instead (theme 04/spotlight: the capsule's entry IS the clock until
     /// focused, per `04-spotlight.html`'s `q.placeholder = t`). Meaningless
     /// for `Flip`/`Plain`, which already show a time some other way.
@@ -230,7 +230,7 @@ pub struct Launcher {
     pub icon_px: i32,
     pub row_anim: String,
     pub rule: String,
-    /// Selects the footer label's noun — `"count_apps"` renders
+    /// Selects the footer label's noun: `"count_apps"` renders
     /// `"{n} applications"`, anything else (`"count_results"` included)
     /// renders `"{n} results"`. Consumed by `breadbox::main`'s footer label
     /// (appended below `ResultsList::scroller`, updated on every
@@ -239,7 +239,7 @@ pub struct Launcher {
     /// Consumed by breadbar's embedded capsule (`breadbar::main::run_ui`,
     /// passed straight to `ResultsList::new`) for every theme, and by
     /// breadbox's own overlay (`breadbox::main::run_ui`) as of the
-    /// liquid-motion/glass-workbench redesign — `true` groups the idle
+    /// liquid-motion/glass-workbench redesign: `true` groups the idle
     /// (empty-query) view into "Recent"/"Apps" headers via
     /// `bread_launcher::gtk::split_sections`, `false` reproduces the flat
     /// list. breadbox no longer hardcodes `false` at its `ResultsList::new`
@@ -250,8 +250,8 @@ pub struct Launcher {
     /// the capsule's own width while a search is in progress
     /// (`04-spotlight.html`: `.searching .capsule { width: 520px }` vs the
     /// idle 480px). Defaults to `width` (no widen) for a theme that omits
-    /// it, so an `Overlay`-mode theme — which never reads this field at all
-    /// — and an `Embedded` theme that just doesn't want the widen both fall
+    /// it, so an `Overlay`-mode theme (which never reads this field at all)
+    /// and an `Embedded` theme that just doesn't want the widen both fall
     /// back to "no change" rather than a hardcoded magic number.
     pub search_width: i32,
     /// `LauncherMode::Embedded` only: `border-radius` while searching
@@ -259,26 +259,26 @@ pub struct Launcher {
     /// vs the collapsed 22px `radius`). Same default-to-`radius` fallback
     /// reasoning as `search_width`.
     pub search_radius: i32,
-    /// Result row `border-radius` (px) — `breadbox::main::build_css`'s
+    /// Result row `border-radius` (px): `breadbox::main::build_css`'s
     /// `row { border-radius: ... }`. Liquid Motion's soft 12px vs Glass
     /// Workbench's dense 6px is the clearest single signal that the two
     /// themes are different instruments, not one launcher recoloured.
     pub row_radius: i32,
-    /// Result row horizontal inset (px) from the panel's edge —
+    /// Result row horizontal inset (px) from the panel's edge,
     /// `row { margin: 0 {row_inset}px; }`. Mirrors the demos' `.bx .r`
     /// `margin: 0 Npx` rule (liquid-motion 8px, glass-workbench 6px).
     pub row_inset: i32,
-    /// Result row vertical padding (px) — `row { padding: {row_padding_v}px
+    /// Result row vertical padding (px): `row { padding: {row_padding_v}px
     /// {row_padding_h}px; }`'s first component.
     pub row_padding_v: i32,
-    /// Result row horizontal padding (px) — same rule's second component.
+    /// Result row horizontal padding (px): same rule's second component.
     pub row_padding_h: i32,
-    /// Row icon `border-radius` (px) — `breadbox::main::build_css`'s
+    /// Row icon `border-radius` (px): `breadbox::main::build_css`'s
     /// `image { border-radius: ...; }`, paired with `icon_px` for the
     /// swatch's size. Liquid Motion's rounder 9px vs Glass Workbench's
     /// tighter 5px.
     pub icon_radius: i32,
-    /// Search entry font-size (px) — distinct from `tokens.font_size_base`
+    /// Search entry font-size (px), distinct from `tokens.font_size_base`
     /// (which sizes the result rows): both demos give the search field a
     /// larger face than its rows (liquid-motion 16 vs its rows' 14,
     /// glass-workbench 14 vs its rows' 13).
@@ -296,7 +296,7 @@ pub struct Launcher {
     /// previously hardcoded 0.60, which is what made it look washed out.
     pub panel_alpha: f64,
     /// Selected/hovered row background: `alpha(@accent, selection_alpha)`.
-    /// Liquid Motion's softer 0.22 vs Glass Workbench's denser 0.28 — see
+    /// Liquid Motion's softer 0.22 vs Glass Workbench's denser 0.28; see
     /// each demo's `.bx .r.sel` rule.
     pub selection_alpha: f64,
 }
@@ -308,7 +308,7 @@ pub const PANEL_SECTIONS: &[&str] = &[
     "volume", "output", "brightness", "system", "power", "tray",
 ];
 
-/// `[panel]` — the hamburger control-panel popover. `min_width` is CSS
+/// `[panel]`: the hamburger control-panel popover. `min_width` is CSS
 /// (`.control-panel-inner`); `sections` drives which sub-sections breadbar
 /// assembles and in what order.
 #[derive(Debug, Clone, PartialEq)]
@@ -329,7 +329,7 @@ impl Default for Panel {
 /// The OSD kinds breadbar knows how to show.
 pub const OSD_KINDS: &[&str] = &["volume", "brightness"];
 
-/// `[osd]` — the volume/brightness on-screen display. `anchor`/radius are
+/// `[osd]`: the volume/brightness on-screen display. `anchor`/radius are
 /// controlled by `[surfaces."breadbar-osd"]` + the `osd_style` token; this
 /// table adds which kinds are enabled and how long they linger.
 #[derive(Debug, Clone, PartialEq)]
@@ -349,13 +349,13 @@ impl Default for Osd {
 
 // ---- theme-declared bar widgets (`[[bar.widget]]`) -----------------------
 
-/// Max node-tree depth / count for a theme widget — mirrors
+/// Max node-tree depth / count for a theme widget; mirrors
 /// `bread_shared::widget::{MAX_NODE_DEPTH, MAX_NODE_COUNT}` (kept as local
 /// consts so `bread-theme` needs no dependency on `bread-shared`).
 pub const WIDGET_MAX_DEPTH: usize = 4;
 pub const WIDGET_MAX_NODES: usize = 50;
 
-/// The closed `style` vocabularies a `[[bar.widget]]` node may use — the same
+/// The closed `style` vocabularies a `[[bar.widget]]` node may use: the same
 /// names `bread_shared::widget::WidgetStyle` accepts, so breadbar's existing
 /// `apply_style` maps them 1:1 onto the `bread-*` CSS classes.
 pub const WIDGET_COLORS: &[&str] = &[
@@ -372,7 +372,7 @@ pub struct Bind {
     pub every_ms: u64,
 }
 
-/// One node in a theme widget's render tree — deliberately the same shape as
+/// One node in a theme widget's render tree: deliberately the same shape as
 /// `bread_shared::widget::WidgetNode` so breadbar maps it mechanically.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThemeNode {
@@ -425,14 +425,14 @@ pub(super) fn parse_duration(s: &str) -> Option<u64> {
     v.checked_mul(mult).filter(|ms| *ms >= 1)
 }
 
-/// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]` —
+/// A satellite surface, keyed by layer-shell namespace in `[surfaces.*]`:
 /// deliberately the same keyspace as `[compositor.*]` (see module docs)
 /// rather than a role name, so the two tables can be validated against each
 /// other and a namespace's positioning and compositor treatment live under
 /// one lookup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Surface {
-    /// One of `top_right`/`bottom_right`/`bottom_centre`/`fill` — validated
+    /// One of `top_right`/`bottom_right`/`bottom_centre`/`fill`; validated
     /// in `manifest.rs::resolve_surfaces` against the shapes
     /// `breadbar/src/surface.rs::apply` actually implements, the same
     /// "typo'd key is a hard error" policy this field's siblings
@@ -445,7 +445,7 @@ pub struct Surface {
     /// the TOP, so `breadbar-notif`/`breadbar-panel` popping up from
     /// `top_right` always sat naturally close to the bar. A bottom-anchored
     /// bar has no shape in the original three that keeps those satellites
-    /// near it — `top_right` would put them at the opposite corner of the
+    /// near it: `top_right` would put them at the opposite corner of the
     /// screen from the dock they visually belong to. `offset` is
     /// `[right, bottom]` for this anchor, the same two-element convention
     /// `top_right`'s `[right, top]` already uses.
@@ -455,17 +455,17 @@ pub struct Surface {
     pub layer: String,
 }
 
-/// One `[compositor.*]` entry — plan §9: the per-namespace layer-shell rule
+/// One `[compositor.*]` entry: plan §9: the per-namespace layer-shell rule
 /// an app ships as its default and a theme may override. Mirrors the field
 /// set `hl.layer_rule` actually accepts in `scripts/ui/rules.lua` (blur,
-/// ignore_alpha, blur_popups, animation, no_anim) — that Lua API isn't in
+/// ignore_alpha, blur_popups, animation, no_anim); that Lua API isn't in
 /// hyprland-api.lua's type annotations, so this field set is evidenced by
 /// working usage, not documentation (plan §12 risk 3).
 ///
 /// Also `Serialize`: this is the per-namespace shape written to
 /// `~/.config/hypr/layerrules.json` by `bread_theme::layerrules` (plan §9
 /// step 3-4), which `scripts/ui/rules.lua` parses back into `hl.layer_rule`
-/// calls. `Option::None` fields are omitted rather than emitted as `null` —
+/// calls. `Option::None` fields are omitted rather than emitted as `null`,
 /// the Lua JSON reader treats a missing key and a `null` value identically
 /// (assigning `nil` into a table key is a no-op), so either encoding is
 /// correct, but omitting keeps the file legible for hand inspection.
@@ -476,7 +476,7 @@ pub struct LayerRule {
     pub ignore_alpha: Option<f64>,
     pub blur_popups: bool,
     /// Passed through verbatim to `hl.layer_rule`'s `animation` field
-    /// (`"slide top"`, `"slide bottom"`, …) — kept as a plain string rather
+    /// (`"slide top"`, `"slide bottom"`, …); kept as a plain string rather
     /// than a closed enum since `hl.layer_rule`'s own field set is only
     /// evidenced by working usage in `rules.lua`, not documented (plan §12
     /// risk 3); a closed Rust enum here would need updating in lockstep
@@ -518,17 +518,17 @@ impl TokenValue {
     }
 }
 
-/// `bar_border` — how `window.breadbar`'s own surface is drawn. A closed enum,
+/// `bar_border`: how `window.breadbar`'s own surface is drawn. A closed enum,
 /// validated at manifest-resolution time like every other string enum in this
 /// schema, rather than the free-form string it used to be (a typo silently
 /// rendered as `Full`).
 ///
-/// - `Full` — a floating island: fill + a border on all four edges
+/// - `Full`: a floating island: fill + a border on all four edges
 ///   (liquid-motion).
-/// - `Bottom` — a flush edge-to-edge bar: fill + only a bottom hairline, since
+/// - `Bottom`: a flush edge-to-edge bar: fill + only a bottom hairline, since
 ///   an island's full border would show as a stray line flush against the
 ///   screen edge (glass-workbench).
-/// - `Segmented` — `window.breadbar` itself is fully transparent (no fill,
+/// - `Segmented`: `window.breadbar` itself is fully transparent (no fill,
 ///   border, radius or shadow); the bar's slot-group containers each carry
 ///   their own pill surface instead, so one window reads as three detached
 ///   floating pills (daylight).
@@ -570,7 +570,7 @@ impl std::fmt::Display for BarBorder {
 /// `[tokens]`, fully resolved: every documented token is a typed field with a
 /// default (from [`crate::tokens`]), validated when the manifest is parsed
 /// (`manifest::resolve_tokens`). A theme may still define *extra* keys purely
-/// for `{name}` substitution in its `extra.css` overlay — those land in
+/// for `{name}` substitution in its `extra.css` overlay; those land in
 /// [`Tokens::extra`]. A `{name}` in a CSS template that matches neither a
 /// field nor an extra key is a hard error at resolve time (see
 /// `RawManifest::resolve`), so a typo in a token name can no longer be a
@@ -615,7 +615,7 @@ pub struct Tokens {
     pub media_eq_style: String,
     /// OSD pill shape: `pill` (default, `radius_pill`) · `bar` (`radius_card`).
     pub osd_style: String,
-    /// Open extras — only referenced by `{name}` substitution in a user
+    /// Open extras: only referenced by `{name}` substitution in a user
     /// theme's `extra.css`. Not part of the documented schema.
     pub extra: BTreeMap<String, TokenValue>,
 }
@@ -677,7 +677,7 @@ pub(super) fn substitute_pairs(template: &str, mut pairs: Vec<(String, String)>)
     out
 }
 
-/// Every `{name}` still present after substitution — i.e. a placeholder that
+/// Every `{name}` still present after substitution, i.e. a placeholder that
 /// matched no `[tokens]` field, no derived style value, and no `extra.css`
 /// key. Scoped to `{` + a lowercase identifier + `}` with no whitespace, a
 /// shape real CSS rule bodies never produce.
@@ -786,15 +786,15 @@ impl Tokens {
     pub fn bg_alpha(&self) -> f64 {
         self.bg_alpha
     }
-    /// The overshoot/bounce curve — clock flips, pop-ins, the workspace caret.
+    /// The overshoot/bounce curve: clock flips, pop-ins, the workspace caret.
     pub fn spring(&self) -> String {
         self.spring.clone()
     }
-    /// The settle curve — hovers, opacity/background transitions, slide-ins.
+    /// The settle curve: hovers, opacity/background transitions, slide-ins.
     pub fn spring_settle(&self) -> String {
         self.spring_settle.clone()
     }
-    /// Palette token *name* (`"accent"`, `"teal"`, …) — the workspace-trail
+    /// Palette token *name* (`"accent"`, `"teal"`, …): the workspace-trail
     /// gradient's start stop. Resolved against pywal downstream via `@name`.
     pub fn accent_from(&self) -> String {
         self.accent_from.clone()
@@ -822,7 +822,7 @@ impl Tokens {
     pub fn icon_px(&self) -> i64 {
         self.icon_px
     }
-    /// How `window.breadbar`'s own surface is drawn — see [`BarBorder`].
+    /// How `window.breadbar`'s own surface is drawn; see [`BarBorder`].
     pub fn bar_border(&self) -> BarBorder {
         self.bar_border
     }
@@ -883,7 +883,7 @@ mod orientation_tests {
     fn both_side_edges_anchored_is_horizontal_not_vertical() {
         // left + right together describe a horizontal bar's own end pins
         // (today's normal case), not an (impossible) dock to both sides at
-        // once — the vertical case needs exactly one of left/right.
+        // once; the vertical case needs exactly one of left/right.
         assert_eq!(
             spec_with_anchors(&["left", "right", "top", "bottom"]).orientation(),
             WindowOrientation::Horizontal
@@ -893,7 +893,7 @@ mod orientation_tests {
     #[test]
     fn side_anchor_without_both_top_and_bottom_is_horizontal() {
         // A capsule/island pinned to one side edge but not spanning the
-        // full height isn't a side-dock — it's still today's fixed-width,
+        // full height isn't a side-dock: it's still today's fixed-width,
         // auto-height horizontal shape, just anchored asymmetrically.
         assert_eq!(
             spec_with_anchors(&["left", "top"]).orientation(),

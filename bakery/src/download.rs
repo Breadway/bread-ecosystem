@@ -6,11 +6,11 @@ use crate::manifest::{fetch_binary, Binary};
 use crate::ui;
 
 /// Download a binary, verify its SHA-256, then atomically write it into
-/// place (fsynced, temp-in-same-dir-with-unique-name then rename — see
+/// place (fsynced, temp-in-same-dir-with-unique-name then rename; see
 /// `bread_utils::atomic`). Bails before touching `dest` if the checksum
 /// fails. Returns the verified hex sha256 so callers (`install::
 /// install_package`) can record it for `bakery verify` without hashing the
-/// bytes a second time — `verify_sha256` already confirmed `bytes` matches
+/// bytes a second time: `verify_sha256` already confirmed `bytes` matches
 /// `binary.sha256`, so that's the value to return.
 pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
     ui::step("downloading", &binary.name);
@@ -28,12 +28,12 @@ pub fn fetch_and_place(binary: &Binary, dest: &Path) -> Result<String> {
 
 /// Verify that `bytes` hashes to `expected_hex` under SHA-256.
 ///
-/// Shared by every artifact download path — binaries (via
+/// Shared by every artifact download path: binaries (via
 /// [`fetch_and_place`]), and config-example / systemd-unit downloads in
-/// `install.rs` — so all downloaded artifacts get the same integrity check.
+/// `install.rs`, so all downloaded artifacts get the same integrity check.
 pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<()> {
     if expected_hex.is_empty() {
-        bail!("index entry has no sha256 recorded — refusing to trust an unverifiable download");
+        bail!("index entry has no sha256 recorded: refusing to trust an unverifiable download");
     }
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn verify_missing_sha256_gives_a_clear_error() {
         // gen-index.sh emits an empty sha256 string when a .sha256 sidecar
-        // is missing — must not fall through to the generic mismatch
+        // is missing; must not fall through to the generic mismatch
         // message ("expected: \n actual: <hex>"), which is confusing about
         // what actually went wrong.
         let err = verify_sha256(b"anything", "").unwrap_err();

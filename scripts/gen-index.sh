@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate dl.breadway.dev/index.json (or a track-prefixed sibling — see
+# Generate dl.breadway.dev/index.json (or a track-prefixed sibling; see
 # TRACK below) from:
 #   - registry/bread-ecosystem.toml         (product list)
 #   - <PKG_ROOT>/<name>/bakery.toml         (per-product metadata, uploaded by release.yml)
@@ -9,11 +9,11 @@
 # Run on the build host after each product build, before the dl server is refreshed.
 #
 # TRACK selects which build track to generate an index for: "stable"
-# (default — reads/writes DL_DIR directly, byte-for-byte the same behavior
+# (default; reads/writes DL_DIR directly, byte-for-byte the same behavior
 # as before tracks existed), "beta", or "dev" (both read/write a
 # DL_DIR/<track>/ subtree, so they never collide with stable's paths). A
 # product with no release dir under the selected track's tree is skipped
-# with a warning, same as an unreleased product is today — most products
+# with a warning, same as an unreleased product is today; most products
 # won't have a beta/dev build for a while after this lands.
 # Requires: jq, python3 (tomllib, stdlib since 3.11), sha256sum, flock
 set -euo pipefail
@@ -86,14 +86,14 @@ build_package_json() {
     # alongside the binaries (${version_dir}/bakery.toml). Fall back to a
     # sibling repo checkout for local dev use. Done before the binaries loop
     # below so license_file/desktop_file (if declared) can be excluded from
-    # it by name — otherwise they'd get swept up as "binaries" with no
+    # it by name; otherwise they'd get swept up as "binaries" with no
     # checksum, the same gotcha this loop's other exclusions guard against.
     local bakery_toml="${version_dir}/bakery.toml"
     if [[ ! -f "${bakery_toml}" ]]; then
         bakery_toml="${SCRIPT_DIR}/../${name}/bakery.toml"
     fi
     if [[ ! -f "${bakery_toml}" ]]; then
-        echo "ERROR: bakery.toml not found for ${name} — the release workflow must copy it to \${PKG_ROOT}/${name}/\${VERSION}/bakery.toml" >&2
+        echo "ERROR: bakery.toml not found for ${name}: the release workflow must copy it to \${PKG_ROOT}/${name}/\${VERSION}/bakery.toml" >&2
         return 1
     fi
 
@@ -139,7 +139,7 @@ print(d.get('data_archive', ''))
         fi
         local dl_url="${URL_ROOT}/${name}/${version}/${bin_name}"
         # dev/beta builds never get a real GitHub Release (see the dev/beta
-        # CI workflows — that step is intentionally skipped for those
+        # CI workflows, that step is intentionally skipped for those
         # tracks), so github_url just mirrors dl_url rather than pointing at
         # a release asset that doesn't exist.
         local gh_url
@@ -190,7 +190,7 @@ print(json.dumps(d.get('bread_deps', [])))
 " 2>/dev/null || echo "[]")"
 
     # [[service]] entries → [{unit, enable, sha256}]. sha256 comes from the
-    # actual unit file shipped in this version dir — the same
+    # actual unit file shipped in this version dir, the same
     # artifact-integrity guarantee binaries already get. A missing unit file
     # gets an empty sha256; install.rs refuses to install an unverified
     # download rather than silently skipping the check.
@@ -356,7 +356,7 @@ echo "wrote ${OUT}"
 
 # Sign the index so `bakery` can verify it before trusting a single byte.
 # Every artifact sha256 and post_install hook string lives inside index.json,
-# so a valid signature over these raw bytes transitively covers all of it —
+# so a valid signature over these raw bytes transitively covers all of it;
 # no separate per-artifact signing is needed.
 #
 # MINISIGN_SEC_KEY must point at the *secret* key file generated with
@@ -367,7 +367,7 @@ echo "wrote ${OUT}"
 #
 # This step is a no-op (with a loud warning) if the key isn't configured, so
 # existing unsigned publishing flows don't break until the key is actually
-# wired up — see the handoff note in the fix commit for this repo.
+# wired up; see the handoff note in the fix commit for this repo.
 if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
     if [[ ! -f "${MINISIGN_SEC_KEY}" ]]; then
         echo "ERROR: MINISIGN_SEC_KEY=${MINISIGN_SEC_KEY} does not exist" >&2
@@ -389,7 +389,7 @@ if [[ -n "${MINISIGN_SEC_KEY:-}" ]]; then
     mv -f "${_sig_tmp}" "${OUT}.minisig"
     echo "signed ${OUT} -> ${OUT}.minisig"
 else
-    echo "WARNING: MINISIGN_SEC_KEY not set — index.json was NOT signed." >&2
+    echo "WARNING: MINISIGN_SEC_KEY not set: index.json was NOT signed." >&2
     echo "         bakery clients built with signature verification will reject" >&2
     echo "         this index. Set MINISIGN_SEC_KEY before running this in" >&2
     echo "         production once the signing key has been provisioned." >&2

@@ -6,7 +6,7 @@ set -eu
 # Pinned minisign public key for the bakery release binary. Matches the
 # PUBKEY constant in bakery/src/manifest.rs (same keypair signs both
 # index.json and the bakery binary itself). Do not source this from the
-# network — it must be baked into this script so a compromised dl server
+# network: it must be baked into this script so a compromised dl server
 # can't swap it out along with a malicious binary.
 BAKERY_MINISIGN_PUBKEY="RWTBR8w/IJ+jaylOv80b52DzekKbSR2CvOVGvzB0ipGBaMhJPAOiEWq8"
 
@@ -19,7 +19,7 @@ die() { echo "error: $*" >&2; exit 1; }
 uname -m | grep -q x86_64 || die "bakery only supports x86_64 (got $(uname -m))"
 uname -s | grep -q Linux  || die "bakery only supports Linux (got $(uname -s))"
 
-# Signature verification is mandatory. Checksum-only is not sufficient —
+# Signature verification is mandatory. Checksum-only is not sufficient:
 # the binary and its .sha256 typically come from the same server, so a
 # compromised host can serve a matching pair. Fail closed if minisign
 # isn't here rather than downloading something we refuse to trust.
@@ -72,19 +72,19 @@ else
 fi
 
 # Signature is required. A missing .minisig is a refuse-to-install, not a
-# warning — checksum-only is not a substitute.
+# warning: checksum-only is not a substitute.
 if fetch "${sig_url}" "${TMP}.minisig" 2>/dev/null; then
     :
 elif [ "${sig_url_alt}" != "${sig_url}" ] && fetch "${sig_url_alt}" "${TMP}.minisig" 2>/dev/null; then
     echo "  signature fetched from fallback URL"
 else
-    die "could not fetch bakery-x86_64.minisig — refusing to install an unsigned binary"
+    die "could not fetch bakery-x86_64.minisig: refusing to install an unsigned binary"
 fi
 
 if minisign -V -q -m "${TMP}" -x "${TMP}.minisig" -P "${BAKERY_MINISIGN_PUBKEY}"; then
     echo "  signature verified (minisign)"
 else
-    die "minisign signature verification FAILED — refusing to install a binary that doesn't match the pinned bakery key"
+    die "minisign signature verification FAILED: refusing to install a binary that doesn't match the pinned bakery key"
 fi
 
 # Checksum is defense-in-depth only, and never enough on its own. A
@@ -107,7 +107,7 @@ case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
     *)
         echo ""
-        echo "  note: ${BIN_DIR} is not in PATH — add to your shell profile:"
+        echo "  note: ${BIN_DIR} is not in PATH, add to your shell profile:"
         echo "    export PATH=\"${BIN_DIR}:\$PATH\""
         ;;
 esac

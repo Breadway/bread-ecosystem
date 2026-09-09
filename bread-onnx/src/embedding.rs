@@ -17,7 +17,7 @@
 //! for execution providers that pad the output sequence dimension), and
 //! L2-normalize with the same `1e-10` epsilon. `breadmill`'s only real
 //! difference is prepending a document/query prefix string before
-//! tokenizing, which stays the caller's responsibility here — pass the
+//! tokenizing, which stays the caller's responsibility here: pass the
 //! already-prefixed text to [`EmbeddingSession::embed`].
 
 use std::path::Path;
@@ -40,7 +40,7 @@ pub struct EmbeddingSession {
 impl EmbeddingSession {
     /// Load a BERT-family embedding model + tokenizer, selecting execution
     /// providers via [`build_session`]. `dim` is the output embedding
-    /// dimension (results are truncated/zero-padded to it — matches how
+    /// dimension (results are truncated/zero-padded to it, matches how
     /// both original implementations handled a model whose `dim` config
     /// might not exactly match `last_hidden_state`'s actual width). `max_seq_len`
     /// caps tokenized input length before inference (truncating, not
@@ -201,7 +201,7 @@ mod tests {
     fn mean_pool_clamps_actual_seq_to_mask_len_for_padded_ep_output() {
         // Regression guard for the MIGraphX-padded-output-sequence case both
         // original implementations independently guarded against: actual_seq
-        // (4) exceeds mask.len() (2) — must not index out of the mask.
+        // (4) exceeds mask.len() (2); must not index out of the mask.
         let data = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
         let mask = vec![1, 1];
         let pooled = mean_pool_normalize(&data, &mask, 4, 2, 2);

@@ -20,7 +20,7 @@ pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> 
     if module == "+" {
         bail!(
             "theme '{theme_id}': slot \"{slot}\" uses the \"+\" splice marker but the theme has \
-             no `extends` (or extends a theme with no {slot} slot) — nothing to splice in"
+             no `extends` (or extends a theme with no {slot} slot); nothing to splice in"
         );
     }
     bail!(
@@ -45,7 +45,7 @@ pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Resul
         }
     }
     // Every `[[bar.widget]]` must have a `widget:<slot>` render position in
-    // one of the slot lists — the same "no silent drop" policy as a module
+    // one of the slot lists: the same "no silent drop" policy as a module
     // name that names nothing.
     let placed: std::collections::HashSet<&str> = [
         &slots.left,
@@ -61,7 +61,7 @@ pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Resul
         if !placed.contains(w.slot.as_str()) {
             bail!(
                 "theme '{theme_id}': bar.widget '{}' has slot = \"{}\" but no \
-                 `widget:{}` entry appears in any [bar.slots] list — it would \
+                 `widget:{}` entry appears in any [bar.slots] list; it would \
                  never be shown",
                 w.id,
                 w.slot,
@@ -80,7 +80,7 @@ pub(super) struct RawManifest {
     /// Present only so `extends` deserializes as a *known* field (otherwise
     /// `deny_unknown_fields` would reject every theme that sets it). The
     /// value itself is read straight off the raw `toml::Value` in
-    /// `mod.rs::resolve_theme` — before this struct exists — since the
+    /// `mod.rs::resolve_theme`, before this struct exists, since the
     /// merge has to happen ahead of (and separately from) deserialization.
     #[allow(dead_code)]
     pub(super) extends: Option<String>,
@@ -109,7 +109,7 @@ pub(super) struct RawManifest {
 pub(super) struct RawBar {
     pub(super) window: Option<RawWindow>,
     pub(super) slots: Option<RawSlots>,
-    /// `[[bar.widget]]` — theme-declared live bar widgets (a poll + a node
+    /// `[[bar.widget]]`: theme-declared live bar widgets (a poll + a node
     /// tree). Rendered by breadbar through the same path as a Lua module's
     /// `WidgetSpec`.
     #[serde(default)]
@@ -132,7 +132,7 @@ pub(super) struct RawThemeWidget {
 pub(super) struct RawBind {
     /// Shell command; its trimmed stdout replaces `{value}` in the tree.
     pub(super) cmd: String,
-    /// Poll interval — `"500ms"` / `"5s"` / `"2m"`.
+    /// Poll interval: `"500ms"` / `"5s"` / `"2m"`.
     pub(super) every: String,
 }
 
@@ -197,7 +197,7 @@ pub(super) struct RawMargin {
     pub(super) top: i64,
     pub(super) left: i64,
     pub(super) right: i64,
-    /// See [`super::types::Margin::bottom`] — accepted and resolved, but
+    /// See [`super::types::Margin::bottom`]: accepted and resolved, but
     /// breadbar never applies it.
     pub(super) bottom: i64,
 }
@@ -223,7 +223,7 @@ pub(super) struct RawModules {
 pub(super) struct RawWorkspacesModule {
     pub(super) style: Option<String>,
     pub(super) show_empty: Option<bool>,
-    /// `[6, 10, 14, 18]`-shaped — see [`DotWidths`]. A length other than 4
+    /// `[6, 10, 14, 18]`-shaped, see [`DotWidths`]. A length other than 4
     /// is a hard error (validated in [`resolve_modules`]) rather than
     /// silently truncated/padded, matching this file's "typo'd key is a
     /// hard error" policy for enum-ish values.
@@ -344,7 +344,7 @@ fn strip_css_comments(css: &str) -> String {
     out
 }
 
-/// The documented `[tokens]` keys — everything else a theme sets under
+/// The documented `[tokens]` keys: everything else a theme sets under
 /// `[tokens]` is an "extra", only meaningful for `{name}` substitution in
 /// that theme's own `extra.css` overlay.
 const KNOWN_TOKEN_KEYS: &[&str] = &[
@@ -376,7 +376,7 @@ const KNOWN_TOKEN_KEYS: &[&str] = &[
 ];
 
 /// Build a fully-resolved, typed [`Tokens`] from the raw `[tokens]` table.
-/// Known keys go to their typed field (leniently coerced — a number written
+/// Known keys go to their typed field (leniently coerced: a number written
 /// as a quoted string still parses, matching the pre-typed behaviour);
 /// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
 ///
@@ -501,7 +501,7 @@ fn resolve_tokens(
         }
     }
 
-    // A theme that omits `accent_to`/`accent2` gets `accent_from` — a flat
+    // A theme that omits `accent_to`/`accent2` gets `accent_from`: a flat
     // fill / a shared second accent, the same fallback the old getters did.
     if !accent_to_set {
         t.accent_to = t.accent_from.clone();
@@ -609,7 +609,7 @@ fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
     };
 
     // A vertical (side-docked) bar fills its length axis via layer-shell
-    // anchors alone (top + bottom both set) — the same mechanism a
+    // anchors alone (top + bottom both set): the same mechanism a
     // horizontal bar already relies on for `width = "fill"` on its own
     // axis. `width` on a vertical bar means the fixed thickness instead,
     // so `"fill"` there has no meaning to give it.
@@ -709,7 +709,7 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         modes: l
             .and_then(|l| l.modes.clone())
             .unwrap_or_else(|| vec!["apps".to_string()]),
-        // Default to the idle value — a theme that never sets these gets
+        // Default to the idle value: a theme that never sets these gets
         // "no change while searching", not a hardcoded widen/shrink it
         // never asked for (see the field docs on `Launcher`).
         search_width: l
@@ -722,8 +722,8 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
             .unwrap_or(radius),
         // Defaults below reproduce breadbox's pre-redesign hardcoded CSS
         // literals (`row { padding: 8px 12px; border-radius: 6px; }`,
-        // `listbox { padding: 4px; }`, no icon swatch, a solid — not
-        // alpha-blended — selection fill), so a theme that omits this whole
+        // `listbox { padding: 4px; }`, no icon swatch, a solid, not
+        // alpha-blended, selection fill), so a theme that omits this whole
         // block of new keys (spotlight does; its capsule doesn't read them
         // at all) renders the same as before this change, not a jump to
         // either built-in's specific numbers.
@@ -927,7 +927,7 @@ fn resolve_surfaces(
             Some(other) => bail!(
                 "theme '{theme_id}': surfaces.{namespace}.anchor = \"{other}\" is not \
                  top_right|bottom_right|bottom_centre|fill (the only shapes breadbar's \
-                 satellite windows implement — see breadbar/src/surface.rs)"
+                 satellite windows implement, see breadbar/src/surface.rs)"
             ),
             None => bail!(
                 "theme '{theme_id}': surfaces.{namespace} has no anchor set \
@@ -1042,7 +1042,7 @@ impl RawManifest {
         // a `{name}` in prose must not trip the unresolved-ref check below),
         // substitute `[tokens]` *and* the `shell::style` derivations, then
         // append the optional `extra.css` overlay. A `{name}` that survives
-        // matched none of those — a typo, and a hard error rather than a
+        // matched none of those: a typo, and a hard error rather than a
         // literal `{radus_bar}` in the output.
         let mut pairs = tokens.subst_pairs();
         pairs.extend(super::style::subst_pairs(
@@ -1089,7 +1089,7 @@ impl RawManifest {
 ///
 /// Arrays replace wholesale **unless** the `over` array contains the splice
 /// marker `"+"`, in which case each `"+"` is replaced by the base array's
-/// elements in place — so a child theme can add one entry to an inherited
+/// elements in place, so a child theme can add one entry to an inherited
 /// slot list without restating it:
 ///
 /// ```toml

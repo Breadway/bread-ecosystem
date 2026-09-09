@@ -6,7 +6,7 @@ bos-settings.
 ## Architecture (single source of truth)
 
 The tokens below are implemented once in the **`bread-theme`** crate as
-`stylesheet(&Palette)` — the full component stylesheet (buttons, entries,
+`stylesheet(&Palette)`: the full component stylesheet (buttons, entries,
 switches, lists/rows/sidebars, cards, chips, scrollbars, headings) over a
 canonical `@define-color` palette (`surface`=color0, `overlay`=color7,
 `accent`=color4).
@@ -49,7 +49,7 @@ Establish a visual hierarchy with consistent rounding:
 ## Color System
 
 All projects use **pywal dynamic theming** for accents, layered on a **fixed BOS
-dark base** — background, surface, overlay, and foreground never come from
+dark base**: background, surface, overlay, and foreground never come from
 pywal, only the accent slots (color1–6) track the current wallpaper:
 
 - **Background**: `#0c0c0c` (fixed)
@@ -61,12 +61,12 @@ pywal, only the accent slots (color1–6) track the current wallpaper:
 
 Without pinning bg/surface/overlay, a light or muddy-toned wallpaper makes
 pywal hand back a light or off-hue background, and every bread GUI's panels
-inherit it — see `bread-theme/src/palette.rs` for the implementation.
+inherit it; see `bread-theme/src/palette.rs` for the implementation.
 
 Color palette slots (via wal):
 - color0–color7: ANSI colors (0 and 7 fixed, 1–6 pywal-derived)
 - Semantic: red, green, yellow, blue, pink, teal
-- Computed ink: `on-bg`, `on-surface`, `on-accent`, `on-red`, `on-overlay` —
+- Computed ink: `on-bg`, `on-surface`, `on-accent`, `on-red`, `on-overlay`:
   black or white text, whichever is legible against that background (see
   `bread_theme::ink_on`)
 
@@ -106,14 +106,14 @@ Color palette slots (via wal):
 All GUI apps load `bread_theme::stylesheet` (via the generated shared file) and
 add only app-specific rules:
 
-- **breadbar** — shared base + bar window, workspace buttons, stats, notification
+- **breadbar**: shared base + bar window, workspace buttons, stats, notification
   and OSD cards.
-- **breadbox** — shared base + launcher panel, search entry, result rows.
-- **breadpad / breadman** — shared base + capture popup, type chips, note cards,
+- **breadbox**: shared base + launcher panel, search entry, result rows.
+- **breadpad / breadman**: shared base + capture popup, type chips, note cards,
   reminder window, sidebar rows.
-- **bos-settings** — shared base + content padding only (was previously a
+- **bos-settings**: shared base + content padding only (was previously a
   hardcoded Nord palette; migrated to the shared stylesheet).
-- **breadcrumbs** — CLI tool; ANSI colours only, no GUI styling.
+- **breadcrumbs**: CLI tool; ANSI colours only, no GUI styling.
 
 > Palette note: background/surface/overlay/foreground are a fixed BOS dark
 > base, never pywal-derived; only the accent slots (color1–6) track the

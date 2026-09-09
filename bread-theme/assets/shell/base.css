@@ -1051,7 +1051,7 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
  * (the panel container, unique to breadbox) so it is inert in breadbar, whose
  * embedded capsule launcher uses `.launcher-entry` / `.bread-drawer` instead.
  * The one structural rule breadbox still adds itself is
- * `window { background-color: transparent; }` (its overlay window) — not
+ * `window { background-color: transparent; }` (its overlay window), not
  * theme-dependent, so not templated here. */
 
 .launcher-bg {

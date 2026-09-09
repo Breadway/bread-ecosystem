@@ -2,7 +2,7 @@
 //!
 //! The process / pid-file name (`breadbox`, `bread-polkit`) is also the
 //! last segment of the GApplication id (`com.breadway.breadbox`). That is
-//! *not* always the breadd command-bus id (`box`, `clip`) — see
+//! *not* always the breadd command-bus id (`box`, `clip`): see
 //! [`crate::command_verb`] under feature `bread-client`.
 
 use std::io;

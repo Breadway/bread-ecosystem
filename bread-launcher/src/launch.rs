@@ -27,14 +27,14 @@ fn pick_terminal() -> String {
 /// and, on a successful spawn, publishes `event` via [`emit_launched`].
 ///
 /// `app_id` here is the caller's **bread event-namespace id** (e.g.
-/// `"box"` for breadbox) — NOT [`crate::LAUNCHER_APP`] (`"breadbox"`).
+/// `"box"` for breadbox); NOT [`crate::LAUNCHER_APP`] (`"breadbox"`).
 /// Those are two different identities that happen to look similar:
 /// `LAUNCHER_APP` only picks the shared cache/history directory (see its own
 /// doc comment), while `app_id` here is threaded straight into
 /// `BreadClient::connect(app_id)` and must be the caller's own namespace, or
 /// `BreadClient::emit`'s `validate_app_namespace` check
 /// (`event.starts_with("bread.{app_id}.")`) rejects `event` and drops it
-/// with only an eprintln — passing `LAUNCHER_APP` here by mistake is exactly
+/// with only an eprintln; passing `LAUNCHER_APP` here by mistake is exactly
 /// that bug. breadbox passes its own `"box"` (see breadbox's `APP_ID`) so
 /// its events publish as `bread.box.*`, matching [`emit_launched`]'s doc
 /// example below.
@@ -62,11 +62,11 @@ pub fn do_launch(entry: &DesktopEntry, app_id: &str, event: &str) {
 }
 
 /// Publishes `event` under `app_id`'s bread namespace after a successful
-/// spawn — e.g. breadbox calls this with `app_id = "box"` and
+/// spawn, e.g. breadbox calls this with `app_id = "box"` and
 /// `event = "bread.box.launched"`, its own namespace. Fire-and-forget and
-/// non-fatal (`BreadClient::emit` never blocks or errors this caller) —
+/// non-fatal (`BreadClient::emit` never blocks or errors this caller):
 /// breadd being absent must never affect launching itself. `app_id` must be
-/// the caller's *own* namespace id, not [`crate::LAUNCHER_APP`] — see
+/// the caller's *own* namespace id, not [`crate::LAUNCHER_APP`]; see
 /// [`do_launch`]'s doc comment for why those are different identities and
 /// what happens if they're confused.
 pub fn emit_launched(entry: &DesktopEntry, app_id: &str, event: &str) {
@@ -87,7 +87,7 @@ mod tests {
 
     /// Mirrors `bread_shared::apps::validate_app_namespace` exactly
     /// (`event.starts_with(&format!("bread.{app}."))`) without pulling in
-    /// that crate here — this is the one check that decides whether
+    /// that crate here: this is the one check that decides whether
     /// [`emit_launched`]'s event actually gets published.
     fn passes_namespace_check(app_id: &str, event: &str) -> bool {
         event.starts_with(&format!("bread.{app_id}."))
@@ -109,19 +109,19 @@ mod tests {
         // The historical bug this doc fix guards against: passing
         // `LAUNCHER_APP` ("breadbox", the cache/history identity) as
         // `app_id` instead of the caller's own namespace id ("box") would
-        // silently drop `bread.box.launched` — event.starts_with(
+        // silently drop `bread.box.launched`: event.starts_with(
         // "bread.breadbox.") is false for "bread.box.launched".
         assert!(
             !passes_namespace_check(crate::LAUNCHER_APP, "bread.box.launched"),
             "LAUNCHER_APP must NOT satisfy the namespace check for the \
-             documented event — if this ever passes, do_launch's doc comment \
+             documented event; if this ever passes, do_launch's doc comment \
              warning about confusing the two identities is wrong"
         );
     }
 
     #[test]
     fn emit_launched_does_not_panic_when_breadd_is_unreachable() {
-        // No daemon is running in a test environment — emit_launched (and
+        // No daemon is running in a test environment; emit_launched (and
         // the BreadClient::emit it wraps) must degrade silently rather than
         // panicking or blocking, for both a valid and a namespace-violating
         // app_id.

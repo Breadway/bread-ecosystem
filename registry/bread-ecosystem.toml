@@ -80,11 +80,11 @@ description = "Onboarding and help center for Bread OS"
 [[products]]
 name = "breadcast"
 repo = "Breadway/breadcast"
-description = "Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup"
+description = "Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup"
 notes = "Bakery product; not included in the BOS ISO"
 
 [[products]]
 name = "breadarr"
 repo = "Breadway/breadarr"
-description = "Single-daemon Sonarr+Radarr+Prowlarr replacement — release watching, matching, grabbing, importing, and a terminal UI, no web UI"
+description = "Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI"
 notes = "Homelab, not shipped on BOS"

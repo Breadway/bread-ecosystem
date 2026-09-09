@@ -1,7 +1,7 @@
 //! Timeout-guarded subprocess execution.
 //!
 //! Promoted verbatim from `breadcrumbs/src/util.rs` (the one implementation
-//! in the ecosystem that already got this right — see the audit note in
+//! in the ecosystem that already got this right; see the audit note in
 //! `bread-utils`'s crate root). Several other repos shell out to
 //! Wayland/Hyprland tools (`hyprctl`, `grim`, `wl-paste`, ...) via bare
 //! `std::process::Command` with no timeout at all, so a hung child can wedge

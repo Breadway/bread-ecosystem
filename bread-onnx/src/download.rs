@@ -3,17 +3,17 @@
 //! `breadarrd/src/matcher/mod.rs::download` (async, `reqwest`) and
 //! `breadmill/src/main.rs::download_if_missing` (sync, `ureq`) independently
 //! implement "download to a temp file, then rename over the destination"
-//! for fetching an ONNX model/tokenizer if it isn't already present —
+//! for fetching an ONNX model/tokenizer if it isn't already present:
 //! genuinely duplicated intent, different HTTP clients. Neither verifies
 //! the download's integrity beyond "the response wasn't empty". This module
-//! is a fresh, shared implementation (sync, `ureq` — matching this
+//! is a fresh, shared implementation (sync, `ureq`, matching this
 //! workspace's existing `bakery` convention for downloads) that adds an
 //! optional SHA-256 check, built on [`bread_utils::atomic::write_atomic_bytes`]
 //! for the same crash-safety property both originals already had.
 //!
 //! `breadarrd`'s async caller should wrap a call to [`ensure_file`] in
 //! `tokio::task::spawn_blocking` rather than block its async runtime
-//! directly — see that crate's migration for the concrete pattern.
+//! directly; see that crate's migration for the concrete pattern.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 /// Download `url` to `dest` if `dest` doesn't already exist. If
 /// `expected_sha256` is given, verifies the downloaded bytes against it
 /// (case-insensitive hex) before the atomic rename and returns an error on
-/// mismatch — the temp file is discarded, `dest` is left untouched. An
+/// mismatch: the temp file is discarded, `dest` is left untouched. An
 /// already-present `dest` is trusted as-is and not re-verified (matches
 /// both original implementations' "if it exists, skip" behavior; re-hashing
 /// a ~90MB+ model file on every startup would be wasted work for the common
@@ -56,7 +56,7 @@ pub fn ensure_file(url: &str, dest: &Path, expected_sha256: Option<&str>) -> any
         let actual = sha256_hex(&bytes);
         if !actual.eq_ignore_ascii_case(expected) {
             anyhow::bail!(
-                "checksum mismatch for {url}: expected {expected}, got {actual} — refusing to install"
+                "checksum mismatch for {url}: expected {expected}, got {actual}, refusing to install"
             );
         }
         tracing::info!("bread-onnx: verified sha256 for {}", dest.display());
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn sha256_hex_matches_known_vector() {
-        // sha256("") — well-known empty-input digest.
+        // sha256(""): well-known empty-input digest.
         assert_eq!(
             sha256_hex(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -102,7 +102,7 @@ mod tests {
         let dest = dir.join("model.onnx");
         std::fs::write(&dest, b"already here").unwrap();
 
-        // A bogus URL would fail if actually requested — success here proves
+        // A bogus URL would fail if actually requested; success here proves
         // the existing-file short-circuit fired instead of dialing out.
         let result = ensure_file("http://127.0.0.1:1/unreachable", &dest, None);
         assert!(result.is_ok());

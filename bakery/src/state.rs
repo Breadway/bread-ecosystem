@@ -13,11 +13,11 @@ pub struct InstalledPackage {
     pub services: Vec<String>,
     pub installed_at: String,
     // `#[serde(default)]` so an installed.json written before per-package
-    // track tracking existed still deserializes — defaults to Stable, same
+    // track tracking existed still deserializes; defaults to Stable, same
     // convention as `State.track` above.
     #[serde(default)]
     pub track: Track,
-    /// The version this package was upgraded from, if any — `bakery
+    /// The version this package was upgraded from, if any: `bakery
     /// rollback` uses this to find the matching local backup dir. `None` on
     /// a fresh first-time install. `#[serde(default)]` for the same
     /// old-shape-json reason as `track` above.
@@ -25,7 +25,7 @@ pub struct InstalledPackage {
     pub previous_version: Option<String>,
     /// SHA-256 (hex) of each installed binary, captured at install time.
     /// `bakery verify` recomputes these from disk and compares against this
-    /// recorded value rather than a fresh index lookup — the index only
+    /// recorded value rather than a fresh index lookup: the index only
     /// carries the checksum for whatever the *current latest* release is,
     /// which may not match what's actually installed. Empty on installs
     /// that predate this field.
@@ -63,7 +63,7 @@ impl State {
     /// lock on a sibling `installed.json.lock` file, saving the result if `f`
     /// succeeds. Without this, two concurrent `bakery` invocations each
     /// load-mutate-save `installed.json` independently and the second save
-    /// silently drops the first's change — the lock serializes the whole
+    /// silently drops the first's change; the lock serializes the whole
     /// read-modify-write instead of just the final write.
     pub fn with_lock<T>(f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
         let lock_path = PathBuf::from(format!("{}.lock", state_path().display()));
@@ -117,7 +117,7 @@ fn state_path() -> PathBuf {
 }
 
 /// Per-user bakery state dir (`~/.local/state/bakery`). Independent of the
-/// install prefix — system-prefix installs still record what this user asked for.
+/// install prefix: system-prefix installs still record what this user asked for.
 pub fn bakery_state_dir() -> PathBuf {
     state_base_dir().join("bakery")
 }
@@ -240,7 +240,7 @@ mod tests {
     fn bakery_state_dir_is_under_state_home_and_independent_of_prefix() {
         let dir = bakery_state_dir();
         assert!(dir.ends_with("bakery"));
-        // Must not follow BAKERY_PREFIX — state is always per-user.
+        // Must not follow BAKERY_PREFIX: state is always per-user.
         assert!(!dir.starts_with("/usr/local"));
     }
 
