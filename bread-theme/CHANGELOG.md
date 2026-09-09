@@ -4,13 +4,13 @@
 
 Fixes ECO-17 (text clipping in breadbar on custom themes): `[tokens]
 chip_height` was parsed, stored, and even documented, but never actually
-reached the CSS it's supposed to control — `chip_height_px` (the
+reached the CSS it's supposed to control: `chip_height_px` (the
 `min-height` baked into `.media-widget`, `.stat-pair`, and Trail/Pill
 `.workspace-btn`) came from a hardcoded per-`WorkspaceStyle` table instead,
 completely independent of the token. Every builtin theme happened to set
 `chip_height` to the same number that table already returns for its style
 (that's how this went unnoticed), except `loaf`, which explicitly asked for
-`24` and silently got `22` (inherited via `extends = "glass-workbench"`) —
+`24` and silently got `22` (inherited via `extends = "glass-workbench"`),
 proof the token was dead even for a shipped theme, not just a hypothetical.
 
 A theme with a custom `font_family`/`font_size_base`/`font_weight` sized for
@@ -19,7 +19,7 @@ so descenders on `.media-widget`/chip labels clipped against the box.
 
 `resolve_tokens` now falls back to the per-style number only when a theme
 doesn't set `chip_height` at all; an explicit value is used as-is. `loaf`'s
-golden CSS snapshot updates from 22px to 24px accordingly — every other
+golden CSS snapshot updates from 22px to 24px accordingly; every other
 builtin is byte-identical.
 
 ## 0.7.10

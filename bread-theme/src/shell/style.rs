@@ -147,7 +147,7 @@ pub(super) fn subst_pairs(
         WorkspaceStyle::Dots => radius_pill.clone(),
         _ => radius_sm.clone(),
     };
-    // `t.chip_height` is already the effective value by this point —
+    // `t.chip_height` is already the effective value by this point:
     // `resolve_tokens` (manifest.rs) fills it from `chip_height(style)`
     // itself when a theme doesn't set one, so every caller downstream of
     // resolution (this one included) can just read the token straight.

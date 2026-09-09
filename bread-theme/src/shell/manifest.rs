@@ -380,7 +380,7 @@ const KNOWN_TOKEN_KEYS: &[&str] = &[
 /// as a quoted string still parses, matching the pre-typed behaviour);
 /// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
 ///
-/// `style` is `modules.workspaces.style` — see the `chip_height_set` note
+/// `style` is `modules.workspaces.style`; see the `chip_height_set` note
 /// below for why `resolve_tokens` needs it.
 fn resolve_tokens(
     theme_id: &str,
@@ -511,14 +511,14 @@ fn resolve_tokens(
     }
 
     // A theme that omits `chip_height` gets the per-style demo number
-    // instead of `Tokens::default()`'s bare `32` — that default is
+    // instead of `Tokens::default()`'s bare `32`; that default is
     // breadbar's pre-theme-system stale global constant (see its own doc
     // comment), never a sensible size for any actual style's chips, so
     // leaving it in place here left `chip_height` a "restated truth, not a
     // live input" for every theme that DID set it (every builtin happens to
     // choose the same number `style::chip_height` already hardcodes, which
     // is exactly how this went unnoticed) and a real bug for one that
-    // didn't, or set something else — a small custom-font chip label
+    // didn't, or set something else: a small custom-font chip label
     // clipping against a min-height the token was supposed to control.
     if !chip_height_set {
         t.chip_height = super::style::chip_height(style);
