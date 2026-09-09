@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn explicit_chip_height_reaches_the_media_widget_and_stat_pair_css() {
         // Before the fix, `chip_height_px` came from a hardcoded per-style
-        // table, not `tokens.chip_height` — a theme's own value here was
+        // table, not `tokens.chip_height`; a theme's own value here was
         // silently ignored (see `resolve_tokens`'s note). A custom font/size
         // combo that needs a taller chip than the style's demo number had no
         // way to ask for one.
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn omitted_chip_height_falls_back_to_the_style_default_not_the_stale_32() {
-        // `Tokens::default().chip_height` is 32 — breadbar's pre-theme-
+        // `Tokens::default().chip_height` is 32, breadbar's pre-theme-
         // system global constant, not a sensible size for any one style.
         // A theme that never mentions chip_height should still get the
         // per-style demo number (22 for pill), not that stale default.
