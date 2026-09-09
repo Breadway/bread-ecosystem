@@ -8,7 +8,7 @@
 # Base image pinned by digest, package set frozen at build time: this image
 # only changes when someone deliberately rebuilds it, not on every push.
 # Product repos that depend on this file should pin it to a commit sha
-# (see each product's ci/bread-ecosystem.rev), not track `main` — otherwise
+# (see each product's ci/bread-ecosystem.rev), not track `main`, otherwise
 # an unrelated change here silently breaks every product's next release.
 #
 # EXTRA_PKGS lets a product layer on extra pacman packages (see that
