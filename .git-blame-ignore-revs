@@ -1,0 +1,5 @@
+# Commits listed here are skipped by `git blame --ignore-revs-file .git-blame-ignore-revs`.
+# Add new entries only for whole-tree mechanical reformatting commits.
+
+# style: cargo fmt --all
+ea6fbdcced3f70629b5f0d4ae53e970d7e0c6f19
