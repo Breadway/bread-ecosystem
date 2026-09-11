@@ -26,12 +26,19 @@ pub enum Provider {
     /// AMD iGPU/dGPU via MIGraphX (ROCm-backed onnxruntime builds). See this
     /// module's doc comment for why this, not `ROCm`, is the correct
     /// choice on this class of system.
-    MiGraphX { device_id: i32 },
+    MiGraphX {
+        device_id: i32,
+    },
     /// NVIDIA GPU via CUDA.
-    Cuda { device_id: i32 },
+    Cuda {
+        device_id: i32,
+    },
     /// Intel iGPU/dGPU (Arc) via OpenVINO. `cache_dir` stores OpenVINO's
     /// compiled-model blobs between runs.
-    OpenVino { device_type: String, cache_dir: PathBuf },
+    OpenVino {
+        device_type: String,
+        cache_dir: PathBuf,
+    },
     /// AMD XDNA NPU via the VitisAI execution provider (Ryzen AI SDK).
     /// `cache_dir` stores the compiled NPU model between runs.
     Vitis {
@@ -71,19 +78,28 @@ impl Provider {
             Provider::Cpu => ort::ep::CPU::default().build(),
             Provider::MiGraphX { device_id } => {
                 ensure_migraphx_cache_path_default()?;
-                ort::ep::MIGraphX::default().with_device_id(*device_id).build()
+                ort::ep::MIGraphX::default()
+                    .with_device_id(*device_id)
+                    .build()
             }
             Provider::Cuda { device_id } => {
                 ort::ep::CUDA::default().with_device_id(*device_id).build()
             }
-            Provider::OpenVino { device_type, cache_dir } => {
+            Provider::OpenVino {
+                device_type,
+                cache_dir,
+            } => {
                 std::fs::create_dir_all(cache_dir)?;
                 ort::ep::OpenVINO::default()
                     .with_device_type(device_type.clone())
                     .with_cache_dir(cache_dir.to_string_lossy())
                     .build()
             }
-            Provider::Vitis { config_file, cache_dir, cache_key } => {
+            Provider::Vitis {
+                config_file,
+                cache_dir,
+                cache_key,
+            } => {
                 std::fs::create_dir_all(cache_dir)?;
                 ort::ep::Vitis::default()
                     .with_config_file(config_file.to_string_lossy())

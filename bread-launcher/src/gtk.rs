@@ -8,11 +8,8 @@
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gtk4::{
-    gdk, gio,
-    pango::EllipsizeMode,
-    prelude::*,
-    Align, Box as GBox, Image, Label, ListBox, ListBoxRow, Orientation, PolicyType,
-    ScrolledWindow, SelectionMode,
+    gdk, gio, pango::EllipsizeMode, prelude::*, Align, Box as GBox, Image, Label, ListBox,
+    ListBoxRow, Orientation, PolicyType, ScrolledWindow, SelectionMode,
 };
 
 use crate::desktop::DesktopEntry;
@@ -93,7 +90,10 @@ fn build_header_row(label: &str, idx: u32) -> ListBoxRow {
 /// `ListBox::connect_row_activated` handler, which hands back a row
 /// reference rather than going through [`ResultsList::selected_entry`].
 pub fn row_entry(row: &ListBoxRow) -> Option<DesktopEntry> {
-    unsafe { row.data::<DesktopEntry>("entry").map(|p| p.as_ref().clone()) }
+    unsafe {
+        row.data::<DesktopEntry>("entry")
+            .map(|p| p.as_ref().clone())
+    }
 }
 
 /// A scrollable, filterable, rankable list of desktop-entry rows: the
@@ -169,10 +169,14 @@ impl ResultsList {
                 let query = query.borrow();
                 if query.is_empty() {
                     let oa = unsafe {
-                        row_a.data::<u32>("initial_order").map_or(u32::MAX, |p| *p.as_ref())
+                        row_a
+                            .data::<u32>("initial_order")
+                            .map_or(u32::MAX, |p| *p.as_ref())
                     };
                     let ob = unsafe {
-                        row_b.data::<u32>("initial_order").map_or(u32::MAX, |p| *p.as_ref())
+                        row_b
+                            .data::<u32>("initial_order")
+                            .map_or(u32::MAX, |p| *p.as_ref())
                     };
                     return oa.cmp(&ob).into();
                 }
@@ -213,7 +217,12 @@ impl ResultsList {
         scroller.set_propagate_natural_height(true);
         scroller.set_child(Some(&list));
 
-        ResultsList { scroller, list, query, history }
+        ResultsList {
+            scroller,
+            list,
+            query,
+            history,
+        }
     }
 
     /// Re-filters (fuzzy match against name, `wm_class`, and `exec`) and
@@ -228,7 +237,9 @@ impl ResultsList {
             let vis = match row_entry(&row) {
                 Some(e) => {
                     fuzzy_matches(query, &e.name)
-                        || e.wm_class.as_deref().is_some_and(|w| fuzzy_matches(query, w))
+                        || e.wm_class
+                            .as_deref()
+                            .is_some_and(|w| fuzzy_matches(query, w))
                         || fuzzy_matches(query, &e.exec)
                 }
                 None => query.is_empty(),

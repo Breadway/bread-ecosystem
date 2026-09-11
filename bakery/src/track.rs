@@ -42,7 +42,9 @@ impl FromStr for Track {
             "stable" => Ok(Track::Stable),
             "beta" => Ok(Track::Beta),
             "dev" => Ok(Track::Dev),
-            other => Err(format!("unknown track '{other}': expected stable, beta, or dev")),
+            other => Err(format!(
+                "unknown track '{other}': expected stable, beta, or dev"
+            )),
         }
     }
 }

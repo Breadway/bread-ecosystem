@@ -174,18 +174,29 @@ struct Cli {
 }
 
 fn known_app_names() -> String {
-    TARGETS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+    TARGETS
+        .iter()
+        .map(|(n, _)| *n)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// (app_name, binary_path, views) per selected app.
-type SelectedTarget = (&'static str, String, &'static [(&'static str, &'static str)]);
+type SelectedTarget = (
+    &'static str,
+    String,
+    &'static [(&'static str, &'static str)],
+);
 
 /// Resolves which `TARGETS` entries this run covers, and the binary path
 /// to use for each.
 fn selected_targets(cli: &Cli) -> Result<Vec<SelectedTarget>> {
     if let Some(app) = &cli.app {
         let Some((name, views)) = TARGETS.iter().find(|(n, _)| n == app) else {
-            bail!("no known view list for app '{app}' (known: {})", known_app_names());
+            bail!(
+                "no known view list for app '{app}' (known: {})",
+                known_app_names()
+            );
         };
         let path = cli.app_path.clone().unwrap_or_else(|| name.to_string());
         return Ok(vec![(name, path, views)]);
@@ -197,14 +208,20 @@ fn selected_targets(cli: &Cli) -> Result<Vec<SelectedTarget>> {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
         let Some((name, views)) = TARGETS.iter().find(|(n, _)| *n == stem) else {
-            bail!("no known view list for app '{stem}' (known: {})", known_app_names());
+            bail!(
+                "no known view list for app '{stem}' (known: {})",
+                known_app_names()
+            );
         };
         return Ok(vec![(name, path.clone(), views)]);
     }
 
     // No --app / --app-path at all: every known app, resolved by its own
     // bare name via $PATH.
-    Ok(TARGETS.iter().map(|(name, views)| (*name, name.to_string(), *views)).collect())
+    Ok(TARGETS
+        .iter()
+        .map(|(name, views)| (*name, name.to_string(), *views))
+        .collect())
 }
 
 fn main() -> Result<ExitCode> {
@@ -212,7 +229,10 @@ fn main() -> Result<ExitCode> {
     let targets = selected_targets(&cli)?;
 
     if let Some(view) = &cli.view {
-        if !targets.iter().any(|(_, _, views)| views.iter().any(|(v, _)| v == view)) {
+        if !targets
+            .iter()
+            .any(|(_, _, views)| views.iter().any(|(v, _)| v == view))
+        {
             bail!("view '{view}' doesn't match any selected app's views");
         }
     }
@@ -225,7 +245,10 @@ fn main() -> Result<ExitCode> {
     let _isolation = if cli.no_isolate {
         None
     } else {
-        Some(isolation::Isolation::start(cli.isolate_width, cli.isolate_height)?)
+        Some(isolation::Isolation::start(
+            cli.isolate_width,
+            cli.isolate_height,
+        )?)
     };
 
     let width_str = cli.isolate_width.to_string();
@@ -242,10 +265,14 @@ fn main() -> Result<ExitCode> {
             let result = bread_utils::proc::run(
                 app_path,
                 &[
-                    "--screenshot", view,
-                    "--output", &out_str,
-                    "--width", &width_str,
-                    "--height", &height_str,
+                    "--screenshot",
+                    view,
+                    "--output",
+                    &out_str,
+                    "--width",
+                    &width_str,
+                    "--height",
+                    &height_str,
                 ],
                 CAPTURE_TIMEOUT,
             );
@@ -258,5 +285,9 @@ fn main() -> Result<ExitCode> {
         }
     }
 
-    Ok(if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
+    Ok(if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }

@@ -7,9 +7,8 @@ name: check
 # per-monitor GTK bind module in bread-theme is gated behind it and would
 # otherwise never compile in CI, let alone run its tests.
 #
-# fmt is deliberately NOT gated yet: the tree isn't `cargo fmt` clean and a
-# mass reformat mid-review would collide with every open PR. Add a fmt step
-# once the tree has been normalised in its own change.
+# The tree was normalised with a dedicated `cargo fmt --all` commit (see
+# .git-blame-ignore-revs), so fmt is now gated too.
 on:
   push:
     branches: ['feature/**', 'fix/**', 'main']
@@ -24,6 +23,9 @@ jobs:
           rm -rf src && mkdir src
           git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
             "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+
+      - name: fmt
+        run: cd src && cargo fmt --all -- --check
 
       - name: clippy
         run: cd src && cargo clippy --workspace --all-targets --locked -- -D warnings

@@ -693,7 +693,10 @@ mod tests {
         // Longer names first: @on-bg must not become @on-#...
         assert!(!css.contains("@on-#"), "half-replaced on-* name:\n{css}");
         // The component rules themselves must survive the filter.
-        assert!(css.contains("button.suggested-action"), "rules dropped:\n{css}");
+        assert!(
+            css.contains("button.suggested-action"),
+            "rules dropped:\n{css}"
+        );
         assert!(css.contains("#7aa2f7"), "accent hex must reach rule bodies");
     }
 

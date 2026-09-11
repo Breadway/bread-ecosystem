@@ -24,7 +24,10 @@ pub fn capture_region(x: i32, y: i32, w: i32, h: i32, out: &Path) -> Result<()> 
     let geometry = format!("{x},{y} {w}x{h}");
     let result = bread_utils::proc::run("grim", &["-g", &geometry, out_str], GRIM_TIMEOUT);
     if !result.success {
-        bail!("grim failed for geometry {geometry}: {}", result.stderr.trim());
+        bail!(
+            "grim failed for geometry {geometry}: {}",
+            result.stderr.trim()
+        );
     }
     Ok(())
 }

@@ -304,9 +304,7 @@ pub struct Launcher {
 /// The named control-panel sections, in the order breadbar builds them by
 /// default. `[panel].sections` may reorder / drop entries from this set;
 /// unknown names are a hard error.
-pub const PANEL_SECTIONS: &[&str] = &[
-    "volume", "output", "brightness", "system", "power", "tray",
-];
+pub const PANEL_SECTIONS: &[&str] = &["volume", "output", "brightness", "system", "power", "tray"];
 
 /// `[panel]`: the hamburger control-panel popover. `min_width` is CSS
 /// (`.control-panel-inner`); `sections` drives which sub-sections breadbar

@@ -12,8 +12,8 @@
 //! ordinary top-level window. Apps with a plain top-level window (breadman,
 //! breadhelp) can use the full set.
 
-use libadwaita as adw;
 use adw::prelude::*;
+use libadwaita as adw;
 
 /// Call once at startup, before building any widgets from this module:
 /// initializes libadwaita's style manager and forces dark mode regardless of
@@ -43,7 +43,10 @@ pub fn preferences_group(title: &str, description: Option<&str>) -> adw::Prefere
 /// (breadman/settings had no intrinsic width on its hand-rolled switch, so
 /// it filled the row like a progress bar).
 pub fn toggle_row(title: &str, subtitle: Option<&str>, active: bool) -> adw::SwitchRow {
-    let row = adw::SwitchRow::builder().title(title).active(active).build();
+    let row = adw::SwitchRow::builder()
+        .title(title)
+        .active(active)
+        .build();
     if let Some(sub) = subtitle {
         row.set_subtitle(sub);
     }
@@ -52,8 +55,15 @@ pub fn toggle_row(title: &str, subtitle: Option<&str>, active: bool) -> adw::Swi
 
 /// A single numeric setting row (spin button docked to its own label,
 /// instead of stranded ~1300px away at the window's far edge).
-pub fn spin_row(title: &str, subtitle: Option<&str>, adjustment: &gtk4::Adjustment) -> adw::SpinRow {
-    let row = adw::SpinRow::builder().title(title).adjustment(adjustment).build();
+pub fn spin_row(
+    title: &str,
+    subtitle: Option<&str>,
+    adjustment: &gtk4::Adjustment,
+) -> adw::SpinRow {
+    let row = adw::SpinRow::builder()
+        .title(title)
+        .adjustment(adjustment)
+        .build();
     if let Some(sub) = subtitle {
         row.set_subtitle(sub);
     }

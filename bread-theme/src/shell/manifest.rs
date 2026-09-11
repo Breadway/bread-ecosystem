@@ -47,16 +47,12 @@ pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Resul
     // Every `[[bar.widget]]` must have a `widget:<slot>` render position in
     // one of the slot lists: the same "no silent drop" policy as a module
     // name that names nothing.
-    let placed: std::collections::HashSet<&str> = [
-        &slots.left,
-        &slots.centre,
-        &slots.right,
-        &slots.drawer,
-    ]
-    .into_iter()
-    .flatten()
-    .filter_map(|e| e.strip_prefix("widget:"))
-    .collect();
+    let placed: std::collections::HashSet<&str> =
+        [&slots.left, &slots.centre, &slots.right, &slots.drawer]
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.strip_prefix("widget:"))
+            .collect();
     for w in &bar.widget {
         if !placed.contains(w.slot.as_str()) {
             bail!(
@@ -424,25 +420,24 @@ fn resolve_tokens(
             )),
         }
     };
-    let want_enum =
-        |v: &toml::Value, key: &str, allowed: &[&str]| -> anyhow::Result<String> {
-            let s = match v {
-                toml::Value::String(s) => s.clone(),
-                other => {
-                    return Err(anyhow!(
-                        "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
-                    ))
-                }
-            };
-            if allowed.contains(&s.as_str()) {
-                Ok(s)
-            } else {
-                Err(anyhow!(
-                    "theme '{theme_id}': tokens.{key} = \"{s}\" is not {}",
-                    allowed.join("|")
+    let want_enum = |v: &toml::Value, key: &str, allowed: &[&str]| -> anyhow::Result<String> {
+        let s = match v {
+            toml::Value::String(s) => s.clone(),
+            other => {
+                return Err(anyhow!(
+                    "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
                 ))
             }
         };
+        if allowed.contains(&s.as_str()) {
+            Ok(s)
+        } else {
+            Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} = \"{s}\" is not {}",
+                allowed.join("|")
+            ))
+        }
+    };
     let want_bool = |v: &toml::Value, key: &str| -> anyhow::Result<bool> {
         match v {
             toml::Value::Boolean(b) => Ok(*b),
@@ -754,7 +749,10 @@ fn resolve_widgets(theme_id: &str, raw: &[RawThemeWidget]) -> anyhow::Result<Vec
             )
         })?;
         if w.bind.cmd.trim().is_empty() {
-            bail!("theme '{theme_id}': bar.widget '{}' bind.cmd is empty", w.id);
+            bail!(
+                "theme '{theme_id}': bar.widget '{}' bind.cmd is empty",
+                w.id
+            );
         }
         let mut count = 0usize;
         let node = resolve_node(theme_id, &w.id, &w.node, 1, &mut count)?;
@@ -1032,7 +1030,10 @@ impl RawManifest {
         let osd = resolve_osd(&id, self.osd.as_ref())?;
         let widgets = resolve_widgets(
             &id,
-            self.bar.as_ref().map(|b| b.widget.as_slice()).unwrap_or(&[]),
+            self.bar
+                .as_ref()
+                .map(|b| b.widget.as_slice())
+                .unwrap_or(&[]),
         )?;
         let surfaces = resolve_surfaces(&id, self.surfaces.as_ref())?;
         let compositor = resolve_compositor(self.compositor.as_ref());

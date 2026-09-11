@@ -69,7 +69,10 @@ pub fn eval_calc(expr: &str) -> Option<String> {
     if expr.is_empty() {
         return None;
     }
-    if !expr.chars().all(|c| c.is_ascii_digit() || " .+-*/()".contains(c)) {
+    if !expr
+        .chars()
+        .all(|c| c.is_ascii_digit() || " .+-*/()".contains(c))
+    {
         return Some("bad expr".to_string());
     }
     let mut p = CalcParser {
