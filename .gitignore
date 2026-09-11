@@ -11,3 +11,4 @@ minisign.key
 # of it were swept in by a `git add -A`.)
 graphify-out/
 .grok/
+.freebuff/
