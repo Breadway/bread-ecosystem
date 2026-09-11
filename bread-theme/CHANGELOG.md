@@ -2,6 +2,24 @@
 
 ## 0.7.11
 
+Adds ECO-22: `write_wal_cache(&Palette, path)`, plus `wal_cache_json` and
+`wal_cache_path`. bread-theme could already read pywal's `colors.json`
+(`load_palette`) but had no way to write that format from an in-memory
+`Palette`. The write is atomic (temp file then rename), reusing the same
+path the rest of bread-theme's file writes use.
+
+Motivating consumer: breadpaper's `sync_focused_global` holds a per-output
+`Palette` but still shells out to a second `wal -i` on every focused
+`set_on` just to refresh `~/.cache/wal/colors.json`: a process spawn per
+switch, and it re-extracts from the image rather than using the palette
+already in hand, so the cache and breadpaper's own per-output palette can
+drift. It can now write the cache directly (that change ships in the
+breadpaper repo). All 16 ANSI slots and `special` are written so the cache
+stays valid for other pywal consumers; `color8..color15` mirror
+`color0..color7`.
+
+---
+
 Fixes ECO-17 (text clipping in breadbar on custom themes): `[tokens]
 chip_height` was parsed, stored, and even documented, but never actually
 reached the CSS it's supposed to control: `chip_height_px` (the

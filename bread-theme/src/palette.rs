@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// BOS's fixed dark theme: background, surface, overlay, and foreground never
 /// come from pywal. Only the accent slots (color1-6) track the wallpaper.
@@ -109,6 +109,66 @@ fn wal_path() -> PathBuf {
         .join("wal/colors.json")
 }
 
+/// pywal's cache file, `~/.cache/wal/colors.json`, the path [`load_palette`]
+/// reads and [`write_wal_cache`] writes.
+pub fn wal_cache_path() -> PathBuf {
+    wal_path()
+}
+
+/// Serialise `palette` into pywal's `colors.json` cache shape.
+///
+/// pywal's cache is read by `wal`'s own templates and by anything else that
+/// renders from `~/.cache/wal/colors.json` (terminal palettes, editor
+/// themes), so all 16 ANSI slots plus `special` are written, not just the
+/// six accents bread-theme itself consumes. `color8..color15` mirror
+/// `color0..color7`: bread-theme has no bright variants, matching pywal's
+/// own behaviour when brightening is off.
+pub fn wal_cache_json(palette: &Palette) -> String {
+    let slots = [
+        &palette.color0,
+        &palette.color1,
+        &palette.color2,
+        &palette.color3,
+        &palette.color4,
+        &palette.color5,
+        &palette.color6,
+        &palette.color7,
+    ];
+    let mut colors = serde_json::Map::with_capacity(16);
+    for (i, hex) in slots.iter().enumerate() {
+        let v = serde_json::Value::from(hex.as_str());
+        colors.insert(format!("color{i}"), v.clone());
+        colors.insert(format!("color{}", i + 8), v);
+    }
+    let doc = serde_json::json!({
+        "wallpaper": "None",
+        "alpha": "100",
+        "special": {
+            "background": palette.background,
+            "foreground": palette.foreground,
+            "cursor": palette.foreground,
+        },
+        "colors": colors,
+    });
+    // Serialising a `serde_json::Value` built from owned strings cannot fail.
+    let mut s = serde_json::to_string_pretty(&doc).unwrap_or_default();
+    s.push('\n');
+    s
+}
+
+/// Write `palette` to `path` in pywal's `colors.json` shape, atomically
+/// (temp file then rename), the same durability discipline the rest of
+/// bread-theme's file writes use.
+///
+/// A consumer that already holds a per-output [`Palette`] (breadpaper's
+/// `sync_focused_global`) can call this instead of shelling out to a second
+/// `wal -i` just to refresh the cache: no subprocess spawn, and the cache
+/// matches the palette that consumer computed rather than a fresh
+/// re-extract from the image.
+pub fn write_wal_cache(palette: &Palette, path: &Path) -> std::io::Result<()> {
+    crate::output::atomic_write(path, &wal_cache_json(palette))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +237,84 @@ mod tests {
         for val in [&p.background, &p.foreground, &p.color0, &p.color4] {
             assert!(val.starts_with('#'), "expected hex, got: {val}");
         }
+    }
+
+    fn distinct_accent_palette() -> Palette {
+        Palette {
+            color1: "#111111".into(),
+            color2: "#222222".into(),
+            color3: "#333333".into(),
+            color4: "#444444".into(),
+            color5: "#555555".into(),
+            color6: "#666666".into(),
+            ..Palette::default()
+        }
+    }
+
+    #[test]
+    fn wal_cache_json_roundtrips_through_from_wal_json() {
+        let p = distinct_accent_palette();
+        let back = from_wal_json(&wal_cache_json(&p)).expect("valid wal json");
+        assert_eq!(back.color1, "#111111");
+        assert_eq!(back.color4, "#444444");
+        assert_eq!(back.color6, "#666666");
+        // bg / fg / surface / overlay stay BOS fixed, as for any wal json.
+        assert_eq!(back.background, FIXED_BACKGROUND);
+        assert_eq!(back.foreground, FIXED_FOREGROUND);
+        assert_eq!(back.color0, FIXED_SURFACE);
+        assert_eq!(back.color7, FIXED_OVERLAY);
+    }
+
+    #[test]
+    fn wal_cache_json_has_all_16_ansi_slots_and_special() {
+        let p = distinct_accent_palette();
+        let v: serde_json::Value = serde_json::from_str(&wal_cache_json(&p)).unwrap();
+
+        let colors = v.get("colors").and_then(|c| c.as_object()).unwrap();
+        for i in 0..16 {
+            assert!(
+                colors.contains_key(&format!("color{i}")),
+                "missing color{i}"
+            );
+        }
+        // color8..15 mirror color0..7.
+        assert_eq!(colors["color9"], colors["color1"]);
+        assert_eq!(colors["color15"], colors["color7"]);
+
+        let special = v.get("special").and_then(|s| s.as_object()).unwrap();
+        assert_eq!(special["background"], p.background);
+        assert_eq!(special["foreground"], p.foreground);
+        assert_eq!(special["cursor"], p.foreground);
+        assert!(v.get("wallpaper").is_some());
+        assert!(v.get("alpha").is_some());
+    }
+
+    #[test]
+    fn write_wal_cache_writes_a_parseable_file_and_no_temp_left_behind() {
+        let dir = std::env::temp_dir().join(format!(
+            "bread-theme-walcache-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("colors.json");
+
+        write_wal_cache(&distinct_accent_palette(), &path).unwrap();
+
+        let loaded = from_wal_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(loaded.color4, "#444444");
+
+        let leftover: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect();
+        assert!(leftover.is_empty(), "leftover tmp files: {leftover:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

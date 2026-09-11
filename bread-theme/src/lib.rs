@@ -15,7 +15,7 @@ pub use output::{
     palette_from_json, palettes_dir, sanitize_output, themes_dir, write_output_css,
     write_output_palette, write_shared_css_from,
 };
-pub use palette::{load_palette, Palette};
+pub use palette::{load_palette, wal_cache_json, wal_cache_path, write_wal_cache, Palette};
 
 /// Env-var locks shared by any test module that mutates process-global
 /// state (`std::env::set_var`): `cargo test` runs a crate's tests in
