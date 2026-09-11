@@ -55,7 +55,10 @@ mod tests {
     use toml_edit::value;
 
     fn tmp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("bread-utils-tomlcfg-test-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bread-utils-tomlcfg-test-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -79,7 +82,10 @@ mod tests {
 
         let loaded = load_doc("test", &path);
         assert_eq!(
-            loaded.get("general").and_then(|t| t.get("mode")).and_then(|v| v.as_str()),
+            loaded
+                .get("general")
+                .and_then(|t| t.get("mode"))
+                .and_then(|v| v.as_str()),
             Some("dad")
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -94,7 +100,10 @@ mod tests {
         let doc = load_doc("test", &path);
         assert!(doc.is_empty());
         let backup = dir.join("state.toml.bak");
-        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "this is not [ valid toml");
+        assert_eq!(
+            std::fs::read_to_string(&backup).unwrap(),
+            "this is not [ valid toml"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

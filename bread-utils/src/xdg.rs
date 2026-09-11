@@ -115,7 +115,9 @@ mod tests {
 
     #[test]
     fn runtime_dir_falls_back_to_tmp() {
-        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = crate::env_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // We don't unset XDG_RUNTIME_DIR here (test isolation), just confirm
         // the function returns *something* absolute either way.
         assert!(runtime_dir().is_absolute());

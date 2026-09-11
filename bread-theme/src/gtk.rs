@@ -323,14 +323,20 @@ fn reload_event_path(file: &gio::File, other: Option<&gio::File>) -> Option<std:
     other.and_then(|f| f.path()).or_else(|| file.path())
 }
 
-fn arm_dir_reload_watch(dir: std::path::PathBuf, want_ext: &'static str) -> Option<gio::FileMonitor> {
+fn arm_dir_reload_watch(
+    dir: std::path::PathBuf,
+    want_ext: &'static str,
+) -> Option<gio::FileMonitor> {
     let _ = std::fs::create_dir_all(&dir);
     let monitor = gio::File::for_path(&dir)
         .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
         .ok()?;
     monitor.connect_changed(move |_, file, other, _event| {
         let path = reload_event_path(file, other);
-        let Some(stem) = path.as_deref().and_then(|p| reload_stem_for_event(p, want_ext)) else {
+        let Some(stem) = path
+            .as_deref()
+            .and_then(|p| reload_stem_for_event(p, want_ext))
+        else {
             return;
         };
         reload_binds_for_sanitized(&stem);
@@ -401,7 +407,11 @@ fn reattach_bound_tree(root: &gtk4::Widget) {
 /// parked in `watches` (which the `WidgetBind` owns) so the whole set is
 /// dropped together when the bind is forgotten; newly-appeared containers are
 /// hooked in from inside the `items-changed` closure.
-fn hook_subtree(widget: &gtk4::Widget, root: &glib::WeakRef<gtk4::Widget>, watches: &SubtreeWatches) {
+fn hook_subtree(
+    widget: &gtk4::Widget,
+    root: &glib::WeakRef<gtk4::Widget>,
+    watches: &SubtreeWatches,
+) {
     let model = widget.observe_children();
     {
         let root = root.clone();
@@ -432,11 +442,7 @@ fn watch_subtree(widget: &gtk4::Widget) -> SubtreeWatches {
     watches
 }
 
-fn bind_window_inner(
-    widget: &gtk4::Widget,
-    output: &str,
-    app_build: Option<AppCssBuilder>,
-) {
+fn bind_window_inner(widget: &gtk4::Widget, output: &str, app_build: Option<AppCssBuilder>) {
     let key = widget_key(widget);
     let palette = crate::load_palette_for(output);
     let theme_css = crate::stylesheet_resolved(&crate::Typography::active(), &palette);
@@ -736,7 +742,8 @@ mod tests {
         let _lock = crate::output::XDG_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("bt-gtk-watch-{}-{}", std::process::id(), nanos()));
+        let dir =
+            std::env::temp_dir().join(format!("bt-gtk-watch-{}-{}", std::process::id(), nanos()));
         std::fs::create_dir_all(&dir).unwrap();
         let old = std::env::var("XDG_RUNTIME_DIR").ok();
         std::env::set_var("XDG_RUNTIME_DIR", &dir);
@@ -753,9 +760,18 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert!(themes_dir_made && palettes_dir_made, "watch arming must mkdir -p its dir");
-        assert!(themes.is_some(), "themes watch failed to arm in a writable dir");
-        assert!(palettes.is_some(), "palettes watch failed to arm in a writable dir");
+        assert!(
+            themes_dir_made && palettes_dir_made,
+            "watch arming must mkdir -p its dir"
+        );
+        assert!(
+            themes.is_some(),
+            "themes watch failed to arm in a writable dir"
+        );
+        assert!(
+            palettes.is_some(),
+            "palettes watch failed to arm in a writable dir"
+        );
     }
 
     // A real end-to-end `FileMonitor` + write-then-rename regression test was

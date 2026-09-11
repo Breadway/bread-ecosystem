@@ -28,7 +28,11 @@ use sha2::{Digest, Sha256};
 /// both original implementations' "if it exists, skip" behavior; re-hashing
 /// a ~90MB+ model file on every startup would be wasted work for the common
 /// case of a stable, previously-verified file).
-pub fn ensure_file(url: &str, dest: &Path, expected_sha256: Option<&str>) -> anyhow::Result<PathBuf> {
+pub fn ensure_file(
+    url: &str,
+    dest: &Path,
+    expected_sha256: Option<&str>,
+) -> anyhow::Result<PathBuf> {
     if dest.exists() {
         return Ok(dest.to_path_buf());
     }
@@ -97,7 +101,8 @@ mod tests {
 
     #[test]
     fn ensure_file_skips_download_when_already_present() {
-        let dir = std::env::temp_dir().join(format!("bread-onnx-download-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("bread-onnx-download-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("model.onnx");
         std::fs::write(&dest, b"already here").unwrap();

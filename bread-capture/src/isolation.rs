@@ -103,8 +103,13 @@ impl Isolation {
             runtime_dir: runtime_dir.clone(),
         };
 
-        match poll_for_new(&runtime_dir, &before_sockets, DISCOVERY_TIMEOUT, is_wayland_socket_name)
-            .context("waiting for headless sway's Wayland socket to appear")
+        match poll_for_new(
+            &runtime_dir,
+            &before_sockets,
+            DISCOVERY_TIMEOUT,
+            is_wayland_socket_name,
+        )
+        .context("waiting for headless sway's Wayland socket to appear")
         {
             Ok(name) => isolation.wayland_display = name,
             Err(e) => {
@@ -138,7 +143,10 @@ impl Drop for Isolation {
         // `wayland-N`/`wayland-N.lock` pair in the runtime dir.
         if !self.wayland_display.is_empty() {
             let _ = std::fs::remove_file(self.runtime_dir.join(&self.wayland_display));
-            let _ = std::fs::remove_file(self.runtime_dir.join(format!("{}.lock", self.wayland_display)));
+            let _ = std::fs::remove_file(
+                self.runtime_dir
+                    .join(format!("{}.lock", self.wayland_display)),
+            );
         }
     }
 }
@@ -171,7 +179,8 @@ fn write_rainbow_background(width: u32, height: u32) -> Result<PathBuf> {
             img.put_pixel(x, y, image::Rgb(hsv_to_rgb(hue, 0.85, 0.95)));
         }
     }
-    img.save(&path).with_context(|| format!("writing {}", path.display()))?;
+    img.save(&path)
+        .with_context(|| format!("writing {}", path.display()))?;
     Ok(path)
 }
 

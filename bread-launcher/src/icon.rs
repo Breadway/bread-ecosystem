@@ -9,7 +9,9 @@ impl IconCache {
     /// the same name across a process's calls so `path_for` and
     /// `manifest_path` agree on where icons live.
     pub fn new(app: &str) -> Self {
-        IconCache { dir: crate::paths::cache_dir(app).join("icons") }
+        IconCache {
+            dir: crate::paths::cache_dir(app).join("icons"),
+        }
     }
 
     pub fn path_for(&self, icon_name: &str) -> PathBuf {

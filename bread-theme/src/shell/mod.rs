@@ -882,7 +882,9 @@ mod tests {
         // A standalone theme (no `extends`) still renders the full shell from
         // the shared base template, so its own CSS carries the font too, the
         // live-switch path breadbar reloads on a `shell.toml` edit.
-        let css = load_named("testfont").unwrap().css(&crate::Palette::default());
+        let css = load_named("testfont")
+            .unwrap()
+            .css(&crate::Palette::default());
         assert!(
             css.contains("font-family: 'Test Face', 'Noto Sans', sans-serif;"),
             "shell CSS missing the theme font-family"
@@ -915,11 +917,16 @@ mod tests {
             "#,
         );
         std::env::set_var("BREAD_SHELL_THEME", "chrome");
-        let css = load_named("chrome").unwrap().css(&crate::Palette::default());
+        let css = load_named("chrome")
+            .unwrap()
+            .css(&crate::Palette::default());
         assert!(css.contains("linear-gradient(45deg,"), "ws_gradient_angle");
         assert!(css.contains("box-shadow: 0 8px 28px"), "bar_shadow=soft");
         assert!(css.contains("margin: 0 0 0 8px"), "chip_gap");
-        assert!(css.contains(".media-eq { opacity: 0"), "media_eq_style=none");
+        assert!(
+            css.contains(".media-eq { opacity: 0"),
+            "media_eq_style=none"
+        );
         // osd_style=bar → card radius (8px default), not the pill 999px.
         assert!(css.contains("window.breadbar-osd {"));
         assert!(!css.contains("border-radius: 999px;\n  border: 1px solid"));
@@ -935,7 +942,10 @@ mod tests {
             "#,
         );
         let err = diagnose("badsep").expect("bad enum must fail");
-        assert!(err.contains("sep_style") && err.contains("line|none|dot"), "{err}");
+        assert!(
+            err.contains("sep_style") && err.contains("line|none|dot"),
+            "{err}"
+        );
     }
 
     /// Axis 3: `[panel]` / `[osd]` resolve, reorder, and reject typos.
@@ -963,7 +973,9 @@ mod tests {
         assert_eq!(t.osd().enabled, vec!["volume"]);
         assert_eq!(t.osd().dismiss_ms, 600);
         // min_width flows into the rendered CSS.
-        assert!(t.css(&crate::Palette::default()).contains("min-width: 420px;"));
+        assert!(t
+            .css(&crate::Palette::default())
+            .contains("min-width: 420px;"));
 
         // A default theme keeps every section and both OSDs.
         let def = load_named("liquid-motion").unwrap();
@@ -1021,7 +1033,10 @@ mod tests {
         }
 
         // bad duration
-        write_theme(&xdg, "twbad", r#"
+        write_theme(
+            &xdg,
+            "twbad",
+            r#"
             name = "B"
             id = "twbad"
             [bar.slots]
@@ -1031,11 +1046,15 @@ mod tests {
             slot = "x"
             bind = { cmd = "true", every = "soon" }
             node = { kind = "label", text = "hi" }
-        "#);
+        "#,
+        );
         assert!(diagnose("twbad").unwrap().contains("not a duration"));
 
         // slot with no widget: entry
-        write_theme(&xdg, "twns", r#"
+        write_theme(
+            &xdg,
+            "twns",
+            r#"
             name = "N"
             id = "twns"
             [bar.slots]
@@ -1045,11 +1064,15 @@ mod tests {
             slot = "nowhere"
             bind = { cmd = "true", every = "1s" }
             node = { kind = "label", text = "hi" }
-        "#);
+        "#,
+        );
         assert!(diagnose("twns").unwrap().contains("never be shown"));
 
         // bad style value
-        write_theme(&xdg, "twsty", r#"
+        write_theme(
+            &xdg,
+            "twsty",
+            r#"
             name = "S"
             id = "twsty"
             [bar.slots]
@@ -1059,7 +1082,8 @@ mod tests {
             slot = "x"
             bind = { cmd = "true", every = "1s" }
             node = { kind = "label", text = "hi", color = "chartreuse" }
-        "#);
+        "#,
+        );
         assert!(diagnose("twsty").unwrap().contains("chartreuse"));
     }
 

@@ -33,7 +33,9 @@ pub use matching::{
     fuzzy_matches, fuzzy_score, load_sorted_entries, matches_term, priority_rank, split_sections,
 };
 pub use paths::{app_dirs, cache_dir, config_dir, home_dir};
-pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Command, ParsedQuery, QueryKind};
+pub use query::{
+    builtin_commands, eval_calc, filter_commands, parse_query, Command, ParsedQuery, QueryKind,
+};
 
 /// The launcher's one shared identity, passed to [`cache_dir`]/[`config_dir`]/
 /// [`IconCache::new`]/[`LaunchHistory::load`] by every host that embeds this

@@ -93,7 +93,10 @@ mod tests {
     use std::io::Read;
 
     fn tmp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("bread-utils-atomic-test-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bread-utils-atomic-test-{name}-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -143,7 +146,10 @@ mod tests {
 
         write_atomic_backed_up(&path, "first").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "first");
-        assert!(!backup.exists(), "no backup should exist before the first overwrite");
+        assert!(
+            !backup.exists(),
+            "no backup should exist before the first overwrite"
+        );
 
         write_atomic_backed_up(&path, "second").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "second");
@@ -178,7 +184,10 @@ mod tests {
         write_atomic(&path, "aaaaaaaaaa", None).unwrap();
         write_atomic(&path, "b", None).unwrap();
         let mut s = String::new();
-        fs::File::open(&path).unwrap().read_to_string(&mut s).unwrap();
+        fs::File::open(&path)
+            .unwrap()
+            .read_to_string(&mut s)
+            .unwrap();
         assert_eq!(s, "b");
         let _ = fs::remove_dir_all(&dir);
     }

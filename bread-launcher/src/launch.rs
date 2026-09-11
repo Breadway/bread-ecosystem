@@ -75,10 +75,7 @@ pub fn emit_launched(entry: &DesktopEntry, app_id: &str, event: &str) {
     } else {
         entry.id.as_str()
     };
-    BreadClient::connect(app_id).emit(
-        event,
-        serde_json::json!({ "id": id, "name": entry.name }),
-    );
+    BreadClient::connect(app_id).emit(event, serde_json::json!({ "id": id, "name": entry.name }));
 }
 
 #[cfg(test)]

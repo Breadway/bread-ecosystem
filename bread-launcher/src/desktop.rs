@@ -125,7 +125,9 @@ pub fn parse_desktop(path: &Path) -> Option<DesktopEntry> {
         icon_name,
         icon_path: None,
         categories: cats,
-        wm_class: wm_class.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        wm_class: wm_class
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
         terminal,
     })
 }
@@ -133,9 +135,12 @@ pub fn parse_desktop(path: &Path) -> Option<DesktopEntry> {
 /// Walk all configured application directories and return deduplicated entries.
 /// Entries from later directories (user-local) override those from earlier ones.
 pub fn load_all_desktop_entries() -> Vec<DesktopEntry> {
-    let mut seen: std::collections::HashMap<String, DesktopEntry> = std::collections::HashMap::new();
+    let mut seen: std::collections::HashMap<String, DesktopEntry> =
+        std::collections::HashMap::new();
     for dir in app_dirs() {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("desktop") {

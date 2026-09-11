@@ -108,7 +108,9 @@ impl Agent {
             }
         });
 
-        let result = self.drive_prompt(&cookie, &username, &allowed_users, &mut rx).await;
+        let result = self
+            .drive_prompt(&cookie, &username, &allowed_users, &mut rx)
+            .await;
 
         *self.pending.lock().await = None;
         let cookie_close = cookie.clone();
@@ -367,4 +369,3 @@ mod tests {
         assert_eq!(resolve_user("root", &allowed(), "ROOT"), None);
     }
 }
-

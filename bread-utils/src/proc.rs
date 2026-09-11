@@ -150,7 +150,10 @@ mod tests {
         let start = Instant::now();
         let out = run("sleep", &["30"], Duration::from_millis(200));
         assert!(!out.success);
-        assert!(start.elapsed() < Duration::from_secs(5), "child was not killed promptly");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "child was not killed promptly"
+        );
     }
 
     #[test]

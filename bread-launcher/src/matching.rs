@@ -348,7 +348,10 @@ mod tests {
         counts.insert("Firefox".to_string(), 5);
         let history = LaunchHistory::from_counts(counts);
         let (recent, apps) = split_sections(entries, &history);
-        assert_eq!(recent.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["Firefox"]);
+        assert_eq!(
+            recent.iter().map(|e| &e.name).collect::<Vec<_>>(),
+            vec!["Firefox"]
+        );
         assert_eq!(
             apps.iter().map(|e| &e.name).collect::<Vec<_>>(),
             vec!["GoLand", "Steam"]
@@ -381,7 +384,10 @@ mod tests {
         // partitions in whatever order it's handed, so feed it pre-sorted.
         let pre_sorted = vec![entry("C", None), entry("A", None), entry("B", None)];
         let (recent, apps) = split_sections(pre_sorted, &history);
-        assert_eq!(recent.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["C", "A"]);
+        assert_eq!(
+            recent.iter().map(|e| &e.name).collect::<Vec<_>>(),
+            vec!["C", "A"]
+        );
         assert_eq!(apps.iter().map(|e| &e.name).collect::<Vec<_>>(), vec!["B"]);
     }
 }
