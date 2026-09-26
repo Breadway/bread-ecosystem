@@ -151,6 +151,101 @@ migration is confirmed working, no repo should have a `mirror.yml` and this
 document doesn't require one. Don't add `mirror.yml` to a repo that's
 missing it; that gap is intentional and about to be moot everywhere.
 
+## Cross-repo dependency resolution: tag pins vs. dev-track main
+
+A change that spans repos (bread-theme in bread-ecosystem plus a consumer
+in breadbar, say) used to need a committed `rev`/`branch`/`path` pin to
+test together before either side was tagged, which is exactly the kind of
+pin that leaks toward a release if someone forgets to revert it. The
+model below removes that need entirely:
+
+- **Cargo.toml always pins a `git.breadway.dev` dependency to a release
+  tag** (`tag = "vX.Y.Z"`), in every repo, on every branch, at all times.
+  Never `rev`, never `branch`, never a bare `path` standing in for one of
+  these dependencies. `scripts/lint-pins.sh` enforces this in CI (see
+  below); nothing about a dev-track build should ever require relaxing it
+  in the committed manifest.
+- **Beta (`vX.Y.Z-rc.N`) and stable (`vX.Y.Z`) builds are unchanged**: they
+  build straight from the tagged Cargo.toml with `cargo build --locked`,
+  exactly as before. This is the whole reason the tag pin can stay
+  permanent: released builds never need anything else.
+- **Dev track (push to `main`) and PR/branch checks resolve every
+  `git.breadway.dev` dependency to that dependency repo's own `main`**,
+  at build time only, via `scripts/dev-deps.sh` (this repo) and a
+  generated `.cargo/config.toml`. Nothing is committed: the script runs as
+  a CI step, patches the checkout in place, and the build after it runs
+  without `--locked`. See "Reproducing a dev build locally" below to run
+  the same thing on a workstation.
+- **Release order for a cross-repo change**: tag the dependency repo first
+  (e.g. bread-ecosystem's next bread-theme release), then bump the
+  consumer's Cargo.toml tag pins in an ordinary PR (`cargo update -p
+  bread-theme` against the new tag, commit the Cargo.toml + Cargo.lock
+  diff), then tag the consumer. Dev-track builds already picked up the
+  change on both sides the moment each `main` got the merge; the tag bump
+  is purely to move the *release* pin forward, not to unblock testing.
+
+### `scripts/dev-deps.sh`
+
+Run from an app's checkout root (usually the first CI step after
+checkout, before the build step). For every `git.breadway.dev` dependency
+declared anywhere in the app's Cargo.toml manifests, it:
+
+1. Shallow-clones that dependency repo's `main` into a sibling directory
+   (`../<repo-name>` by default; override the parent directory with
+   `DEV_DEPS_DIR`, which a containerized build wrapper needs to do so the
+   clone lands inside whatever gets bind-mounted, see breadbar's
+   `dev-release.yml`/`check.yml`).
+2. Writes a `.cargo/config.toml` `[patch]` block pointing each affected
+   crate at its clone.
+3. Runs `cargo update -p <crate>` for the patched crates so Cargo.lock
+   matches.
+4. Records each dependency repo's resolved SHA to `dev-deps.lock.txt`
+   (printed and written to the app root) so a dev build is reproducible.
+
+A clone directory the script created itself is marked and refreshed in
+place on a later run (`git fetch --depth 1 origin main && git reset --hard
+FETCH_HEAD`). A directory that already existed before the script ran
+first (a developer's own sibling checkout, per "Local development" below)
+is reused exactly as-is and is never fetched, reset, or otherwise mutated.
+The generated `.cargo/config.toml` carries a sentinel comment identifying
+it as CI-owned; the script refuses to overwrite a `.cargo/config.toml` it
+didn't generate unless `--force` is passed. Run `scripts/dev-deps.sh
+--help` for the full flag/env var reference, or `--check` for a dry run
+that reports the plan without touching anything.
+
+### `scripts/lint-pins.sh`
+
+Shared CI guard, called from every consumer repo's `check.yml`: fails if
+any `git.breadway.dev` dependency in any of the repo's Cargo.toml files
+uses `rev` or `branch` instead of `tag`, or if a path dependency's target
+resolves outside the repo (the local dev-loop path-patch pattern leaking
+into a committed manifest, as opposed to an ordinary intra-workspace
+`path = "../sibling-crate"` reference within the same repo, which is left
+alone). Run `scripts/lint-pins.sh --root <path>` directly to check a repo
+other than the current directory.
+
+### Local development
+
+The gitignored `.cargo/config.toml` path-patch convention described in
+each repo's CONTRIBUTING.md is now a **developer convenience only**; CI
+never depends on it and never reads it. It works exactly as before, and
+`scripts/dev-deps.sh` will leave a checkout set up that way alone (see the
+"reused as-is" behavior above) if you point `DEV_DEPS_DIR` at its parent
+directory. To reproduce what a dev-track build or PR check does, from an
+app's checkout:
+
+```sh
+../bread-ecosystem-checkout-parent/scripts/dev-deps.sh --root .
+cargo build --release   # no --locked: the patched deps are on main
+```
+
+(or invoke the script from wherever you have bread-ecosystem checked out,
+or cloned fresh for the purpose; it only needs its own file, no other
+ecosystem tooling). `git diff Cargo.lock` afterward will show the
+temporary path-patched entries; discard it (`git checkout -- Cargo.lock`)
+along with the generated `.cargo/config.toml` when you're done, the same
+cleanup as today's local convention already requires.
+
 ## Checklist for adding a repo to a channel
 
 - **Bakery**: write `bakery.toml`, add a `[[products]]` entry to

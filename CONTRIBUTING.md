@@ -102,6 +102,10 @@ helpers.
 
 ## CI
 
+- `check.yml`: triggered on push to `feature/**`/`fix/**`/`main`. Lints
+  `git.breadway.dev` dependency pins (`scripts/lint-pins.sh`; this repo's
+  own cross-repo dependency is `bread-utils` -> `bread-shared` from
+  `Breadway/bread`), then fmt/clippy/test.
 - `dev-bakery.yml` / `dev-bread-theme.yml`: triggered on push to `main`.
 - `rc-bakery.yml` / `rc-bread-theme.yml`: triggered on any `vX.Y.Z-rc.N`
   tag push.
@@ -110,10 +114,13 @@ helpers.
 - `package.yml`: publishes `bakery` to the `[breadway]` pacman repo, also
   tag-triggered.
 
-All CI runs on a self-hosted runner; nothing runs automatically on plain
-commits or PRs beyond the track builds above. See
+All CI runs on a self-hosted runner. See
 [`docs/release-channels.md`](docs/release-channels.md) for the full policy,
-including how a new product gets wired onto these tracks.
+including how a new product gets wired onto these tracks, and its
+"Cross-repo dependency resolution" section for `scripts/dev-deps.sh` and
+`scripts/lint-pins.sh`, the shared scripts every consumer repo (breadbar,
+breadbox, ...) uses to build against dependency `main` branches on its own
+dev track and PR checks while keeping Cargo.toml itself tag-pinned.
 
 ## Questions
 
