@@ -329,7 +329,7 @@ and slide direction per namespace.
 ```toml
 [panel]
 min_width = 248                                  # CSS min-width of the panel body
-sections  = ["volume", "output", "brightness", "system", "power", "tray"]
+sections  = ["volume", "brightness", "output", "system", "power", "tray"]
 ```
 
 `sections` reorders / drops the control-panel's body sections; the `CONTROL`

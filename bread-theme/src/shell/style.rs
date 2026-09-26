@@ -12,6 +12,9 @@
 
 use super::types::{fmt_f64, BarBorder, Launcher, Modules, Panel, Tokens, WorkspaceStyle};
 
+/// Minimum workspace-button height: fits the fixed 18px workspace label.
+const WS_MIN_HEIGHT: i64 = 26;
+
 /// One chip-highlight height per bar, keyed on the workspace style (Trail's
 /// pills are taller than Pill/Dots). Matches `breadbar`'s historical
 /// `approved_chip_height`; that helper can be dropped once `breadbar` reads
@@ -152,6 +155,10 @@ pub(super) fn subst_pairs(
     // itself when a theme doesn't set one, so every caller downstream of
     // resolution (this one included) can just read the token straight.
     let chip_height_px = format!("{}px", t.chip_height);
+    // Workspace labels are a fixed 18px across themes (base.css), so a
+    // theme's small `chip_height` (22px on glass-workbench/spotlight) would
+    // squeeze them; floor the workspace buttons at a height that fits.
+    let ws_height_px = format!("{}px", t.chip_height.max(WS_MIN_HEIGHT));
     let settle = &t.spring_settle;
     let from = &t.accent_from;
     let to = &t.accent_to;
@@ -163,8 +170,8 @@ pub(super) fn subst_pairs(
                  background-color: @{from}; border-radius: {radius_sm}; }} \
              .workspace-btn {{ background: transparent; opacity: 0.36; color: {ink}; \
                  border-radius: {radius_sm}; border: none; outline: none; box-shadow: none; \
-                 min-width: 28px; min-height: {chip_height_px}; margin: 0; padding: 0 7px; \
-                 font-size: 22px; font-weight: bold; \
+                 min-width: 28px; min-height: {ws_height_px}; margin: 0; padding: 0 7px; \
+                 font-size: 18px; font-weight: bold; \
                  transition: opacity 0.22s {settle}, background-color 0.22s {settle}; }} \
              .workspace-btn:hover {{ opacity: 0.85; background: alpha({ink}, 0.08); }} \
              .workspace-btn.occupied {{ opacity: 0.78; }} \
@@ -175,8 +182,8 @@ pub(super) fn subst_pairs(
         WorkspaceStyle::Pill => format!(
             ".workspace-btn {{ background: transparent; opacity: 1; color: alpha({ink}, 0.4); \
                  border-radius: {radius_sm}; border: none; outline: none; box-shadow: none; \
-                 min-width: 22px; min-height: {chip_height_px}; margin: 0; padding: 0 6px; \
-                 font-size: 12px; font-weight: 600; \
+                 min-width: 26px; min-height: {ws_height_px}; margin: 0; padding: 0 6px; \
+                 font-size: 18px; font-weight: 600; \
                  transition: background-color 0.22s {settle}, color 0.22s {settle}, \
                      opacity 0.22s {settle}; }} \
              .workspace-btn:hover {{ background: alpha({ink}, 0.08); }} \
