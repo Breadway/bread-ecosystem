@@ -2,6 +2,7 @@
 pub mod adw;
 #[cfg(feature = "gtk")]
 pub mod anim;
+mod extract;
 #[cfg(feature = "gtk")]
 pub mod gtk;
 mod layerrules;
@@ -11,9 +12,10 @@ pub mod shell;
 
 pub use layerrules::{layerrules_json, layerrules_path, write_layerrules, write_layerrules_active};
 pub use output::{
-    generate_output, load_palette_for, output_css_path, output_palette_path, palette_from_image,
-    palette_from_json, palettes_dir, sanitize_output, themes_dir, write_output_css,
-    write_output_palette, write_shared_css_from,
+    generate_output, load_palette_for, output_css_path, output_palette_path, palette_cache_dir,
+    palette_cache_path, palette_from_image, palette_from_json, palettes_dir, sanitize_output,
+    sequences_path, themes_dir, write_global_palette, write_output_css, write_output_palette,
+    write_shared_css_from,
 };
 pub use palette::{load_palette, wal_cache_json, wal_cache_path, write_wal_cache, Palette};
 

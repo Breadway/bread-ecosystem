@@ -72,10 +72,20 @@ struct WalColors {
     colors: HashMap<String, String>,
 }
 
-/// Load palette from pywal's `colors.json`. Falls back to [`Palette::default`].
+/// Load the session-global palette: bread's own cache
+/// ([`crate::output::palette_cache_path`], accepting either the wal
+/// `colors.json` shape or a flat `{color1..color6}` object via
+/// [`crate::output::palette_from_json`]) first, then pywal's own
+/// `~/.cache/wal/colors.json` for installs that upgraded before anything
+/// wrote the new cache, then [`Palette::default`].
 pub fn load_palette() -> Palette {
-    let path = wal_path();
-    std::fs::read_to_string(&path)
+    if let Some(p) = std::fs::read_to_string(crate::output::palette_cache_path())
+        .ok()
+        .and_then(|s| crate::output::palette_from_json(&s))
+    {
+        return p;
+    }
+    std::fs::read_to_string(wal_path())
         .ok()
         .and_then(|s| from_wal_json(&s))
         .unwrap_or_default()
@@ -101,6 +111,40 @@ pub(crate) fn from_wal_json(json: &str) -> Option<Palette> {
         color6: c("color6", DEFAULT_COLOR6),
         color7: FIXED_OVERLAY.into(),
     })
+}
+
+/// Curated bread-toned accents used when native extraction can't produce a
+/// meaningful palette (no saturation, fully transparent image): the same six
+/// colours as [`Palette::default`]'s accents.
+pub(crate) fn default_accents() -> [String; 6] {
+    [
+        DEFAULT_COLOR1.into(),
+        DEFAULT_COLOR2.into(),
+        DEFAULT_COLOR3.into(),
+        DEFAULT_COLOR4.into(),
+        DEFAULT_COLOR5.into(),
+        DEFAULT_COLOR6.into(),
+    ]
+}
+
+/// Build a full [`Palette`] from six accent hexes (color1..color6), forcing
+/// BOS's fixed background/foreground/surface/overlay exactly like
+/// [`from_wal_json`]. Used by the native extractor ([`crate::extract`]),
+/// which only ever produces accents.
+pub(crate) fn from_accents(accents: [String; 6]) -> Palette {
+    let [c1, c2, c3, c4, c5, c6] = accents;
+    Palette {
+        background: FIXED_BACKGROUND.into(),
+        foreground: FIXED_FOREGROUND.into(),
+        color0: FIXED_SURFACE.into(),
+        color1: c1,
+        color2: c2,
+        color3: c3,
+        color4: c4,
+        color5: c5,
+        color6: c6,
+        color7: FIXED_OVERLAY.into(),
+    }
 }
 
 fn wal_path() -> PathBuf {

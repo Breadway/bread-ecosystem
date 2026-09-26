@@ -12,6 +12,7 @@ keywords = ["theming", "pywal", "gtk4", "wayland"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
+image = { workspace = true }
 # bread_theme::shell manifest parsing (theme.toml): gtk-free, so `bread`
 # (daemon) and `breadcrumbs` (CLI) can validate a theme without linking GTK.
 toml = { workspace = true }
