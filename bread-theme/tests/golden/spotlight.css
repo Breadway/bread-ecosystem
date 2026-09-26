@@ -85,11 +85,12 @@
   animation: bar-in 0.4s cubic-bezier(0.22, 1.35, 0.36, 1) both;
 }
 
+
 window.breadbar {
   color: @on-bg;
   border-radius: 22px;
   font-family: 'Outfit', 'Varela Round', sans-serif;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 400;
 
 background-color: alpha(@bg, 0.82); border: 1px solid alpha(@on-bg, 0.08);
@@ -114,12 +115,17 @@ window.breadbar button {
 
 
 .workspace-dot { background-color: alpha(@on-bg, 0.35); color: transparent; border-radius: 999px; border: none; outline: none; box-shadow: none; min-height: 9px; margin: 0; padding: 0; transition: background-color 0.25s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1.35, 0.36, 1); } .workspace-dot:hover { background-color: alpha(@on-bg, 0.55); } .workspace-dot:not(.occupied):not(.active) { opacity: 0.35; } .workspace-dot.active { background-color: @pink; opacity: 1; } .workspace-dot.active:hover { background-color: @pink; }
+
+.workspace-btn label {
+  font-size: 18px;
+}
+
 .clock-box {
   padding: 0 4px;
 }
 
 .clock-label {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.04em;
   min-height: 0;
@@ -128,7 +134,7 @@ window.breadbar button {
 }
 
 .clock-digit {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.04em;
   min-width: 15px;
@@ -151,19 +157,19 @@ window.breadbar button {
 }
 
 .clock-plain-time {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .date-label {
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0.48;
   letter-spacing: 0.04em;
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: 18px;
   letter-spacing: 0.02em;
   opacity: 0.92;
 }
@@ -285,14 +291,14 @@ window.breadbar-history {
 }
 
 .notification-dismiss {
-  min-width: 18px;
-  min-height: 18px;
+  min-width: 24px;
+  min-height: 24px;
   padding: 0;
-  margin: 2px;
+  margin: 0;
   border-radius: 999px;
   background: transparent;
   color: @on-bg;
-  opacity: 0.45;
+  opacity: 0.6;
   font-size: 12px;
   font-weight: bold;
   border: none;
@@ -335,6 +341,29 @@ window.breadbar-history {
 
 .history-card {
   margin-bottom: 6px;
+}
+
+.history-count {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: alpha(@on-bg, 0.10);
+  opacity: 0.8;
+}
+
+
+.history-list {
+  padding-bottom: 8px;
+}
+
+
+scrolledwindow.history-scroll undershoot.bottom {
+  background-color: transparent;
+  background-image: linear-gradient(to top, alpha(@bg, 0.7), alpha(@bg, 0));
+  background-size: 100% 40px;
+  background-position: bottom;
+  background-repeat: no-repeat;
 }
 
 window.breadbar-osd {
@@ -491,6 +520,12 @@ window.wifi-popover button {
 
 .wifi-popover-row-active:hover {
   background: alpha(@accent, 0.20);
+}
+
+
+window.breadbar-panel button.wifi-popover-row-active,
+window.wifi-popover button.wifi-popover-row-active {
+  color: @accent;
 }
 
 .row-in {
@@ -708,16 +743,21 @@ window.wifi-add-dialog headerbar {
   font-weight: bold;
   letter-spacing: 0.12em;
   opacity: 0.45;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .control-panel-row {
-  margin: 8px 0;
+  margin: 6px 0;
 }
 
-.control-panel-row-label {
-  font-size: 16px;
+.control-panel-row-icon {
   opacity: 0.78;
+}
+
+.control-panel-row-value {
+  font-size: 12px;
+  font-feature-settings: "tnum";
+  opacity: 0.6;
 }
 
 .control-panel-slider {
@@ -743,57 +783,141 @@ scale.control-panel-slider highlight {
   background-color: @accent;
 }
 
+
 scale.control-panel-slider slider {
-  min-width: 0;
-  min-height: 0;
-  margin: 0;
+  min-width: 12px;
+  min-height: 12px;
+  margin: -3px;
   padding: 0;
   opacity: 0;
-  background: transparent;
+  border-radius: 99px;
+  background: @on-bg;
   border: none;
   outline: none;
   box-shadow: none;
+  transition: opacity 0.18s ease;
+}
+
+scale.control-panel-slider:hover slider {
+  opacity: 1;
 }
 
 .control-panel-section {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
 }
+
+.sink-row {
+  min-height: 34px;
+}
+
 
 .sink-row label {
   font-size: 15px;
 }
 
 .power-row {
-  margin-top: 8px;
+  margin-top: 14px;
 }
 
 .power-btn {
   min-width: 0;
   min-height: 0;
-  padding: 8px 10px;
+  padding: 10px 4px 8px;
   border-radius: 8px;
-  background: alpha(@on-bg, 0.08);
-  font-size: 13px;
+  background: alpha(@on-bg, 0.06);
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.2s cubic-bezier(0.22, 1.35, 0.36, 1);
+  transition: background-color 0.2s cubic-bezier(0.22, 1.35, 0.36, 1), color 0.2s ease;
 }
 
 .power-btn:hover {
-  background: alpha(@on-bg, 0.14);
+  background: alpha(@on-bg, 0.12);
 }
 
 .power-btn:active {
   background: alpha(@accent, 0.22);
 }
 
+.power-btn-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+
+window.breadbar-panel button.power-btn.armed {
+  background: alpha(@red, 0.22);
+  color: @red;
+}
+
+window.breadbar-panel button.power-btn.armed .power-btn-label {
+  opacity: 1;
+  font-weight: bold;
+}
+
 .notification-action {
   transition: background-color 0.18s ease;
 }
 
+.tray-box {
+  margin-top: 4px;
+}
+
+
+.tray-toggle {
+  min-height: 0;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  transition: background-color 0.18s cubic-bezier(0.22, 1.35, 0.36, 1);
+}
+
+.tray-toggle:hover {
+  background: alpha(@on-bg, 0.08);
+}
+
+.tray-toggle .control-panel-header {
+  margin-bottom: 0;
+}
+
+.tray-count {
+  font-size: 11px;
+  font-weight: bold;
+  opacity: 0.45;
+}
+
+.tray-chevron {
+  opacity: 0.5;
+  transition: transform 0.22s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.18s ease;
+}
+
+.tray-toggle:hover .tray-chevron {
+  opacity: 0.85;
+}
+
+.tray-toggle.open .tray-chevron {
+  transform: rotate(180deg);
+}
+
 .tray-btn {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
   transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.tray-btn:hover {
+  background: alpha(@on-bg, 0.10);
 }
 
 separator {
