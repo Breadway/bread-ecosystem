@@ -4,5 +4,23 @@
   "color3": "#E4E7ED",
   "color4": "#E6E9EE",
   "color5": "#E7EAEF",
-  "color6": "#E8EBF0"
+  "color6": "#E8EBF0",
+  "wal_colors": [
+    "#508EF5",
+    "#659AF4",
+    "#76A5F3",
+    "#87AFF2",
+    "#BACFF3",
+    "#D4D4D9",
+    "#D5DBE8",
+    "#DFE3EA",
+    "#E2E2E6",
+    "#E4E5E9",
+    "#E4E7ED",
+    "#E6E9EE",
+    "#E7EAEF",
+    "#E8EBF0",
+    "#E9ECF0",
+    "#EAEDF1"
+  ]
 }
