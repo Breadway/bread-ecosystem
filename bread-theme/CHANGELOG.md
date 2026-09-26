@@ -1,5 +1,48 @@
 # bread-theme changelog
 
+## Unreleased
+
+Epic PYWAL (ECO-29..33): removes the `wal`/ImageMagick subprocess dependency
+entirely.
+
+- ECO-30: `palette_from_image` is now a native Rust extractor (`extract.rs`):
+  decode via the `image` crate, resize to 25% (matching wal's own resize
+  step), quantize with a from-scratch octree colour quantizer, and take
+  `color1..color6` from the same list position wal's own pipeline does
+  (`colors[8..14]`, verified against the installed pywal source). This is a
+  deliberate approximation of ImageMagick's `-colors`/`-unique-colors`
+  behaviour, not a byte-for-byte port (ImageMagick also dithers by default,
+  and its exact node-merge and colormap-traversal order are internal C
+  implementation details); see ECO-30 on breadboard for measured fidelity
+  against real `wal` output, including a wider real-wallpaper comparison
+  beyond the committed fixtures. No more subprocess spawn, no more isolated
+  `HOME`/`XDG_CACHE_HOME` temp-dir dance, no more "wal is not installed"
+  error path. Deterministic: same image in, same accents out.
+- ECO-29: golden `color1..color6` fixtures for five reference images
+  (`bread-theme/tests/fixtures/`, captured with real `wal -i` in an isolated
+  `HOME`) feed hue-family/fidelity regression tests in `output.rs`.
+- ECO-31: the session-global palette moves to a bread-owned cache,
+  `palette_cache_path()` (`$XDG_CACHE_HOME/bread/palette.json`, wal
+  `colors.json` shape), written atomically by the new `write_global_palette`.
+  `load_palette()` reads that path first, then falls back to
+  `~/.cache/wal/colors.json` for installs upgrading from a `wal`-based
+  setup, then `Palette::default()`. `palette_cache_dir()` and
+  `sequences_path()` are also exported: the former is a stable directory a
+  long-lived watcher (breadman) can watch, the latter is where the next
+  point writes.
+- ECO-32: `write_global_palette` also writes a terminal colour-sequences
+  file (`sequences_path()`, OSC 4 for all 16 ANSI slots plus OSC 10/11/12
+  for fg/bg/cursor) alongside the palette cache, so BOS's skel `.zshrc`
+  (which cats this file to colour new terminal sessions) keeps working now
+  that nothing runs `wal` to produce it. Terminals also now get the fixed
+  BOS dark background instead of a raw wallpaper-derived one.
+- ECO-33: `python-pywal` dropped from `bakery.toml`'s optional system deps;
+  Cargo.toml/bakery descriptions, CLI help, README, BREAD_DESIGN_SYSTEM.md,
+  and docs/shell-themes.md reworded to describe native extraction instead
+  of pywal. The bread-ecosystem release that ships this needs to go out
+  before any consumer (breadpaper, etc.) is updated to depend on it, since
+  roughly a dozen apps pin bread-theme by tag.
+
 ## 0.7.11
 
 Adds ECO-22: `write_wal_cache(&Palette, path)`, plus `wal_cache_json` and

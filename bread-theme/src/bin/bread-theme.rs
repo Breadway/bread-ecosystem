@@ -1,11 +1,12 @@
 //! `bread-theme`: generates the ecosystem's shared GTK stylesheet from the
-//! current pywal palette and writes it to the canonical path that every bread
-//! GUI loads. Run it at session start, and again after the wallpaper/palette
-//! changes (e.g. from a pywal hook); apps watch the file and recolour live.
+//! current session-global palette and writes it to the canonical path that
+//! every bread GUI loads. Run it at session start, and again after the
+//! wallpaper/palette changes (e.g. from breadpaper); apps watch the file and
+//! recolour live.
 //!
 //!   bread-theme            # same as `generate`
 //!   bread-theme generate   # render + write the shared stylesheet
-//!   bread-theme reload      # re-render from the current pywal palette and
+//!   bread-theme reload      # re-render from the current palette and
 //!                           # signal every running bread GUI to recolour
 //!   bread-theme path       # print the stylesheet path
 //!   bread-theme print      # render to stdout (no write)
@@ -37,13 +38,14 @@ fn print_help_to(mut w: impl std::io::Write) {
          \x20 bread-theme [generate|reload|path|print|layerrules]\n\
          \x20 bread-theme generate-output <OUTPUT> --image <PATH> [--shared]\n\
          \x20 bread-theme generate-output <OUTPUT> --from-json <WAL-OR-PALETTE.json> [--shared]\n\n\
-         generate          render the pywal palette to the shared stylesheet (default)\n\
+         generate          render the current palette to the shared stylesheet (default)\n\
          reload            re-render and signal running bread GUIs to recolour live\n\
          path              print the stylesheet path ({})\n\
          print             render to stdout without writing\n\
          generate-output   write palettes/<OUTPUT>.json and themes/<OUTPUT>.css\n\
-         \x20                --image      isolated `wal -i` (does not touch ~/.cache/wal)\n\
-         \x20                --from-json  wal colors.json or a color1-6 object\n\
+         \x20                --image      extract accents natively from an image (no\n\
+         \x20                             external tool, does not touch any cache files)\n\
+         \x20                --from-json  wal-shaped colors.json or a color1-6 object\n\
          \x20                --shared     also write the session-global theme.css\n\
          layerrules        write the active shell theme's [compositor] table to\n\
          \x20                {}:\n\
@@ -220,7 +222,7 @@ fn main() -> ExitCode {
         }
         "generate" => write_and_report("wrote"),
         // `reload` is `generate` from the caller's view, but it's the verb to use
-        // after changing pywal colours: rewriting the file (atomic rename) trips
+        // after changing the palette: rewriting the file (atomic rename) trips
         // the file monitor in every running bread GUI, so they all re-read the
         // palette and recolour live: shared widgets *and* each app's own rules.
         "reload" => write_and_report("reloaded"),

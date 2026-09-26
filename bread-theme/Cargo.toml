@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Shared pywal-accented, fixed-dark-base theming crate for the bread ecosystem"
+description = "Shared native-accent, fixed-dark-base theming crate for the bread ecosystem"
 repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
-keywords = ["theming", "pywal", "gtk4", "wayland"]
+keywords = ["theming", "wallpaper", "gtk4", "wayland"]
 
 [dependencies]
 serde = { workspace = true }

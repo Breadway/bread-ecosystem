@@ -395,8 +395,8 @@ rendered stylesheet. See below.
 
 ## Palette slots
 
-Colours in a theme are **slot names**, not hex values. Each maps to a pywal
-ANSI colour derived from the wallpaper, so the theme re-tints with the
+Colours in a theme are **slot names**, not hex values. Each maps to an ANSI
+colour extracted natively from the wallpaper, so the theme re-tints with the
 wallpaper instead of clashing with it. BOS keeps `bg` / `fg` / `surface` /
 `overlay` fixed; only `accent` and the six hues track the wallpaper.
 
@@ -405,7 +405,8 @@ bg  fg  surface  overlay  accent  red  green  yellow  blue  pink  teal
 on-bg  on-surface  on-accent  on-red  on-overlay
 ```
 
-In `[tokens]`, `accent_from = "yellow"` means "use pywal's yellow". In CSS
+In `[tokens]`, `accent_from = "yellow"` means "use the wallpaper's extracted
+yellow". In CSS
 (base sheet or `extra.css`) the same slots are available as `@yellow`,
 `@on-bg`, etc.; GTK resolves them per output. Writing a literal hex in a
 theme breaks per-monitor theming; don't.
