@@ -5,22 +5,27 @@
 Epic PYWAL (ECO-29..33): removes the `wal`/ImageMagick subprocess dependency
 entirely.
 
-- ECO-30: `palette_from_image` is now a native Rust extractor (`extract.rs`):
-  decode via the `image` crate, resize to 25% (matching wal's own resize
-  step), quantize with a from-scratch octree colour quantizer, and take
-  `color1..color6` from the same list position wal's own pipeline does
-  (`colors[8..14]`, verified against the installed pywal source). This is a
-  deliberate approximation of ImageMagick's `-colors`/`-unique-colors`
-  behaviour, not a byte-for-byte port (ImageMagick also dithers by default,
-  and its exact node-merge and colormap-traversal order are internal C
-  implementation details); see ECO-30 on breadboard for measured fidelity
-  against real `wal` output, including a wider real-wallpaper comparison
-  beyond the committed fixtures. No more subprocess spawn, no more isolated
-  `HOME`/`XDG_CACHE_HOME` temp-dir dance, no more "wal is not installed"
-  error path. Deterministic: same image in, same accents out.
-- ECO-29: golden `color1..color6` fixtures for five reference images
-  (`bread-theme/tests/fixtures/`, captured with real `wal -i` in an isolated
-  `HOME`) feed hue-family/fidelity regression tests in `output.rs`.
+- ECO-30: `palette_from_image` is now a native Rust extractor (`extract.rs`)
+  that reproduces `wal -i` exactly: a port of the ImageMagick 7.1.2 (Q16
+  HDRI) code behind pywal's `magick "<img>[0]" -resize 25% -colors N
+  -unique-colors txt:-` (resize filter selection and two-pass resampling,
+  octree classify/reduce/colormap, the default Riemersma dither and its
+  colour cache, `-unique-colors` ordering, `txt:` hex formatting including
+  pywal's `#.{6}` truncation of 16-bit output), plus a JPEG decoder ported
+  from libjpeg-turbo so JPEG samples match what ImageMagick decodes.
+  Measured against real pywal: every slot of the full colour list matches
+  on all committed fixtures, and all accents match on 21 real wallpapers
+  plus the BOS default (`scripts/compare-pywal.py`). Decodes PNG, JPEG,
+  WebP, GIF (first frame) and BMP. New `pywal_colors()` returns the full
+  list. Third-party notices: `NOTICE`, `bread-theme notice`. No more
+  subprocess spawn, no more isolated `HOME`/`XDG_CACHE_HOME` temp-dir
+  dance, no more "wal is not installed" error path.
+- ECO-29: golden pywal output for reference images
+  (`bread-theme/tests/fixtures/`, captured by `scripts/capture-goldens.py`
+  from real `wal -i` in an isolated `HOME` plus pywal's own `gen_colors`)
+  feeds exact per-slot and full-list tests in `output.rs`. Fixtures cover
+  8-bit, palette, gray and 16-bit PNG, baseline and progressive JPEG, WebP,
+  BMP and an animated GIF.
 - ECO-31: the session-global palette moves to a bread-owned cache,
   `palette_cache_path()` (`$XDG_CACHE_HOME/bread/palette.json`, wal
   `colors.json` shape), written atomically by the new `write_global_palette`.

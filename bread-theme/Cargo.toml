@@ -2,7 +2,10 @@
 name = "bread-theme"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+# MIT, plus the licences of the ImageMagick and libjpeg-turbo code ported
+# into the palette extractor (see NOTICE, LICENSE-ImageMagick and
+# LICENSE-libjpeg-turbo).
+license = "MIT AND ImageMagick AND IJG AND BSD-3-Clause"
 authors.workspace = true
 description = "Shared native-accent, fixed-dark-base theming crate for the bread ecosystem"
 repository = "https://git.breadway.dev/Breadway/bread-ecosystem"

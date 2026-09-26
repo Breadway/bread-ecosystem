@@ -12,6 +12,7 @@
 //!   bread-theme print      # render to stdout (no write)
 //!   bread-theme generate-output <OUTPUT> --image <PATH> [--shared]
 //!   bread-theme generate-output <OUTPUT> --from-json <PATH> [--shared]
+//!   bread-theme notice     # print third-party notices (NOTICE)
 //!   bread-theme layerrules  # write the active theme's [compositor] table
 //!                           # to ~/.config/hypr/layerrules.json (plan §9)
 
@@ -53,7 +54,9 @@ fn print_help_to(mut w: impl std::io::Write) {
          \x20                animation, falling back to its hardcoded rules if this\n\
          \x20                is missing or malformed\n\
          describe          print the theme.toml schema as JSON (tokens, enums, modules)\n\
-         diagnose <id>     exit 0 if theme <id> resolves, else print the reason and exit 1",
+         diagnose <id>     exit 0 if theme <id> resolves, else print the reason and exit 1\n\
+         notice            print third-party notices (ImageMagick, libjpeg-turbo/IJG code\n\
+         \x20                 ported into the palette extractor)",
         bread_theme::shared_css_path().display(),
         bread_theme::layerrules_path().display()
     );
@@ -231,6 +234,18 @@ fn main() -> ExitCode {
         // Machine-readable `theme.toml` schema: token fields with types and
         // defaults, the closed enum vocabularies, the known slot modules. For
         // a theme editor (bos-settings).
+        "notice" => {
+            // NOTICE plus the full third-party licence texts, so a bare
+            // binary install (bakery ships only the executable) still
+            // carries them.
+            print!(
+                "{}\n\n{}\n\n{}",
+                include_str!("../../NOTICE"),
+                include_str!("../../LICENSE-ImageMagick"),
+                include_str!("../../LICENSE-libjpeg-turbo")
+            );
+            ExitCode::SUCCESS
+        }
         "describe" => {
             println!("{}", bread_theme::shell::describe_json());
             ExitCode::SUCCESS

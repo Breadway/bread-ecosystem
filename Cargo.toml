@@ -22,11 +22,10 @@ chrono = "0.4"
 minisign-verify = "0.2"
 tracing = "0.1"
 semver = "1"
-# Wallpaper decoding for bread-theme's native palette extractor (ECO-30).
-# Only the two codecs real wallpapers need: PNG and JPEG. No jpeg-rayon
-# (parallel decode isn't worth pulling in rayon for images this small once
-# downscaled), no webp/tiff/avif/etc.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Wallpaper decoding for bread-theme's native palette extractor (ECO-30):
+# the formats breadpaper accepts (png, jpg/jpeg, webp, gif, bmp). No
+# jpeg-rayon (parallel decode is not worth pulling in rayon here).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 
 [profile.release]
 lto = "thin"

@@ -1,0 +1,47 @@
+bread-theme
+Copyright (c) 2026 Breadway. Licensed under the MIT License (LICENSE at the
+root of the bread-ecosystem repository).
+
+bread-theme's native palette extractor contains Rust ports of code from the
+following projects. The ported code keeps their licence terms; the rest of
+bread-theme is MIT.
+
+ImageMagick
+-----------
+src/extract.rs ports the logic of ImageMagick 7.1.2 (Q16 HDRI) that decides
+what `magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-` prints:
+MagickCore/geometry.c (ParseMetaGeometry), MagickCore/resize.c
+(ResizeImage, AcquireResizeFilter, SincFast, CubicBC, HorizontalFilter,
+VerticalFilter), MagickCore/quantize.c (QuantizeImage, ClassifyImageColors,
+ReduceImageColors, Reduce, PruneChild, PruneLevel, PruneToCubeDepth,
+DefineImageColormap, ClosestColor, Riemersma/RiemersmaDither, and
+SetGrayscaleImage's gray transform), MagickCore/histogram.c
+(UniqueImageColors), MagickCore/color.c (GetColorTuple) and the Q16 HDRI
+quantum helpers in MagickCore/quantum.h and pixel-accessor.h. The code was
+translated from C to Rust and restructured (arena-allocated octree,
+iterative helpers, multithreaded resize rows); the arithmetic and its order
+are kept so results match bit for bit.
+
+  Copyright @ 1999 ImageMagick Studio LLC, a non-profit organization
+  dedicated to making software imaging solutions freely available.
+  Licensed under the ImageMagick License (LICENSE-ImageMagick, reproduced by
+  `bread-theme notice`; also https://imagemagick.org/license/).
+
+libjpeg-turbo / Independent JPEG Group
+--------------------------------------
+src/jpeg.rs ports libjpeg-turbo 3.2's default decompression path:
+jidctint.c (jpeg_idct_islow), jdsample.c (fancy upsampling), jdcolor.c
+(ycc_rgb_convert), jdmaster.c (range-limit table), jdmainct.c (context-row
+edge handling), jdapimin.c (colour space defaults) and the Huffman
+decoding rules of jdhuff.c/jdphuff.c, translated from C to Rust.
+
+  This software is based in part on the work of the Independent JPEG Group.
+  Copyright (C) 1991-1998, Thomas G. Lane.
+  Copyright (C) 1999, Ken Murchison.
+  Copyright (C) 2009-2026, D. R. Commander.
+  Copyright 2009 Pierre Ossman for Cendio AB.
+  Copyright (C) 2010-2026 other libjpeg-turbo contributors (Linaro
+  Limited, Google, Inc., Matthias Raencker, Arm Limited), as listed in the
+  ported source files.
+  Licensed under the IJG License and the Modified (3-clause) BSD License
+  (LICENSE-libjpeg-turbo, reproduced by `bread-theme notice`).

@@ -161,14 +161,28 @@ pub fn write_shared_css_from(palette: &Palette) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-/// Extract a [`Palette`] natively from an image: decode, downscale, quantize
-/// via median cut, and pick six accent hues spread across the hue wheel (see
+/// Extract a [`Palette`] natively from an image, reproducing what `wal -i`
+/// produced for it: a pure-Rust port of pywal's ImageMagick pipeline
+/// (`magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-`, `N` from
+/// 16 until at least 16 colours come back) with `color1..color6` taken from
+/// entries 8..14 of the resulting list, as pywal does (see
 /// [`crate::extract`]). Deterministic: the same image always extracts to the
-/// same accents. Replaces the old isolated `wal -i` subprocess: no external
+/// same accents. Images for which wal itself would give up (fewer than 16
+/// distinct colours) get bread's curated default accents. Decode failures
+/// are an `Err`. Replaces the old isolated `wal -i` subprocess: no external
 /// binary, no temp `HOME`/`XDG_CACHE_HOME` dance.
 pub fn palette_from_image(path: &Path) -> std::io::Result<Palette> {
     let accents = crate::extract::accents_from_image(path)?;
     Ok(crate::palette::from_accents(accents))
+}
+
+/// The raw ordered colour list pywal's `wal` backend builds for `path`
+/// (lower-case `#rrggbb`, 16 or more entries; see
+/// [`palette_from_image`]), or `None` where `wal` would exit with
+/// "Imagemagick couldn't generate a suitable palette". Exposed for fidelity
+/// comparisons against a real ImageMagick (`scripts/compare-pywal.py`).
+pub fn pywal_colors(path: &Path) -> std::io::Result<Option<Vec<String>>> {
+    crate::extract::wal_colors(path)
 }
 
 /// Persistent, cross-session cache dir: `$XDG_CACHE_HOME/bread` (falls back
@@ -515,162 +529,134 @@ mod tests {
 }
 
 /// Golden-fixture fidelity tests for the native extractor
-/// ([`palette_from_image`]), ECO-29/ECO-30: reference images under
-/// `tests/fixtures/`, each with a golden `color1..color6` captured by
-/// running real `wal -i <img> -n -q` in an isolated `HOME` (see
-/// `tests/fixtures/golden/*.json`; regenerate with the same isolated-HOME
-/// recipe if a fixture image ever changes).
-///
-/// bread-theme's extractor reimplements wal's real pipeline (resize 25%,
-/// quantize, take `colors[8..14]`, see `extract.rs`'s module docs) rather
-/// than a from-scratch design, so it should land in the same broad hue/
-/// saturation family as real wal on the same image. It is **not** a
-/// byte-for-byte port of ImageMagick's quantizer (which also dithers by
-/// default), so these are hue-family and saturation-ballpark assertions
-/// with a generous tolerance, not exact-match: measured deltas are quoted
-/// in each test so a future tightening (or loosening) is a deliberate,
-/// visible choice. See the ECO-30 issue and the PR description for the
-/// wider real-wallpaper fidelity numbers (exact-match rate, mean channel
-/// delta, timing) that don't fit as committed fixtures.
+/// ([`palette_from_image`], [`pywal_colors`]), ECO-29/ECO-30: reference
+/// images under `tests/fixtures/`, each with golden output captured from
+/// real pywal by `scripts/capture-goldens.py` (`color1..color6` from
+/// `wal -i` run in an isolated `HOME`, plus `wal_colors`, the full ordered
+/// list pywal's backend built). The extractor is a port of the ImageMagick
+/// pipeline pywal runs, so these are exact assertions on every slot. The
+/// wider real-wallpaper comparison is `scripts/compare-pywal.py`.
 #[cfg(test)]
 mod golden_fixture_tests {
-    use crate::extract::rgb_to_hsl;
     use crate::Palette;
+
+    /// Every committed fixture with a golden: PNG (8-bit RGB, RGBA,
+    /// 4-bit palette, 8-bit gray, 16-bit gray), baseline and progressive
+    /// JPEG, lossy WebP, 24-bit and palette BMP, and an animated GIF.
+    const FIXTURES: &[&str] = &[
+        "bos-default.png",
+        "bright-screenshot.png",
+        "dark-moody.png",
+        "near-monochrome.png",
+        "near-monochrome-16bit.png",
+        "saturated-colorful.png",
+        "bos-default.jpg",
+        "bos-default-progressive.jpg",
+        "bos-default.webp",
+        "bos-default.bmp",
+        "bos-default-palette.bmp",
+        "bos-default-animated.gif",
+    ];
 
     fn fixture_path(name: &str) -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
-            .join(format!("{name}.png"))
+            .join(name)
     }
 
-    fn load_golden(name: &str) -> [String; 6] {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/golden")
-            .join(format!("{name}.json"));
+    fn golden(name: &str) -> serde_json::Value {
+        let stem = name.strip_suffix(".png").unwrap_or(name);
+        let path = fixture_path("golden").join(format!("{stem}.json"));
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("missing golden fixture {path:?}: {e}"));
-        let v: serde_json::Value =
-            serde_json::from_str(&text).expect("golden fixture must be valid JSON");
-        std::array::from_fn(|i| {
-            v[format!("color{}", i + 1)]
-                .as_str()
-                .expect("golden fixture missing colorN")
-                .to_string()
-        })
+        serde_json::from_str(&text).expect("golden fixture must be valid JSON")
     }
 
-    fn parse_hex(hex: &str) -> [u8; 3] {
-        let h = hex.trim_start_matches('#');
-        let v = u32::from_str_radix(h, 16).expect("golden/extracted hex must parse");
-        [
-            ((v >> 16) & 0xff) as u8,
-            ((v >> 8) & 0xff) as u8,
-            (v & 0xff) as u8,
-        ]
+    fn golden_accents(name: &str) -> Vec<String> {
+        let v = golden(name);
+        (1..=6)
+            .map(|i| {
+                v[format!("color{i}")]
+                    .as_str()
+                    .expect("golden fixture missing colorN")
+                    .to_lowercase()
+            })
+            .collect()
     }
 
-    fn hue_of(hex: &str) -> f32 {
-        rgb_to_hsl(parse_hex(hex)).0
-    }
-
-    fn circular_mean_hue(hues: &[f32]) -> f32 {
-        let (mut sx, mut sy) = (0.0f32, 0.0f32);
-        for h in hues {
-            let rad = h.to_radians();
-            sx += rad.cos();
-            sy += rad.sin();
-        }
-        sy.atan2(sx).to_degrees().rem_euclid(360.0)
-    }
-
-    fn hue_distance(a: f32, b: f32) -> f32 {
-        let d = (a - b).abs() % 360.0;
-        d.min(360.0 - d)
-    }
-
-    fn our_accents(p: &Palette) -> [&str; 6] {
+    fn our_accents(p: &Palette) -> Vec<String> {
         [
             &p.color1, &p.color2, &p.color3, &p.color4, &p.color5, &p.color6,
         ]
-    }
-
-    /// Assert at least one of our six accents lands within `tol` degrees of
-    /// the golden set's circular-mean hue, and report the actual distance
-    /// on failure so a regression is diagnosable at a glance.
-    fn assert_hue_family(fixture: &str, tol: f32) {
-        let golden = load_golden(fixture);
-        let golden_hues: Vec<f32> = golden.iter().map(|h| hue_of(h)).collect();
-        let dominant = circular_mean_hue(&golden_hues);
-
-        let palette = crate::palette_from_image(&fixture_path(fixture)).unwrap();
-        let min_dist = our_accents(&palette)
-            .iter()
-            .map(|h| hue_distance(hue_of(h), dominant))
-            .fold(f32::INFINITY, f32::min);
-        assert!(
-            min_dist < tol,
-            "{fixture}: expected an accent within {tol} degrees of wal's dominant hue \
-             ({dominant:.1}), closest was {min_dist:.1} degrees away: {:?}",
-            our_accents(&palette)
-        );
+        .iter()
+        .map(|h| h.to_lowercase())
+        .collect()
     }
 
     #[test]
-    fn bos_default_matches_wals_warm_hue_family() {
-        // Measured: dominant golden hue ~34.0 (warm amber), closest of our
-        // six accents ~2.0 degrees away. 45 degree tolerance leaves a wide
-        // margin above that for the quantizer/resize approximation to
-        // drift without becoming a silent regression.
-        assert_hue_family("bos-default", 45.0);
+    fn accents_match_real_wal_exactly() {
+        for name in FIXTURES {
+            let palette = crate::palette_from_image(&fixture_path(name)).unwrap();
+            assert_eq!(our_accents(&palette), golden_accents(name), "{name}");
+        }
     }
 
     #[test]
-    fn dark_moody_matches_wals_dominant_hue_family() {
-        // Measured: dominant golden hue ~3.7 (warm brown, wal's six accents
-        // are mostly brown/orange with one purple outlier), closest of ours
-        // ~10.7 degrees away.
-        assert_hue_family("dark-moody", 45.0);
+    fn full_colour_list_matches_real_wal_exactly() {
+        for name in FIXTURES {
+            let want: Vec<String> = golden(name)["wal_colors"]
+                .as_array()
+                .expect("golden fixture missing wal_colors")
+                .iter()
+                .map(|c| c.as_str().unwrap().to_lowercase())
+                .collect();
+            let got = crate::pywal_colors(&fixture_path(name))
+                .unwrap()
+                .expect("wal produced a palette for this fixture");
+            assert_eq!(got, want, "{name}");
+        }
     }
 
     #[test]
-    fn saturated_colorful_matches_wals_dominant_hue_family() {
-        // Measured: dominant golden hue ~321 (pink/violet: wal's six
-        // accents are mostly pink/violet plus one yellow), closest of ours
-        // ~9.8 degrees away.
-        assert_hue_family("saturated-colorful", 45.0);
-    }
-
-    #[test]
-    fn bright_screenshot_matches_wals_hue_almost_exactly() {
-        // Measured: dominant golden hue ~223.4 (pale blue), closest of ours
-        // ~0.3 degrees away: the best match of any committed fixture.
-        // Saturation is a different story (see the doc comment on this
-        // module and ECO-30): wal's dithering blends the one saturated
-        // accent block into the surrounding near-white background much
-        // more than this extractor's undithered quantizer does, so ours
-        // measures noticeably more saturated (~0.75 vs ~0.21) even though
-        // the hue itself lines up almost exactly. That's an accepted,
-        // documented deviation, not asserted here.
-        assert_hue_family("bright-screenshot", 15.0);
-    }
-
-    #[test]
-    fn near_monochrome_diverges_from_wals_dithering_artifact() {
-        // wal's golden colours for a literal grayscale gradient are green
-        // and purple (see tests/fixtures/golden/near-monochrome.json): an
-        // artifact of ImageMagick's default dithering on a hueless image,
-        // not real hue information, and specifically the kind of behaviour
-        // this module's docs call out as not worth reproducing bit-for-bit.
-        // bread-theme's undithered octree quantizer instead returns clean
-        // greys for a genuinely grey image. This test documents that
-        // expected, accepted divergence rather than asserting a match.
-        let palette = crate::palette_from_image(&fixture_path("near-monochrome")).unwrap();
-        for hex in our_accents(&palette) {
-            let (_, s, _) = rgb_to_hsl(parse_hex(hex));
+    fn sixteen_bit_input_reproduces_pywals_hex_truncation() {
+        // near-monochrome-16bit.png is a grey gradient stored as 16-bit
+        // grayscale. ImageMagick's txt: output prints it as #RRRRGGGGBBBB
+        // and pywal's `#.{6}` regex keeps "#RRRRGG": red's high byte, red's
+        // low byte, green's high byte. That is why real wal gives green and
+        // purple accents for a grey image. bread-theme reproduces the quirk
+        // on purpose (matching what users got from pywal is the point); the
+        // same gradient saved as 8-bit (near-monochrome.png) yields greys.
+        let wide = crate::palette_from_image(&fixture_path("near-monochrome-16bit.png")).unwrap();
+        assert_eq!(our_accents(&wide)[2], "#78f078");
+        let narrow = crate::palette_from_image(&fixture_path("near-monochrome.png")).unwrap();
+        for hex in our_accents(&narrow) {
             assert!(
-                s < 0.05,
-                "expected a clean grey accent, got {hex} (sat {s})"
+                hex[1..3] == hex[3..5] && hex[3..5] == hex[5..7],
+                "{hex} is not grey"
             );
         }
+    }
+
+    #[test]
+    fn gif_uses_the_first_frame_only() {
+        // wal reads "<img>[0]". The fixture's second frame is a different
+        // picture, so extracting from it must give different accents.
+        use image::AnimationDecoder;
+        let file = std::fs::File::open(fixture_path("bos-default-animated.gif")).unwrap();
+        let decoder = image::codecs::gif::GifDecoder::new(std::io::BufReader::new(file)).unwrap();
+        let frames = decoder.into_frames().collect_frames().unwrap();
+        assert!(frames.len() >= 2);
+        let second =
+            std::env::temp_dir().join(format!("bread-theme-gif-frame1-{}.png", std::process::id()));
+        frames[1].buffer().save(&second).unwrap();
+        let from_gif =
+            crate::palette_from_image(&fixture_path("bos-default-animated.gif")).unwrap();
+        let from_second = crate::palette_from_image(&second).unwrap();
+        let _ = std::fs::remove_file(&second);
+        assert_eq!(
+            our_accents(&from_gif),
+            golden_accents("bos-default-animated.gif")
+        );
+        assert_ne!(our_accents(&from_gif), our_accents(&from_second));
     }
 }
