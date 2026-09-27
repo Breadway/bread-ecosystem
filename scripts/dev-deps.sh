@@ -110,6 +110,25 @@ CONFIG_SENTINEL="# generated-by: bread-ecosystem/scripts/dev-deps.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+# Retries a network-facing git command up to 3 times with a short backoff.
+# The self-hosted runner's own clone of a dependency repo (this script's
+# whole purpose) is a single point of failure for every dev-track build and
+# PR check across the ecosystem; a transient DNS blip or connection reset
+# shouldn't fail the job outright when a retry would succeed.
+git_retry() {
+    local attempt=1 max=3 delay=3
+    until "$@"; do
+        if [ "${attempt}" -ge "${max}" ]; then
+            echo "::error::git command failed after ${max} attempts: $*" >&2
+            return 1
+        fi
+        echo "==> dev-deps.sh: git command failed (attempt ${attempt}/${max}), retrying in ${delay}s: $*" >&2
+        sleep "${delay}"
+        attempt=$((attempt + 1))
+        delay=$((delay * 2))
+    done
+}
+
 echo "==> dev-deps.sh: app root ${APP_ROOT}"
 echo "==> dev-deps.sh: cloning ${DEV_DEPS_HOST} deps' ${DEV_DEPS_BRANCH} into ${DEV_DEPS_DIR}"
 
@@ -199,7 +218,7 @@ for repo_url in "${REPO_URLS[@]}"; do
                 echo "==> dev-deps.sh: [check] would refresh owned clone ${clone_dir}"
             else
                 echo "==> dev-deps.sh: refreshing owned clone ${clone_dir}"
-                git -C "${clone_dir}" fetch --depth 1 origin "${DEV_DEPS_BRANCH}"
+                git_retry git -C "${clone_dir}" fetch --depth 1 origin "${DEV_DEPS_BRANCH}"
                 git -C "${clone_dir}" reset --hard FETCH_HEAD
             fi
         else
@@ -214,7 +233,7 @@ for repo_url in "${REPO_URLS[@]}"; do
             echo "==> dev-deps.sh: [check] would clone ${repo_url}#${DEV_DEPS_BRANCH} into ${clone_dir}"
         else
             echo "==> dev-deps.sh: cloning ${repo_url}#${DEV_DEPS_BRANCH} into ${clone_dir}"
-            git clone --depth 1 --branch "${DEV_DEPS_BRANCH}" "${repo_url}" "${clone_dir}"
+            git_retry git clone --depth 1 --branch "${DEV_DEPS_BRANCH}" "${repo_url}" "${clone_dir}"
             touch "${clone_dir}/${OWNED_MARKER}"
         fi
     fi
