@@ -118,7 +118,8 @@ fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
 ///
 /// `build` is called now to produce the app-specific CSS, and again every time
 /// the shared theme file is rewritten, i.e. whenever `bread-theme reload` (or
-/// `generate`) runs after pywal changes. The app recolours in place, no restart.
+/// `generate`) runs after the palette changes. The app recolours in place, no
+/// restart.
 ///
 /// This is the counterpart to [`apply_shared`]: that hot-reloads the *shared*
 /// component sheet; this hot-reloads the app's *own* rules (which are built from
@@ -348,7 +349,7 @@ fn try_arm_themes_watch() -> Option<gio::FileMonitor> {
     arm_dir_reload_watch(crate::themes_dir(), "css")
 }
 
-/// Watch `themes/<output>.css` so a per-output pywal regenerate recolours every
+/// Watch `themes/<output>.css` so a per-output palette regenerate recolours every
 /// window bound to that output in place. Bounded lazy retry: a transient
 /// `monitor_directory` failure no longer kills per-monitor reload for the
 /// session (findings #5).

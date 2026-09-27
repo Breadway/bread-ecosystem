@@ -66,7 +66,8 @@ panels would inherit it; see `bread-theme/src/palette.rs` for the
 implementation.
 
 Color palette slots (extracted natively from the wallpaper by
-`bread-theme`, see `bread-theme/src/extract.rs`):
+`bread-theme`'s optional `extract` feature, see the `bread-palette-extract`
+crate):
 - color0–color7: ANSI colors (0 and 7 fixed, 1–6 wallpaper-derived)
 - Semantic: red, green, yellow, blue, pink, teal
 - Computed ink: `on-bg`, `on-surface`, `on-accent`, `on-red`, `on-overlay`:

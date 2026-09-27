@@ -793,7 +793,8 @@ impl Tokens {
         self.spring_settle.clone()
     }
     /// Palette token *name* (`"accent"`, `"teal"`, …): the workspace-trail
-    /// gradient's start stop. Resolved against pywal downstream via `@name`.
+    /// gradient's start stop. Resolved against the active palette downstream
+    /// via `@name`.
     pub fn accent_from(&self) -> String {
         self.accent_from.clone()
     }

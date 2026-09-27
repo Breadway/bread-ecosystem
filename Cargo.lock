@@ -227,6 +227,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bread-palette-extract"
+version = "0.7.12"
+dependencies = [
+ "image",
+ "serde_json",
+]
+
+[[package]]
 name = "bread-polkit"
 version = "0.7.12"
 dependencies = [
@@ -267,9 +275,9 @@ name = "bread-theme"
 version = "0.7.12"
 dependencies = [
  "anyhow",
+ "bread-palette-extract",
  "dirs 5.0.1",
  "gtk4",
- "image",
  "libadwaita",
  "serde",
  "serde_json",

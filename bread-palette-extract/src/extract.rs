@@ -1,8 +1,11 @@
-//! Native (no `wal`/ImageMagick subprocess) accent extraction from an image:
-//! a faithful pure-Rust port of the ImageMagick code paths that decide what
-//! `wal -i <img>` produces, so switching from `wal` to this extractor does
-//! not change a wallpaper's accents. See [`crate::output::palette_from_image`]
-//! (the public entry point); everything here is crate-private.
+//! Native (no `wal`/ImageMagick subprocess) colour-list extraction from an
+//! image: a faithful pure-Rust port of the ImageMagick code paths that
+//! decide what `wal -i <img>` produces, so switching from `wal` to this
+//! extractor does not change a wallpaper's accents. [`wal_colors`] is the
+//! public entry point; everything else here is crate-private. bread-theme's
+//! `extract` feature wraps this crate to slice `color1..color6` out of the
+//! list and apply bread's own curated fallback when wal itself would have
+//! given up; neither of those bread-specific choices lives here.
 //!
 //! # What pywal does
 //!
@@ -72,8 +75,8 @@
 //! resize computes each output pixel independently, and classification,
 //! reduction and the Riemersma dither are sequential.
 //!
-//! Ported logic is used under the ImageMagick License; see
-//! `bread-theme/NOTICE` and `bread-theme/LICENSE-ImageMagick`.
+//! Ported logic is used under the ImageMagick License; see `NOTICE` and
+//! `LICENSE-ImageMagick` at the root of this crate.
 
 use image::DynamicImage;
 use std::collections::HashMap;
@@ -91,21 +94,13 @@ const EPSILON: f64 = 1.0e-12;
 const MIN_TARGET: usize = 16;
 const MAX_TARGET: usize = 35;
 
-/// `color1..color6` from an image, matching `wal -i` (see the module docs).
-/// Falls back to bread's curated defaults when real wal would have given up
-/// (fewer than 16 unique colours for every `N` in wal's retry range).
-pub(crate) fn accents_from_image(path: &Path) -> io::Result<[String; 6]> {
-    let colors = wal_colors(path)?;
-    Ok(match colors {
-        Some(c) => std::array::from_fn(|i| c[8 + i].clone()),
-        None => crate::palette::default_accents(),
-    })
-}
-
 /// The full ordered list pywal's `gen_colors` returns for `path` (lower-case
 /// `#xxxxxx` strings, at least 16 of them), or `None` where wal itself would
-/// exit with "Imagemagick couldn't generate a suitable palette".
-pub(crate) fn wal_colors(path: &Path) -> io::Result<Option<Vec<String>>> {
+/// exit with "Imagemagick couldn't generate a suitable palette". Callers
+/// that want `color1..color6` take entries `8..14` of this list, as pywal's
+/// own `wal.py::adjust` does (bread-theme's `extract` feature does exactly
+/// that; see its `palette_from_image`).
+pub fn wal_colors(path: &Path) -> io::Result<Option<Vec<String>>> {
     let src = Source::open(path)?;
     let resized = resize_quarter(&src);
     let gray = is_gray(&resized);
@@ -201,7 +196,9 @@ struct Source {
 impl Source {
     fn open(path: &Path) -> io::Result<Self> {
         let bytes = std::fs::read(path)?;
-        if let Some(d) = crate::jpeg::decode(&bytes) {
+        let mut truncated = false;
+        let decoded = crate::jpeg::decode(&bytes, &mut truncated);
+        if let Some(d) = decoded {
             // libjpeg-turbo-exact decode; grayscale JPEGs are PseudoClass
             // in ImageMagick.
             let (w, h) = (d.width as u32, d.height as u32);
@@ -213,8 +210,30 @@ impl Source {
             if let Some(img) = img {
                 return Ok(Self::from_image(img, d.channels == 1));
             }
+        } else if truncated {
+            // A genuinely truncated JPEG, not merely an unsupported
+            // variant: fail outright rather than let the generic `image`
+            // crate fallback silently succeed with its own, different
+            // recovery for missing scan data.
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "truncated JPEG: entropy-coded data ended before a scan finished",
+            ));
         }
-        let mut img = image::load_from_memory(&bytes)
+        // Explicit limits, not `image::load_from_memory`'s undocumented
+        // 512 MiB default: that default is too small for a real 16-bit
+        // RGBA wallpaper (a 12000x8000 one needs ~732 MiB), and relying on
+        // an unstated crate default for a security boundary is fragile.
+        // Use the same MAX_DECODE_BUDGET_BYTES ceiling as the JPEG port, so
+        // every format this crate decodes answers to one documented cap.
+        let mut reader = image::ImageReader::new(std::io::Cursor::new(&bytes));
+        let mut limits = image::Limits::default();
+        limits.max_alloc = Some(crate::jpeg::MAX_DECODE_BUDGET_BYTES);
+        reader.limits(limits);
+        let mut img = reader
+            .with_guessed_format()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
+            .decode()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let pseudo_class = sniff_pseudo_class(&bytes);
         if let Some(frame) = gif_first_frame(&bytes) {
@@ -1446,11 +1465,21 @@ mod tests {
         assert!(!sniff_pseudo_class(b"\xFF\xD8\xFF"));
     }
 
+    /// `color1..color6` are entries `8..14` of [`wal_colors`]' list, exactly
+    /// as `bread_theme`'s `extract` feature slices them; tests here that
+    /// care about the six accent slots rather than the full list use this
+    /// so they read the same as the callers they stand in for.
+    fn accents(path: &std::path::Path) -> io::Result<[String; 6]> {
+        let colors = wal_colors(path)?
+            .unwrap_or_else(|| panic!("{path:?}: wal would have given up (fewer than 16 colours)"));
+        Ok(std::array::from_fn(|i| colors[8 + i].clone()))
+    }
+
     #[test]
-    fn accents_are_deterministic() {
-        let a = accents_from_image(&fixture("bos-default.jpg")).unwrap();
+    fn wal_colors_are_deterministic() {
+        let a = wal_colors(&fixture("bos-default.jpg")).unwrap();
         for _ in 0..3 {
-            assert_eq!(accents_from_image(&fixture("bos-default.jpg")).unwrap(), a);
+            assert_eq!(wal_colors(&fixture("bos-default.jpg")).unwrap(), a);
         }
     }
 
@@ -1464,7 +1493,7 @@ mod tests {
             "bos-default.webp",
             "dark-moody.png",
         ] {
-            let accents = accents_from_image(&fixture(name)).unwrap();
+            let accents = accents(&fixture(name)).unwrap();
             let bright = accents
                 .iter()
                 .filter(|h| {
@@ -1477,36 +1506,27 @@ mod tests {
     }
 
     #[test]
-    fn accents_from_1x1_image_use_bread_defaults() {
-        // One pixel is one colour: real wal gives up, bread falls back.
+    fn wal_colors_is_none_when_wal_would_give_up() {
+        // One pixel, a fully flat image, and a fully transparent image are
+        // all cases where real wal's ImageMagick pipeline never reaches 16
+        // unique colours for any `N` in its retry range, so it exits with
+        // "Imagemagick couldn't generate a suitable palette". Bread's own
+        // curated fallback for this case lives in bread-theme's `extract`
+        // feature (`accents_from_image`), not here: this crate's contract
+        // is just to report the same "wal gave up" outcome wal itself would.
         let path = tmp_path("1x1.png");
         write_png(&path, 1, 1, |_, _| [200, 80, 40, 255]);
-        assert_eq!(
-            accents_from_image(&path).unwrap(),
-            crate::palette::default_accents()
-        );
+        assert_eq!(wal_colors(&path).unwrap(), None);
         let _ = std::fs::remove_file(&path);
-    }
 
-    #[test]
-    fn accents_from_fully_flat_image_use_bread_defaults() {
         let path = tmp_path("flat.png");
         write_png(&path, 64, 64, |_, _| [120, 120, 120, 255]);
-        assert_eq!(
-            accents_from_image(&path).unwrap(),
-            crate::palette::default_accents()
-        );
+        assert_eq!(wal_colors(&path).unwrap(), None);
         let _ = std::fs::remove_file(&path);
-    }
 
-    #[test]
-    fn accents_from_fully_transparent_image_use_bread_defaults() {
         let path = tmp_path("transparent.png");
         write_png(&path, 8, 8, |_, _| [200, 30, 30, 0]);
-        assert_eq!(
-            accents_from_image(&path).unwrap(),
-            crate::palette::default_accents()
-        );
+        assert_eq!(wal_colors(&path).unwrap(), None);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -1514,22 +1534,120 @@ mod tests {
     fn undecodable_input_is_an_error() {
         let path = tmp_path("not-an-image.png");
         std::fs::write(&path, b"this is not image data at all, just text").unwrap();
-        assert!(
-            accents_from_image(&path).is_err(),
-            "garbage must not decode"
-        );
+        assert!(wal_colors(&path).is_err(), "garbage must not decode");
         let _ = std::fs::remove_file(&path);
 
         // A JPEG cut off inside its headers: neither decoder can use it.
         let path = tmp_path("truncated.jpg");
         let bytes = std::fs::read(fixture("bos-default.jpg")).unwrap();
         std::fs::write(&path, &bytes[..40]).unwrap();
-        assert!(
-            accents_from_image(&path).is_err(),
-            "truncated JPEG must not decode"
-        );
+        assert!(wal_colors(&path).is_err(), "truncated JPEG must not decode");
         let _ = std::fs::remove_file(&path);
 
-        assert!(accents_from_image(&tmp_path("does-not-exist.png")).is_err());
+        // Cut well past the headers, mid scan (bos-default.jpg is a
+        // single-scan baseline JPEG, so a mid-file cut deterministically
+        // lands inside its one scan's entropy data): the ported decoder
+        // used to return `Ok` here with wrong colours (zero-filled past
+        // the cut), matching neither wal nor an honest failure. It now
+        // reports the cut via `jpeg::decode`'s `truncated_out` flag, and
+        // `Source::open` turns that into an explicit `UnexpectedEof`
+        // instead of trying the generic `image` crate fallback.
+        let path = tmp_path("truncated-midscan.jpg");
+        std::fs::write(&path, &bytes[..bytes.len() * 7 / 10]).unwrap();
+        let err = wal_colors(&path).expect_err("JPEG truncated mid-scan must not decode");
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+        let _ = std::fs::remove_file(&path);
+
+        assert!(wal_colors(&tmp_path("does-not-exist.png")).is_err());
+    }
+
+    /// A crafted PNG whose IHDR alone declares 65500x65500 (RGBA, 16-bit):
+    /// the `image` crate's own decoder validates the declared size against
+    /// `MAX_DECODE_BUDGET_BYTES` before allocating the output buffer, the
+    /// same protection [`crate::jpeg`]'s allocation-cap test exercises for
+    /// the ported JPEG path. This never allocates the (tens of gigabytes)
+    /// buffer the header claims.
+    #[test]
+    fn huge_png_header_is_rejected_before_allocating() {
+        // Minimal PNG: signature + IHDR (65500x65500, 16-bit RGBA) + an
+        // otherwise-empty IDAT/IEND, enough for the decoder to read the
+        // header and reject it on size before it ever needs real pixel
+        // data.
+        fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(data);
+            let mut crc_input = Vec::new();
+            crc_input.extend_from_slice(kind);
+            crc_input.extend_from_slice(data);
+            out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+            out
+        }
+        fn crc32(data: &[u8]) -> u32 {
+            let mut table = [0u32; 256];
+            for (i, entry) in table.iter_mut().enumerate() {
+                let mut c = i as u32;
+                for _ in 0..8 {
+                    c = if c & 1 != 0 {
+                        0xEDB88320 ^ (c >> 1)
+                    } else {
+                        c >> 1
+                    };
+                }
+                *entry = c;
+            }
+            let mut crc = 0xFFFFFFFFu32;
+            for &b in data {
+                crc = table[((crc ^ b as u32) & 0xFF) as usize] ^ (crc >> 8);
+            }
+            crc ^ 0xFFFFFFFF
+        }
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&65500u32.to_be_bytes()); // width
+        ihdr.extend_from_slice(&65500u32.to_be_bytes()); // height
+        ihdr.push(16); // bit depth
+        ihdr.push(6); // color type: RGBA
+        ihdr.push(0); // compression
+        ihdr.push(0); // filter
+        ihdr.push(0); // interlace
+
+        let mut png = Vec::new();
+        png.extend_from_slice(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']);
+        png.extend_from_slice(&chunk(b"IHDR", &ihdr));
+        png.extend_from_slice(&chunk(b"IDAT", &[]));
+        png.extend_from_slice(&chunk(b"IEND", &[]));
+
+        let path = tmp_path("huge-header.png");
+        std::fs::write(&path, &png).unwrap();
+        assert!(
+            wal_colors(&path).is_err(),
+            "a 65500x65500 16-bit RGBA header must be rejected without allocating"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Confirms the budget decision stated on [`crate::jpeg::MAX_DECODE_BUDGET_BYTES`]:
+    /// a real, fully realized 16-bit RGBA wallpaper at 16K resolution
+    /// (15360x8640, ~1 GiB decoded) must still succeed, not just get
+    /// rejected like the crafted header above. Heavy (allocates and
+    /// encodes over a gigabyte); not run by default.
+    #[test]
+    #[ignore = "allocates and encodes a ~1 GiB image; run explicitly"]
+    fn a_real_16k_16bit_rgba_wallpaper_still_decodes() {
+        let (w, h) = (15360u32, 8640u32);
+        let mut img = image::ImageBuffer::<image::Rgba<u16>, Vec<u16>>::new(w, h);
+        for (x, y, px) in img.enumerate_pixels_mut() {
+            let v = ((x + y) % 65536) as u16;
+            *px = image::Rgba([v, v.wrapping_add(1), v.wrapping_add(2), u16::MAX]);
+        }
+        let path = tmp_path("real-16k-16bit.png");
+        image::DynamicImage::ImageRgba16(img).save(&path).unwrap();
+        let result = wal_colors(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            result.is_ok(),
+            "a real 16K 16-bit RGBA wallpaper must decode within the budget: {result:?}"
+        );
     }
 }

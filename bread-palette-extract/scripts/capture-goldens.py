@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture golden pywal output for bread-theme's test fixtures.
+"""Capture golden pywal output for bread-palette-extract's test fixtures.
 
 For each image this records what real pywal produces:
   * color1..color6 from `wal -i <img> -n -q -s -t -e` run in an isolated
@@ -11,7 +11,7 @@ For each image this records what real pywal produces:
 Written to tests/fixtures/golden/<stem>.json. Needs pywal and ImageMagick
 at dev time only.
 
-Usage: bread-theme/scripts/capture-goldens.py IMAGE...
+Usage: bread-palette-extract/scripts/capture-goldens.py IMAGE...
 """
 import json
 import os

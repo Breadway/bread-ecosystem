@@ -44,7 +44,7 @@ bg_alpha       = 0.72
 # plan's §4 example names only `spring`.
 spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
-# Palette token NAMES, not hex: pywal still drives the colour. The
+# Palette token NAMES, not hex: the active palette still drives the colour. The
 # workspace-trail gradient runs `@accent → @teal` (start = accent_from,
 # end = accent_to); a flat-fill theme sets them equal.
 accent_from    = "accent"

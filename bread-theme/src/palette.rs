@@ -116,6 +116,7 @@ pub(crate) fn from_wal_json(json: &str) -> Option<Palette> {
 /// Curated bread-toned accents used when native extraction can't produce a
 /// meaningful palette (no saturation, fully transparent image): the same six
 /// colours as [`Palette::default`]'s accents.
+#[cfg(feature = "extract")]
 pub(crate) fn default_accents() -> [String; 6] {
     [
         DEFAULT_COLOR1.into(),
@@ -129,8 +130,9 @@ pub(crate) fn default_accents() -> [String; 6] {
 
 /// Build a full [`Palette`] from six accent hexes (color1..color6), forcing
 /// BOS's fixed background/foreground/surface/overlay exactly like
-/// [`from_wal_json`]. Used by the native extractor ([`crate::extract`]),
-/// which only ever produces accents.
+/// [`from_wal_json`]. Used by [`crate::output::palette_from_image`], which
+/// only ever produces accents.
+#[cfg(feature = "extract")]
 pub(crate) fn from_accents(accents: [String; 6]) -> Palette {
     let [c1, c2, c3, c4, c5, c6] = accents;
     Palette {

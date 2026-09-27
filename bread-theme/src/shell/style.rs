@@ -37,7 +37,7 @@ pub(super) fn subst_pairs(
 ) -> Vec<(String, String)> {
     let light = t.light;
     // `@bg` is a FIXED dark hex and `@on-bg` its computed near-white ink
-    // (never pywal-derived). A light theme swaps which plays surface vs ink;
+    // (never palette-derived). A light theme swaps which plays surface vs ink;
     // this works *only* because the two are pinned opposite by construction.
     let (panel, ink) = if light {
         ("@on-bg", "@bg")

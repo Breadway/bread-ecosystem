@@ -17,7 +17,7 @@
 # spotlight already have: renders in fallback until ttf-outfit is
 # installed) and colour (the demo's #2f6d7a teal / #c2683c amber are *flat*
 # accents, mapped to this palette's `teal` / `yellow` tokens, see [tokens]'s
-# own note: never a literal hex value, or pywal theming breaks).
+# own note: never a literal hex value, or palette theming breaks).
 
 name = "Daylight"
 id   = "daylight"
@@ -65,7 +65,7 @@ accent_to      = "teal"
 # equaliser bars are warm amber (`--accent2: #c2683c`), not the workspace
 # trail's deep teal; one accent value can no longer describe both, which is
 # why this key exists at all (see Tokens::accent2's doc comment). Mapped to
-# `yellow` (pywal ANSI color3): the demo's amber reads warmer/more orange
+# `yellow` (wal's ANSI color3 naming convention): the demo's amber reads warmer/more orange
 # than a pure hue, and `yellow` is the only remaining named accent slot not
 # already claimed by `accent`/`teal`/`green`/`pink` across the four built-in
 # themes that reads plausibly warm regardless of wallpaper. Consumed by

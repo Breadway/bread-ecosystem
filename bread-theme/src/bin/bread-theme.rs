@@ -45,7 +45,9 @@ fn print_help_to(mut w: impl std::io::Write) {
          print             render to stdout without writing\n\
          generate-output   write palettes/<OUTPUT>.json and themes/<OUTPUT>.css\n\
          \x20                --image      extract accents natively from an image (no\n\
-         \x20                             external tool, does not touch any cache files)\n\
+         \x20                             external tool, does not touch any cache files;\n\
+         \x20                             needs this binary built with the `extract`\n\
+         \x20                             feature)\n\
          \x20                --from-json  wal-shaped colors.json or a color1-6 object\n\
          \x20                --shared     also write the session-global theme.css\n\
          layerrules        write the active shell theme's [compositor] table to\n\
@@ -56,7 +58,8 @@ fn print_help_to(mut w: impl std::io::Write) {
          describe          print the theme.toml schema as JSON (tokens, enums, modules)\n\
          diagnose <id>     exit 0 if theme <id> resolves, else print the reason and exit 1\n\
          notice            print third-party notices (ImageMagick, libjpeg-turbo/IJG code\n\
-         \x20                 ported into the palette extractor)",
+         \x20                 ported into bread-palette-extract; only when this binary was\n\
+         \x20                 built with the `extract` feature)",
         bread_theme::shared_css_path().display(),
         bread_theme::layerrules_path().display()
     );
@@ -140,15 +143,7 @@ fn generate_output_cmd() -> ExitCode {
             eprintln!("bread-theme: generate-output needs --image <PATH> or --from-json <PATH>");
             ExitCode::FAILURE
         }
-        (Some(path), None) => {
-            match bread_theme::generate_output(output, std::path::Path::new(path)) {
-                Ok(css) => finish_generate_output(output, css, shared),
-                Err(e) => {
-                    eprintln!("bread-theme: generate-output failed: {e}");
-                    ExitCode::FAILURE
-                }
-            }
-        }
+        (Some(path), None) => generate_output_from_image(output, path, shared),
         (None, Some(path)) => match write_output_from_json(output, path, shared) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -157,6 +152,57 @@ fn generate_output_cmd() -> ExitCode {
             }
         },
     }
+}
+
+/// Third-party notices, so a bare binary install (bakery ships only the
+/// executable) still carries them. Only bread-palette-extract's ported
+/// ImageMagick/libjpeg-turbo code needs this: a build without the `extract`
+/// feature has nothing third-party to disclose.
+#[cfg(feature = "extract")]
+fn print_notice() {
+    print!(
+        "{}\n\n{}\n\n{}",
+        bread_palette_extract::NOTICE,
+        bread_palette_extract::LICENSE_IMAGEMAGICK,
+        bread_palette_extract::LICENSE_LIBJPEG_TURBO,
+    );
+}
+
+#[cfg(not(feature = "extract"))]
+fn print_notice() {
+    println!(
+        "bread-theme: MIT licensed. This build was compiled without the \
+         `extract` feature, so it contains no ImageMagick- or \
+         libjpeg-turbo/IJG-derived code and has nothing third-party to \
+         disclose."
+    );
+}
+
+/// `generate-output <OUTPUT> --image <PATH>`: needs the `extract` feature
+/// (bread-palette-extract, gated for licensing; see `notice`). A build
+/// without it still parses `--image` fine (see [`generate_output_cmd`]);
+/// only the extraction itself is unavailable, with a clear error instead of
+/// a missing-symbol build failure.
+#[cfg(feature = "extract")]
+fn generate_output_from_image(output: &str, path: &str, shared: bool) -> ExitCode {
+    match bread_theme::generate_output(output, std::path::Path::new(path)) {
+        Ok(css) => finish_generate_output(output, css, shared),
+        Err(e) => {
+            eprintln!("bread-theme: generate-output failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(not(feature = "extract"))]
+fn generate_output_from_image(_output: &str, _path: &str, _shared: bool) -> ExitCode {
+    eprintln!(
+        "bread-theme: --image needs this binary to be built with the `extract` \
+         feature (native ImageMagick/libjpeg-turbo palette extraction); this \
+         build was compiled without it. Use --from-json instead, or install a \
+         build with `extract` enabled."
+    );
+    ExitCode::FAILURE
 }
 
 fn write_output_from_json(output: &str, json_path: &str, shared: bool) -> std::io::Result<()> {
@@ -181,6 +227,7 @@ fn write_output_from_json(output: &str, json_path: &str, shared: bool) -> std::i
     Ok(())
 }
 
+#[cfg(feature = "extract")]
 fn finish_generate_output(output: &str, css: std::path::PathBuf, shared: bool) -> ExitCode {
     eprintln!("bread-theme: wrote {}", css.display());
     if shared {
@@ -235,15 +282,7 @@ fn main() -> ExitCode {
         // defaults, the closed enum vocabularies, the known slot modules. For
         // a theme editor (bos-settings).
         "notice" => {
-            // NOTICE plus the full third-party licence texts, so a bare
-            // binary install (bakery ships only the executable) still
-            // carries them.
-            print!(
-                "{}\n\n{}\n\n{}",
-                include_str!("../../NOTICE"),
-                include_str!("../../LICENSE-ImageMagick"),
-                include_str!("../../LICENSE-libjpeg-turbo")
-            );
+            print_notice();
             ExitCode::SUCCESS
         }
         "describe" => {

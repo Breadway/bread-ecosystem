@@ -27,8 +27,9 @@ radius_sm     = 13
 pad           = 13
 # Crustier: more solid than glass, still lets Hyprland's blur through.
 bg_alpha      = 0.86
-# Warm amber active-workspace fill. Palette token names (pywal's `yellow` /
-# `color3`), never hex: the crust still tracks the wallpaper.
+# Warm amber active-workspace fill. Palette token names (the ANSI-derived
+# `yellow` / `color3` slot, named after wal's own convention), never hex:
+# the crust still tracks the wallpaper.
 accent_from   = "yellow"
 accent_to     = "yellow"
 # Dough spring-back: a real overshoot curve, unlike the parent's single

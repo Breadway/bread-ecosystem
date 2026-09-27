@@ -15,7 +15,7 @@
 # consumes font_family/font_fallback below, see [tokens]'s own note) and
 # colour (the demo's #7a9a88 sage is a *flat* accent, so it maps to the
 # palette's `green` token for both accent_from and accent_to, never a
-# literal hex value, or pywal theming breaks).
+# literal hex value, or palette theming breaks).
 
 name = "Glass Workbench"
 id   = "glass-workbench"

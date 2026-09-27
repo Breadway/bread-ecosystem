@@ -22,8 +22,12 @@
 //! fully sent, where libjpeg-turbo applies block smoothing) returns `None`
 //! so the caller falls back to the `image` crate.
 //!
-//! libjpeg-turbo is under the IJG License and the Modified (3-clause) BSD
-//! License; see `bread-theme/NOTICE`.
+//! Everything ported here (`jidctint.c`, `jdsample.c`, `jdcolor.c`,
+//! `jdapimin.c`, `jdmainct.c`/`jdmaster.c`, Huffman decode) belongs to
+//! libjpeg-turbo's core libjpeg API library, which is IJG-License-only; the
+//! Modified (3-clause) BSD License covers the separate TurboJPEG API,
+//! cjpeg/djpeg and the build/test system, none of which is used here. See
+//! `NOTICE` and `LICENSE-libjpeg-turbo` at the root of this crate.
 
 /// `jpeg_natural_order`: zig-zag index -> natural (row-major) index.
 const NATURAL: [usize; 64] = [
@@ -31,6 +35,26 @@ const NATURAL: [usize; 64] = [
     13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59,
     52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
+
+/// Upper bound on the total bytes this decoder will allocate for one
+/// image's coefficient blocks, per-component planes and final interleaved
+/// output combined. The SOF marker's width/height/sampling factors are
+/// attacker-controlled input (read before a single byte of entropy-coded
+/// scan data is checked), so every buffer this decoder sizes from them
+/// must be checked against a budget first, or a tiny file with a huge
+/// declared size can force a multi-gigabyte allocation before decoding
+/// ever gets far enough to fail on its own (a 22 KB JPEG declaring
+/// 65500x65500 measured at 11.4 GB resident before the OOM killer step in).
+///
+/// 2 GiB comfortably covers a real 16K (15360x8640) wallpaper decoded at
+/// worst-case 4:4:4 chroma sampling (a bit over 1 GiB across coefficients,
+/// planes and output), while still rejecting headers many times larger
+/// than any real photo or wallpaper format would declare. [`crate::extract`]
+/// uses the same figure as an explicit `image::Limits::max_alloc` for the
+/// png/webp/gif/bmp path, so every format this crate decodes is held to one
+/// documented ceiling instead of the `image` crate's undocumented 512 MiB
+/// default.
+pub(crate) const MAX_DECODE_BUDGET_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// A decoded image: interleaved 8-bit samples, 1 (gray) or 3 (RGB)
 /// channels.
@@ -110,12 +134,22 @@ struct Reader<'a> {
     nbits: u32,
     /// A marker was hit inside entropy-coded data: feed zeros from here on.
     hit_marker: bool,
+    /// The buffer ran out entirely (as opposed to `hit_marker`, which is a
+    /// legitimate marker such as EOI found within bounds): the file is
+    /// truncated. libjpeg-turbo would synthesize a fake EOI and keep going
+    /// with a warning; this decoder does not replicate that recovery path,
+    /// so a truncated file must not silently produce wrong-but-plausible
+    /// colours. Checked once the scan finishes; see [`decode`].
+    truncated: bool,
 }
 
 impl<'a> Reader<'a> {
     fn fill(&mut self) {
         while self.nbits <= 56 {
             let byte = if self.hit_marker || self.pos >= self.data.len() {
+                if !self.hit_marker && self.pos >= self.data.len() {
+                    self.truncated = true;
+                }
                 0
             } else {
                 let b = self.data[self.pos];
@@ -226,8 +260,12 @@ fn be16(d: &[u8], p: usize) -> Option<usize> {
 
 /// Decode `data` exactly like libjpeg-turbo, or `None` when the file uses a
 /// feature this decoder does not replicate (see the module docs) or is
-/// malformed.
-pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
+/// malformed. `*truncated_out` is set when `None` came specifically from
+/// the entropy-coded data running out mid-scan (a genuinely truncated
+/// file), as opposed to any other reason to bail: [`crate::extract::Source::open`]
+/// uses that distinction to fail outright on a truncated file instead of
+/// letting the generic `image`-crate fallback guess at its own recovery.
+pub(crate) fn decode(data: &[u8], truncated_out: &mut bool) -> Option<Decoded> {
     if !data.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
@@ -354,6 +392,10 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
                 vmax = comps.iter().map(|c| c.v).max()?;
                 mcux = width.div_ceil(8 * hmax);
                 mcuy = height.div_ceil(8 * vmax);
+                // First pass: work out every component's block geometry
+                // without allocating anything yet, so the total cost can be
+                // checked against MAX_DECODE_BUDGET_BYTES before any of it
+                // is committed.
                 for c in &mut comps {
                     c.dw = (width * c.h).div_ceil(hmax);
                     c.dh = (height * c.v).div_ceil(vmax);
@@ -361,6 +403,27 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
                     c.real_bh = c.dh.div_ceil(8);
                     c.bw = mcux * c.h;
                     c.bh = mcuy * c.v;
+                }
+                let mut coef_bytes: u64 = 0;
+                let mut plane_bytes: u64 = 0;
+                for c in &comps {
+                    let blocks = (c.bw as u64).checked_mul(c.bh as u64)?;
+                    let coefs = blocks.checked_mul(std::mem::size_of::<[i16; 64]>() as u64)?;
+                    coef_bytes = coef_bytes.checked_add(coefs)?;
+                    let plane = (c.bw as u64)
+                        .checked_mul(8)?
+                        .checked_mul(c.bh as u64)?
+                        .checked_mul(8)?;
+                    plane_bytes = plane_bytes.checked_add(plane)?;
+                }
+                let rgb_bytes = (width as u64).checked_mul(height as u64)?.checked_mul(3)?;
+                let total = coef_bytes
+                    .checked_add(plane_bytes)?
+                    .checked_add(rgb_bytes)?;
+                if total > MAX_DECODE_BUDGET_BYTES {
+                    return None;
+                }
+                for c in &mut comps {
                     c.coefs = vec![[0i16; 64]; c.bw * c.bh];
                 }
             }
@@ -395,6 +458,7 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
                     bits: 0,
                     nbits: 0,
                     hit_marker: false,
+                    truncated: false,
                 };
                 let scan = Scan {
                     comps: &scomps,
@@ -416,6 +480,16 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
                     }
                 }
                 decode_scan(&scan, &mut comps, &dc_tables, &ac_tables, &mut rd)?;
+                if rd.truncated {
+                    // The entropy-coded data ran out before this scan
+                    // finished. Rather than guess at libjpeg-turbo's fake-EOI
+                    // recovery (which this decoder does not replicate byte
+                    // for byte), report it so the caller can fail outright
+                    // instead of letting the generic `image` crate fallback
+                    // guess at its own recovery.
+                    *truncated_out = true;
+                    return None;
+                }
                 pos = rd.end_of_scan();
                 continue;
             }
@@ -431,7 +505,9 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
         return None;
     }
 
-    // Dequantize + IDCT every block into per-component planes.
+    // Dequantize + IDCT every block into per-component planes. Sized from
+    // the same c.bw/c.bh already covered by the MAX_DECODE_BUDGET_BYTES
+    // check above, so this can't outgrow that budget either.
     let planes: Vec<Vec<u8>> = comps
         .iter()
         .map(|c| {
@@ -477,6 +553,8 @@ pub(crate) fn decode(data: &[u8]) -> Option<Decoded> {
             && comps[1].id == 71
             && comps[2].id == 66
     };
+    // width*height*3 was already folded into the MAX_DECODE_BUDGET_BYTES
+    // check above.
     let mut rgb = vec![0u8; width * height * 3];
     if is_rgb {
         for i in 0..width * height {
@@ -1021,7 +1099,7 @@ mod tests {
     #[test]
     fn decodes_bit_identically_to_libjpeg_turbo() {
         for name in ["odd-420-progressive", "odd-422-restart"] {
-            let d = decode(&fixture(&format!("{name}.jpg"))).expect("supported JPEG");
+            let d = decode(&fixture(&format!("{name}.jpg")), &mut false).expect("supported JPEG");
             assert_eq!((d.width, d.height, d.channels), (45, 37, 3));
             let reference = fixture(&format!("{name}.ppm"));
             assert!(
@@ -1052,9 +1130,52 @@ mod tests {
 
     #[test]
     fn unsupported_or_malformed_input_is_none() {
-        assert!(decode(b"not a jpeg").is_none());
-        assert!(decode(&[0xFF, 0xD8, 0xFF]).is_none());
+        assert!(decode(b"not a jpeg", &mut false).is_none());
+        assert!(decode(&[0xFF, 0xD8, 0xFF], &mut false).is_none());
         // Arithmetic-coded frame marker (SOF9) is left to the fallback.
-        assert!(decode(&[0xFF, 0xD8, 0xFF, 0xC9, 0x00, 0x02]).is_none());
+        assert!(decode(&[0xFF, 0xD8, 0xFF, 0xC9, 0x00, 0x02], &mut false).is_none());
+    }
+
+    /// A ~20-byte file whose SOF0 declares 65500x65500 (one grayscale
+    /// component): the exact shape of the crafted input that drove RSS to
+    /// 11.4 GB before MAX_DECODE_BUDGET_BYTES existed. The declared
+    /// coefficient/plane/output buffers must be rejected before any of
+    /// them is allocated, not after.
+    #[test]
+    fn huge_sof_dimensions_are_rejected_before_allocating() {
+        let data = [
+            0xFF, 0xD8, // SOI
+            0xFF, 0xC0, 0x00, 0x0B, // SOF0, segment length 11
+            0x08, // precision
+            0xFF, 0xDC, // height 65500
+            0xFF, 0xDC, // width 65500
+            0x01, // Nc = 1
+            0x01, 0x11, 0x00, // component: id 1, h=v=1, quant table 0
+            0xFF, 0xD9, // EOI
+        ];
+        assert!(decode(&data, &mut false).is_none());
+    }
+
+    #[test]
+    fn truncated_scan_data_is_rejected_not_guessed_at() {
+        let full = fixture("odd-420-progressive.jpg");
+        assert!(
+            decode(&full, &mut false).is_some(),
+            "fixture must decode when whole"
+        );
+        // Cut well past the headers and into the middle of the
+        // entropy-coded scan data: libjpeg-turbo would synthesize a fake
+        // EOI and keep going with a warning, which this decoder does not
+        // replicate. Returning `None` here is safer than silently
+        // returning plausible-looking but wrong colours. Whether this
+        // particular cut is detected via `truncated_out` (mid-scan) or an
+        // earlier malformed-header bailout depends on exactly where a
+        // multi-scan progressive file gets cut; either way `decode` must
+        // refuse it. `crate::extract::tests::undecodable_input_is_an_error`
+        // covers the `truncated_out` flag itself on a single-scan (baseline)
+        // fixture, where a mid-file cut deterministically lands inside the
+        // one scan's entropy data.
+        let truncated = &full[..full.len() * 7 / 10];
+        assert!(decode(truncated, &mut false).is_none());
     }
 }

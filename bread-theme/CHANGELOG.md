@@ -47,6 +47,38 @@ entirely.
   of pywal. The bread-ecosystem release that ships this needs to go out
   before any consumer (breadpaper, etc.) is updated to depend on it, since
   roughly a dozen apps pin bread-theme by tag.
+- Licensing (user decision): the extractor (`extract.rs`, `jpeg.rs`, their
+  fixtures/tests/scripts, `NOTICE`, `LICENSE-ImageMagick`,
+  `LICENSE-libjpeg-turbo`) moved to a new workspace crate,
+  `bread-palette-extract`, licensed `ImageMagick AND IJG` (the ported
+  libjpeg-turbo files belong to its core libjpeg API library, which is
+  IJG-only; the separate Modified 3-clause BSD terms cover the TurboJPEG
+  API/cjpeg/djpeg/build system, none of which is used here, so it's dropped
+  from the SPDX expression). `bread-theme` itself is plain `MIT` again and
+  depends on `bread-palette-extract` only behind a new, off-by-default
+  `extract` feature: `palette_from_image`, `pywal_colors`,
+  `generate_output`, and `generate-output --image`/`notice`'s third-party
+  section are the only things gated by it (a build without it gets a clear
+  error on `--image` instead of a missing binary or a silent wrong result).
+  Everything else (`Palette`, `load_palette`, `palette_cache_*`,
+  `write_global_palette`, sequences, per-output writers, `palette_from_json`)
+  is unaffected. The bakery/pacman build of the `bread-theme` binary enables
+  `extract`; CI now runs fmt/clippy/test/build with and without it.
+  `NOTICE` also now reproduces the one entry of ImageMagick's own upstream
+  NOTICE file that pertains to the ported code, as the ImageMagick License's
+  redistribution clause requires.
+- ECO-30 hardening (second review round): the JPEG port sized its
+  coefficient/plane/output buffers straight from the untrusted SOF header,
+  so a 22 KB file declaring 65500x65500 drove RSS to 11.4 GB before OOM
+  killed it. All three allocations now check against a single documented
+  2 GiB budget (`MAX_DECODE_BUDGET_BYTES`) before allocating anything,
+  comfortably covering a real 16K (15360x8640) 16-bit RGBA wallpaper with
+  headroom; the `image`-crate path (png/webp/gif/bmp) now uses the same
+  figure as an explicit `image::Limits` instead of that crate's undocumented
+  512 MiB default (which was in fact too small for a real 12000x8000 16-bit
+  RGBA PNG). A JPEG truncated mid-scan now fails outright (`UnexpectedEof`)
+  instead of silently returning wrong-but-plausible colours from the ported
+  decoder's zero-padding past the cut.
 
 ## 0.7.11
 

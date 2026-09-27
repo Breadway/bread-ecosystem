@@ -1,0 +1,82 @@
+bread-palette-extract
+Copyright (c) 2026 Breadway.
+
+This crate is a Rust port of code from the following projects, split out of
+bread-theme (MIT) into its own crate specifically so those projects'
+licence terms travel only with the code that actually needs them. The
+ported code keeps their licence terms; see LICENSE-ImageMagick and
+LICENSE-libjpeg-turbo, both reproduced by `bread-theme notice` in any
+build of bread-theme with the `extract` feature enabled.
+
+ImageMagick
+-----------
+src/extract.rs ports the logic of ImageMagick 7.1.2 (Q16 HDRI) that decides
+what `magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-` prints:
+MagickCore/geometry.c (ParseMetaGeometry), MagickCore/resize.c
+(ResizeImage, AcquireResizeFilter, SincFast, CubicBC, HorizontalFilter,
+VerticalFilter), MagickCore/quantize.c (QuantizeImage, ClassifyImageColors,
+ReduceImageColors, Reduce, PruneChild, PruneLevel, PruneToCubeDepth,
+DefineImageColormap, ClosestColor, Riemersma/RiemersmaDither, and
+SetGrayscaleImage's gray transform), MagickCore/histogram.c
+(UniqueImageColors), MagickCore/color.c (GetColorTuple) and the Q16 HDRI
+quantum helpers in MagickCore/quantum.h and pixel-accessor.h. The code was
+translated from C to Rust and restructured (arena-allocated octree,
+iterative helpers, multithreaded resize rows); the arithmetic and its order
+are kept so results match bit for bit.
+
+  Copyright @ 1999 ImageMagick Studio LLC, a non-profit organization
+  dedicated to making software imaging solutions freely available.
+  Licensed under the ImageMagick License (LICENSE-ImageMagick; also
+  https://imagemagick.org/license/).
+
+The ImageMagick License requires any NOTICE text pertaining to the
+redistributed work to be carried along with it (Section 4). Of ImageMagick's
+own upstream NOTICE file, only the entry below pertains to the code ported
+above (the rest of that file covers components, such as the Windows
+installer, XFig-derived patterns, or bundled fonts, that nothing here is
+derived from):
+
+  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+  1. ImageMagick copyright:
+
+  Copyright @ 1999 ImageMagick Studio LLC, a non-profit organization dedicated
+  to making software imaging solutions freely available.
+
+  You may not use this file except in compliance with the License. You may
+  obtain a copy of the License at
+
+    https://imagemagick.org/license/
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+  License for the specific language governing permissions and limitations
+  under the License.
+
+  The full text of this license is available in the LICENSE file.
+
+  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+libjpeg-turbo / Independent JPEG Group
+--------------------------------------
+src/jpeg.rs ports libjpeg-turbo 3.2's default decompression path:
+jidctint.c (jpeg_idct_islow), jdsample.c (fancy upsampling), jdcolor.c
+(ycc_rgb_convert), jdmaster.c (range-limit table), jdmainct.c (context-row
+edge handling), jdapimin.c (colour space defaults) and the Huffman
+decoding rules of jdhuff.c/jdphuff.c, translated from C to Rust. All of
+this belongs to libjpeg-turbo's core libjpeg API library (decode path and
+inherited/modified libjpeg code), which is covered solely by the IJG
+License; the separate Modified (3-clause) BSD License covers the TurboJPEG
+API library, cjpeg/djpeg, libspng and the build/test system, none of which
+is used here.
+
+  This software is based in part on the work of the Independent JPEG Group.
+  Copyright (C) 1991-1998, Thomas G. Lane.
+  Copyright (C) 1999, Ken Murchison.
+  Copyright (C) 2009-2026, D. R. Commander.
+  Copyright 2009 Pierre Ossman for Cendio AB.
+  Copyright (C) 2010-2026 other libjpeg-turbo contributors (Linaro
+  Limited, Google, Inc., Matthias Raencker, Arm Limited), as listed in the
+  ported source files.
+  Licensed under the IJG License (LICENSE-libjpeg-turbo).

@@ -252,4 +252,9 @@ produce empty metadata in production.
 
 ## License
 
-MIT
+MIT, except `bread-palette-extract`, which ports code from ImageMagick and
+libjpeg-turbo/IJG and carries their licence terms alongside its own (see
+`bread-palette-extract/NOTICE`, `LICENSE-ImageMagick` and
+`LICENSE-libjpeg-turbo`). It is an optional dependency: `bread-theme` itself
+stays plain MIT and only links it in when built with the `extract` feature
+(see `bread-theme`'s own licence note in its `Cargo.toml`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare bread-theme's native palette extractor against real pywal.
+"""Compare bread-palette-extract's native palette extractor against real pywal.
 
 The pywal side runs exactly what pywal's default `wal` backend runs
 (pywal/backends/wal.py): `magick "<img>[0]" -resize 25% -colors N
@@ -7,11 +7,11 @@ The pywal side runs exactly what pywal's default `wal` backend runs
 then `re.search("#.{6}", line)` on every colour line. color1..color6 are
 entries 8..14 of that list. The native side is the `pywal-colors` example.
 
-Needs ImageMagick 7 (`magick`) at dev time only; bread-theme itself never
+Needs ImageMagick 7 (`magick`) at dev time only; bread-palette-extract itself never
 runs it.
 
 Usage:
-    bread-theme/scripts/compare-pywal.py [--full] IMAGE_OR_DIR...
+    bread-palette-extract/scripts/compare-pywal.py [--full] IMAGE_OR_DIR...
 
 Directories are searched recursively for png/jpg/jpeg/webp/gif/bmp. With
 --full the whole colour list is compared, not just color1..6.
@@ -44,7 +44,7 @@ def wal_colors(img):
 
 
 def native_colors(images):
-    subprocess.run(["cargo", "build", "--quiet", "--release", "-p", "bread-theme",
+    subprocess.run(["cargo", "build", "--quiet", "--release", "-p", "bread-palette-extract",
                     "--example", "pywal-colors"], cwd=CRATE, check=True)
     target = os.environ.get("CARGO_TARGET_DIR", os.path.join(os.path.dirname(CRATE), "target"))
     exe = os.path.join(target, "release", "examples", "pywal-colors")

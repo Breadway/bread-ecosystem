@@ -162,17 +162,29 @@ pub fn write_shared_css_from(palette: &Palette) -> std::io::Result<PathBuf> {
 }
 
 /// Extract a [`Palette`] natively from an image, reproducing what `wal -i`
-/// produced for it: a pure-Rust port of pywal's ImageMagick pipeline
-/// (`magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-`, `N` from
-/// 16 until at least 16 colours come back) with `color1..color6` taken from
-/// entries 8..14 of the resulting list, as pywal does (see
-/// [`crate::extract`]). Deterministic: the same image always extracts to the
-/// same accents. Images for which wal itself would give up (fewer than 16
-/// distinct colours) get bread's curated default accents. Decode failures
-/// are an `Err`. Replaces the old isolated `wal -i` subprocess: no external
-/// binary, no temp `HOME`/`XDG_CACHE_HOME` dance.
+/// produced for it: `bread-palette-extract`'s port of pywal's ImageMagick
+/// pipeline (`magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-`,
+/// `N` from 16 until at least 16 colours come back) with `color1..color6`
+/// taken from entries 8..14 of the resulting list, as pywal does. This is
+/// the one function in this crate whose binary contains ImageMagick- and
+/// IJG-derived code (via the optional `bread-palette-extract` dependency),
+/// which is why it, [`pywal_colors`] and [`generate_output`] are the only
+/// things gated behind the `extract` feature; see `NOTICE` in
+/// `bread-palette-extract` and this crate's licence section.
+///
+/// Deterministic: the same image always extracts to the same accents.
+/// Images for which wal itself would give up (fewer than 16 distinct
+/// colours) get bread's own curated default accents; that substitution is
+/// bread's policy, not part of what wal/ImageMagick do, so it lives here
+/// rather than in `bread-palette-extract`. Decode failures are an `Err`.
+/// Replaces the old isolated `wal -i` subprocess: no external binary, no
+/// temp `HOME`/`XDG_CACHE_HOME` dance.
+#[cfg(feature = "extract")]
 pub fn palette_from_image(path: &Path) -> std::io::Result<Palette> {
-    let accents = crate::extract::accents_from_image(path)?;
+    let accents = match bread_palette_extract::wal_colors(path)? {
+        Some(colors) => std::array::from_fn(|i| colors[8 + i].clone()),
+        None => crate::palette::default_accents(),
+    };
     Ok(crate::palette::from_accents(accents))
 }
 
@@ -181,8 +193,9 @@ pub fn palette_from_image(path: &Path) -> std::io::Result<Palette> {
 /// [`palette_from_image`]), or `None` where `wal` would exit with
 /// "Imagemagick couldn't generate a suitable palette". Exposed for fidelity
 /// comparisons against a real ImageMagick (`scripts/compare-pywal.py`).
+#[cfg(feature = "extract")]
 pub fn pywal_colors(path: &Path) -> std::io::Result<Option<Vec<String>>> {
-    crate::extract::wal_colors(path)
+    bread_palette_extract::wal_colors(path)
 }
 
 /// Persistent, cross-session cache dir: `$XDG_CACHE_HOME/bread` (falls back
@@ -259,6 +272,7 @@ pub fn write_global_palette(palette: &Palette) -> std::io::Result<()> {
 }
 
 /// [`palette_from_image`] + [`write_output_palette`] + [`write_output_css`].
+#[cfg(feature = "extract")]
 pub fn generate_output(output: &str, image: &Path) -> std::io::Result<PathBuf> {
     let palette = palette_from_image(image)?;
     write_output_palette(output, &palette)?;
@@ -525,138 +539,5 @@ mod tests {
             .unwrap();
             assert_eq!(crate::load_palette().color4, "#222222");
         });
-    }
-}
-
-/// Golden-fixture fidelity tests for the native extractor
-/// ([`palette_from_image`], [`pywal_colors`]), ECO-29/ECO-30: reference
-/// images under `tests/fixtures/`, each with golden output captured from
-/// real pywal by `scripts/capture-goldens.py` (`color1..color6` from
-/// `wal -i` run in an isolated `HOME`, plus `wal_colors`, the full ordered
-/// list pywal's backend built). The extractor is a port of the ImageMagick
-/// pipeline pywal runs, so these are exact assertions on every slot. The
-/// wider real-wallpaper comparison is `scripts/compare-pywal.py`.
-#[cfg(test)]
-mod golden_fixture_tests {
-    use crate::Palette;
-
-    /// Every committed fixture with a golden: PNG (8-bit RGB, RGBA,
-    /// 4-bit palette, 8-bit gray, 16-bit gray), baseline and progressive
-    /// JPEG, lossy WebP, 24-bit and palette BMP, and an animated GIF.
-    const FIXTURES: &[&str] = &[
-        "bos-default.png",
-        "bright-screenshot.png",
-        "dark-moody.png",
-        "near-monochrome.png",
-        "near-monochrome-16bit.png",
-        "saturated-colorful.png",
-        "bos-default.jpg",
-        "bos-default-progressive.jpg",
-        "bos-default.webp",
-        "bos-default.bmp",
-        "bos-default-palette.bmp",
-        "bos-default-animated.gif",
-    ];
-
-    fn fixture_path(name: &str) -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures")
-            .join(name)
-    }
-
-    fn golden(name: &str) -> serde_json::Value {
-        let stem = name.strip_suffix(".png").unwrap_or(name);
-        let path = fixture_path("golden").join(format!("{stem}.json"));
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("missing golden fixture {path:?}: {e}"));
-        serde_json::from_str(&text).expect("golden fixture must be valid JSON")
-    }
-
-    fn golden_accents(name: &str) -> Vec<String> {
-        let v = golden(name);
-        (1..=6)
-            .map(|i| {
-                v[format!("color{i}")]
-                    .as_str()
-                    .expect("golden fixture missing colorN")
-                    .to_lowercase()
-            })
-            .collect()
-    }
-
-    fn our_accents(p: &Palette) -> Vec<String> {
-        [
-            &p.color1, &p.color2, &p.color3, &p.color4, &p.color5, &p.color6,
-        ]
-        .iter()
-        .map(|h| h.to_lowercase())
-        .collect()
-    }
-
-    #[test]
-    fn accents_match_real_wal_exactly() {
-        for name in FIXTURES {
-            let palette = crate::palette_from_image(&fixture_path(name)).unwrap();
-            assert_eq!(our_accents(&palette), golden_accents(name), "{name}");
-        }
-    }
-
-    #[test]
-    fn full_colour_list_matches_real_wal_exactly() {
-        for name in FIXTURES {
-            let want: Vec<String> = golden(name)["wal_colors"]
-                .as_array()
-                .expect("golden fixture missing wal_colors")
-                .iter()
-                .map(|c| c.as_str().unwrap().to_lowercase())
-                .collect();
-            let got = crate::pywal_colors(&fixture_path(name))
-                .unwrap()
-                .expect("wal produced a palette for this fixture");
-            assert_eq!(got, want, "{name}");
-        }
-    }
-
-    #[test]
-    fn sixteen_bit_input_reproduces_pywals_hex_truncation() {
-        // near-monochrome-16bit.png is a grey gradient stored as 16-bit
-        // grayscale. ImageMagick's txt: output prints it as #RRRRGGGGBBBB
-        // and pywal's `#.{6}` regex keeps "#RRRRGG": red's high byte, red's
-        // low byte, green's high byte. That is why real wal gives green and
-        // purple accents for a grey image. bread-theme reproduces the quirk
-        // on purpose (matching what users got from pywal is the point); the
-        // same gradient saved as 8-bit (near-monochrome.png) yields greys.
-        let wide = crate::palette_from_image(&fixture_path("near-monochrome-16bit.png")).unwrap();
-        assert_eq!(our_accents(&wide)[2], "#78f078");
-        let narrow = crate::palette_from_image(&fixture_path("near-monochrome.png")).unwrap();
-        for hex in our_accents(&narrow) {
-            assert!(
-                hex[1..3] == hex[3..5] && hex[3..5] == hex[5..7],
-                "{hex} is not grey"
-            );
-        }
-    }
-
-    #[test]
-    fn gif_uses_the_first_frame_only() {
-        // wal reads "<img>[0]". The fixture's second frame is a different
-        // picture, so extracting from it must give different accents.
-        use image::AnimationDecoder;
-        let file = std::fs::File::open(fixture_path("bos-default-animated.gif")).unwrap();
-        let decoder = image::codecs::gif::GifDecoder::new(std::io::BufReader::new(file)).unwrap();
-        let frames = decoder.into_frames().collect_frames().unwrap();
-        assert!(frames.len() >= 2);
-        let second =
-            std::env::temp_dir().join(format!("bread-theme-gif-frame1-{}.png", std::process::id()));
-        frames[1].buffer().save(&second).unwrap();
-        let from_gif =
-            crate::palette_from_image(&fixture_path("bos-default-animated.gif")).unwrap();
-        let from_second = crate::palette_from_image(&second).unwrap();
-        let _ = std::fs::remove_file(&second);
-        assert_eq!(
-            our_accents(&from_gif),
-            golden_accents("bos-default-animated.gif")
-        );
-        assert_ne!(our_accents(&from_gif), our_accents(&from_second));
     }
 }
