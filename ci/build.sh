@@ -33,6 +33,27 @@ PRODUCT="$1"
 REPO_ROOT="$(cd "$2" && pwd)"
 shift 2
 
+# The container mounts REPO_ROOT's PARENT, not REPO_ROOT itself, and runs
+# with its cwd set to REPO_ROOT's own subdirectory inside that mount (see
+# -w below). This matters for scripts/dev-deps.sh (bread-ecosystem;
+# ECO-38): it clones each git.breadway.dev dependency as a true SIBLING of
+# the checkout (its default DEV_DEPS_DIR), then writes a `.cargo/config.toml`
+# `[patch]` block with relative paths like `../bread-ecosystem/bread-theme`.
+# A sibling clone that's a filesystem descendant of the checkout's own
+# workspace root (the old workaround: DEV_DEPS_DIR forced *inside* the
+# checkout so a REPO_ROOT-only mount could see it) breaks Cargo's
+# workspace-field inheritance (`edition.workspace = true` and friends):
+# Cargo attributes the nested clone to the OUTER (checkout's) workspace
+# instead of discovering the clone's own nested `[workspace]` root, and
+# fails with "workspace.package.edition was not defined" the moment the
+# checkout is itself a multi-crate workspace (breadbox, breadclip,
+# breadpad, breadsearch, breadarr, breadcast). Mounting the parent
+# directory instead keeps the sibling clone a genuine, non-nested sibling
+# on both sides of the bind mount, exactly like a developer's own
+# sibling checkout on a workstation (see CONTRIBUTING.md).
+REPO_PARENT="$(dirname "${REPO_ROOT}")"
+REPO_NAME="$(basename "${REPO_ROOT}")"
+
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 EXTRA_PKGS=""
@@ -71,11 +92,11 @@ mkdir -p \
 
 docker run --rm \
     --user "$(id -u):$(id -g)" \
-    -v "${REPO_ROOT}:/workspace" \
+    -v "${REPO_PARENT}:/workspace" \
     -v "${CACHE_ROOT}/cargo-registry:/cargo-home/registry" \
     -v "${CACHE_ROOT}/cargo-git:/cargo-home/git" \
     -v "${CACHE_ROOT}/target-${PRODUCT}:/cargo-target" \
-    -w /workspace \
+    -w "/workspace/${REPO_NAME}" \
     -e HOME=/tmp \
     -e CARGO_HOME=/cargo-home \
     -e CARGO_TARGET_DIR=/cargo-target \
@@ -83,6 +104,6 @@ docker run --rm \
     bash -c '
         set -euo pipefail
         "$@"
-        mkdir -p /workspace/target
-        cp -a /cargo-target/. /workspace/target/
+        mkdir -p "/workspace/'"${REPO_NAME}"'/target"
+        cp -a /cargo-target/. "/workspace/'"${REPO_NAME}"'/target/"
     ' bash "$@"
