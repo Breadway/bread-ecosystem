@@ -12,3 +12,9 @@ minisign.key
 graphify-out/
 .grok/
 .freebuff/
+
+# scripts/dev-deps.sh's own output, if ever run against this repo directly
+# (its usual target is a consumer app, not bread-ecosystem itself).
+.cargo/
+.dev-deps/
+dev-deps.lock.txt

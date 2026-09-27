@@ -11,7 +11,8 @@ Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for any git, branch, or release work
 ## CI
 - `.forgejo/workflows/package.yml`, `release-bakery.yml`, `release-bread-theme.yml` all trigger on `push: tags: ['v*']`, gated to skip any tag containing `-rc.`: pushing to `main` doesn't run these. Tag a release to trigger packaging.
 - `dev-bakery.yml` / `dev-bread-theme.yml` trigger on `push: branches: ['main']`; `rc-bakery.yml` / `rc-bread-theme.yml` trigger on `push: tags: ['v*']` gated to *only* run for `-rc.` tags; both auto-publish a signed, auto-versioned build to `dl.breadway.dev/{dev,beta}/`. See `docs/release-channels.md` for the full track (stable/beta/dev) policy.
-- No build/lint/test CI runs on ordinary commits or PRs to `main` beyond the dev-track workflow above: there's no separate lint/PR-check pipeline.
+- `check.yml` triggers on `push: branches: ['feature/**', 'fix/**', 'main']`: lints `git.breadway.dev` dependency pins (`scripts/lint-pins.sh`; this repo's own cross-repo dependency is `bread-utils` -> `bread-shared` from `Breadway/bread`), then fmt/clippy/test (including the `gtk` feature).
+- `scripts/dev-deps.sh` and `scripts/lint-pins.sh` here are the shared scripts every consumer repo (breadbar, breadbox, ...) calls from its own `check.yml`/`dev-release.yml` to build against dependency `main` branches on dev track and PR checks, while their Cargo.toml stays tag-pinned. See `docs/release-channels.md` ("Cross-repo dependency resolution"). Part of ECO-38.
 
 ## Cleanup
 - Delete feature/fix branches (local + remote) once merged. Check with `git branch --merged main`.
