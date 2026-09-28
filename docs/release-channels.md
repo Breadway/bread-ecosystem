@@ -192,9 +192,14 @@ declared anywhere in the app's Cargo.toml manifests, it:
 
 1. Shallow-clones that dependency repo's `main` into a sibling directory
    (`../<repo-name>` by default; override the parent directory with
-   `DEV_DEPS_DIR`, which a containerized build wrapper needs to do so the
-   clone lands inside whatever gets bind-mounted, see breadbar's
-   `dev-release.yml`/`check.yml`).
+   `DEV_DEPS_DIR` if you need the clone somewhere else). Every consumer's
+   `dev-release.yml`/`check.yml` should leave this at its default: `git
+   clone/fetch` failures are retried automatically (3 attempts, backoff),
+   and `ci/build.sh`'s docker wrapper (see below) already makes the
+   default sibling location visible inside the container. Do **not**
+   force `DEV_DEPS_DIR` to a path *inside* the checkout as a workaround
+   for a docker-visibility problem: see the "workspace-field inheritance"
+   pitfall below.
 2. Writes a `.cargo/config.toml` `[patch]` block pointing each affected
    crate at its clone.
 3. Runs `cargo update -p <crate>` for the patched crates so Cargo.lock
@@ -224,6 +229,32 @@ into a committed manifest, as opposed to an ordinary intra-workspace
 alone). Run `scripts/lint-pins.sh --root <path>` directly to check a repo
 other than the current directory.
 
+### `ci/build.sh` and the sibling-clone / Cargo-workspace pitfall
+
+The shared, dockerized CI build script (`ci/build.sh` here, vendored by
+every GTK4 consumer's own `ci/build.sh` wrapper, pinned by commit via
+`ci/bread-ecosystem.rev`) mounts the checkout's **parent** directory at
+`/workspace` (with the container's cwd set to `/workspace/<checkout>`),
+not the checkout alone. This exists specifically so `scripts/dev-deps.sh`'s
+default sibling clone is visible inside the container without needing to
+live inside the checkout.
+
+Earlier revisions of this pattern (breadbar's pilot) instead forced
+`DEV_DEPS_DIR` to a path *inside* the checkout, because at the time
+`ci/build.sh` only bind-mounted the checkout root. That workaround breaks
+the moment the consumer is itself a Cargo workspace (any repo with a
+top-level `[workspace]`, not just a single crate under one `[package]`):
+Cargo attributes a dependency clone nested inside the checkout's own
+workspace directory tree to the *outer* workspace for `foo.workspace =
+true` field-inheritance purposes, instead of discovering the clone's own
+nested `[workspace]` root, and fails with `workspace.package.foo was not
+defined` the instant the outer workspace doesn't define that field. This
+surfaced rolling ECO-38 out to breadbox (a workspace) after the pilot
+(breadbar, a single crate, never hit it). The fix was to mount the
+checkout's parent instead of the checkout itself, which is now the
+standard shape for every consumer using the docker wrapper; there's no
+longer any reason to override `DEV_DEPS_DIR` at all.
+
 ### Local development
 
 The gitignored `.cargo/config.toml` path-patch convention described in
@@ -245,6 +276,27 @@ ecosystem tooling). `git diff Cargo.lock` afterward will show the
 temporary path-patched entries; discard it (`git checkout -- Cargo.lock`)
 along with the generated `.cargo/config.toml` when you're done, the same
 cleanup as today's local convention already requires.
+
+### Rolling this model out to a new batch of repos: runner load
+
+Merging the dev-deps wiring into several bakery-channel repos in quick
+succession (as the ECO-38 rollout did) fires that many first-time
+`dev-release.yml` runs on the self-hosted runner back to back. Several of
+those runs failed fast (well under a minute, no diagnosable cause via the
+Forgejo API, which exposes no job-log endpoint) while a clean local
+reproduction of the exact same `dev-deps.sh` + build commands succeeded
+every time, including for products whose build is otherwise unremarkable.
+The runner appears to serialize/queue jobs rather than truly run them in
+parallel, and check.yml + dev-release.yml on the *same* push (for repos
+whose check.yml also triggers on `main`) queue as two jobs at once. Retried
+individually via a follow-up empty-commit PR per repo, spaced apart, most
+came back green; a few kept failing on retry too. Since local reproduction
+never reproduces it, this looks like runner-side resource pressure (disk,
+docker layer cache turnover, or similar) rather than anything in the CI
+wiring itself. If you're rolling this pattern out to several more repos at
+once, merge and verify them one at a time rather than back to back, and if
+a fresh dev-release run fails with no obvious cause, reproduce locally
+first (see above) before assuming the wiring is wrong.
 
 ## Checklist for adding a repo to a channel
 
