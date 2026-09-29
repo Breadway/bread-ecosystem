@@ -54,7 +54,13 @@ fn golden_accents(name: &str) -> Vec<String> {
 }
 
 /// `color1..color6`: entries `8..14` of [`bread_palette_extract::wal_colors`]'
-/// list, exactly as bread-theme's `extract` feature slices them.
+/// list, exactly as bread-theme's `extract` feature slices them. This crate
+/// deliberately has no public helper for that slice (see the module docs:
+/// slicing and the default-accent fallback are bread-theme's policy, not
+/// part of what wal/ImageMagick do), so it is re-implemented here to pin
+/// this crate's own contract, `wal_colors`'s full ordered list. The real
+/// consumer API, `bread_theme::palette_from_image`, is covered separately
+/// by `bread-theme/src/output.rs`'s `extract_feature_tests` module.
 fn accents(name: &str) -> Vec<String> {
     let list = bread_palette_extract::wal_colors(&fixture_path(name))
         .unwrap()

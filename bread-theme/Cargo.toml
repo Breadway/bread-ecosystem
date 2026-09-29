@@ -48,8 +48,9 @@ adw = ["gtk", "dep:libadwaita"]
 # notice`'s extractor section. Off by default so a plain `bread-theme`
 # build (and every consumer that never calls these, e.g. breadpad) stays
 # MIT-only end to end; on for anything that needs to turn a wallpaper into
-# a palette (breadpaper, the bakery/pacman build of the `bread-theme`
-# binary). See bread-palette-extract's own licence.
+# a palette (breadpaper, the bakery build of the `bread-theme` binary).
+# There is no pacman build of bread-theme itself (packaging/arch's
+# PKGBUILD only builds bakery). See bread-palette-extract's own licence.
 extract = ["dep:bread-palette-extract"]
 
 # The generator CLI. It only touches the gtk-free lib API (render + write), so

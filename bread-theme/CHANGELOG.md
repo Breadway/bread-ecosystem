@@ -5,27 +5,32 @@
 Epic PYWAL (ECO-29..33): removes the `wal`/ImageMagick subprocess dependency
 entirely.
 
-- ECO-30: `palette_from_image` is now a native Rust extractor (`extract.rs`)
-  that reproduces `wal -i` exactly: a port of the ImageMagick 7.1.2 (Q16
-  HDRI) code behind pywal's `magick "<img>[0]" -resize 25% -colors N
-  -unique-colors txt:-` (resize filter selection and two-pass resampling,
-  octree classify/reduce/colormap, the default Riemersma dither and its
-  colour cache, `-unique-colors` ordering, `txt:` hex formatting including
-  pywal's `#.{6}` truncation of 16-bit output), plus a JPEG decoder ported
-  from libjpeg-turbo so JPEG samples match what ImageMagick decodes.
-  Measured against real pywal: every slot of the full colour list matches
-  on all committed fixtures, and all accents match on 21 real wallpapers
-  plus the BOS default (`scripts/compare-pywal.py`). Decodes PNG, JPEG,
+- ECO-30: `palette_from_image` is now a native Rust extractor
+  (`bread-palette-extract/src/extract.rs`) that reproduces `wal -i` exactly:
+  a port of the ImageMagick 7.1.2 (Q16 HDRI) code behind pywal's
+  `magick "<img>[0]" -resize 25% -colors N -unique-colors txt:-` (resize
+  filter selection and two-pass resampling, octree classify/reduce/colormap,
+  the default Riemersma dither and its colour cache, `-unique-colors`
+  ordering, `txt:` hex formatting including pywal's `#.{6}` truncation of
+  16-bit output), plus a JPEG decoder ported from libjpeg-turbo so JPEG
+  samples match what ImageMagick decodes. Measured against real pywal:
+  every slot of the full colour list matches on all committed fixtures, and
+  all accents match on 21 real wallpapers plus the BOS default
+  (`bread-palette-extract/scripts/compare-pywal.py`). Decodes PNG, JPEG,
   WebP, GIF (first frame) and BMP. New `pywal_colors()` returns the full
   list. Third-party notices: `NOTICE`, `bread-theme notice`. No more
   subprocess spawn, no more isolated `HOME`/`XDG_CACHE_HOME` temp-dir
   dance, no more "wal is not installed" error path.
 - ECO-29: golden pywal output for reference images
-  (`bread-theme/tests/fixtures/`, captured by `scripts/capture-goldens.py`
-  from real `wal -i` in an isolated `HOME` plus pywal's own `gen_colors`)
-  feeds exact per-slot and full-list tests in `output.rs`. Fixtures cover
-  8-bit, palette, gray and 16-bit PNG, baseline and progressive JPEG, WebP,
-  BMP and an animated GIF.
+  (`bread-palette-extract/tests/fixtures/`, captured by
+  `bread-palette-extract/scripts/capture-goldens.py` from real `wal -i` in
+  an isolated `HOME` plus pywal's own `gen_colors`) feeds exact per-slot and
+  full-list tests in `bread-palette-extract/tests/golden.rs`, plus
+  gated tests in `bread-theme/src/output.rs` that exercise the real
+  `palette_from_image` public API (slicing, the default-accent fallback,
+  and a decode error) against the same fixtures. Fixtures cover 8-bit,
+  palette, gray and 16-bit PNG, baseline and progressive JPEG, WebP, BMP
+  and an animated GIF.
 - ECO-31: the session-global palette moves to a bread-owned cache,
   `palette_cache_path()` (`$XDG_CACHE_HOME/bread/palette.json`, wal
   `colors.json` shape), written atomically by the new `write_global_palette`.
@@ -49,8 +54,8 @@ entirely.
   roughly a dozen apps pin bread-theme by tag.
 - Licensing (user decision): the extractor (`extract.rs`, `jpeg.rs`, their
   fixtures/tests/scripts, `NOTICE`, `LICENSE-ImageMagick`,
-  `LICENSE-libjpeg-turbo`) moved to a new workspace crate,
-  `bread-palette-extract`, licensed `ImageMagick AND IJG` (the ported
+  `LICENSE-libjpeg-turbo`) moved out of `bread-theme` into a new workspace
+  crate, `bread-palette-extract`, licensed `ImageMagick AND IJG` (the ported
   libjpeg-turbo files belong to its core libjpeg API library, which is
   IJG-only; the separate Modified 3-clause BSD terms cover the TurboJPEG
   API/cjpeg/djpeg/build system, none of which is used here, so it's dropped
@@ -62,8 +67,9 @@ entirely.
   error on `--image` instead of a missing binary or a silent wrong result).
   Everything else (`Palette`, `load_palette`, `palette_cache_*`,
   `write_global_palette`, sequences, per-output writers, `palette_from_json`)
-  is unaffected. The bakery/pacman build of the `bread-theme` binary enables
-  `extract`; CI now runs fmt/clippy/test/build with and without it.
+  is unaffected. The bakery build of the `bread-theme` binary enables
+  `extract` (there is no separate pacman build of bread-theme itself); CI
+  now runs fmt/clippy/test/build with and without it.
   `NOTICE` also now reproduces the one entry of ImageMagick's own upstream
   NOTICE file that pertains to the ported code, as the ImageMagick License's
   redistribution clause requires.
@@ -76,9 +82,26 @@ entirely.
   headroom; the `image`-crate path (png/webp/gif/bmp) now uses the same
   figure as an explicit `image::Limits` instead of that crate's undocumented
   512 MiB default (which was in fact too small for a real 12000x8000 16-bit
-  RGBA PNG). A JPEG truncated mid-scan now fails outright (`UnexpectedEof`)
-  instead of silently returning wrong-but-plausible colours from the ported
-  decoder's zero-padding past the cut.
+  RGBA PNG). A JPEG whose entropy-coded data runs out before a scan
+  finishes (the file ends with no marker to recover at) now fails outright
+  (`UnexpectedEof`) instead of silently returning wrong-but-plausible
+  colours from the ported decoder's zero-padding past the cut. A scan cut
+  short at a marker boundary still zero-fills the rest of that scan, same
+  as libjpeg-turbo/ImageMagick's own recovery (real `wal` also exits 0 on
+  such a file), so that case is unaffected.
+- ECO-30 hardening (third review round): a JPEG whose SOF header alone
+  exceeds `MAX_DECODE_BUDGET_BYTES` now fails outright
+  (`io::ErrorKind::InvalidData`) instead of falling back to the `image`
+  crate, which was bypassing the budget entirely and decoding the same
+  oversized claim with its own, unbounded allocator (a 20000x20000 lie on a
+  22 KB real fixture reached ~1.9 GB RSS and 21 s of CPU before this fix).
+  The budget sum also now counts the JPEG port's per-component upsample
+  output buffers, not just the coefficient/plane/RGB buffers, closing a gap
+  where real peak usage could run about `3 * width * height` bytes past the
+  documented budget. `bread-theme/src/output.rs` gained its own
+  `--features extract` tests that call the real `palette_from_image` public
+  API (not just `bread-palette-extract`'s internal slice) against the
+  golden fixtures, the default-accent fallback path, and a decode error.
 
 ## 0.7.11
 

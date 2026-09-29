@@ -262,10 +262,20 @@ fn be16(d: &[u8], p: usize) -> Option<usize> {
 /// feature this decoder does not replicate (see the module docs) or is
 /// malformed. `*truncated_out` is set when `None` came specifically from
 /// the entropy-coded data running out mid-scan (a genuinely truncated
-/// file), as opposed to any other reason to bail: [`crate::extract::Source::open`]
-/// uses that distinction to fail outright on a truncated file instead of
-/// letting the generic `image`-crate fallback guess at its own recovery.
-pub(crate) fn decode(data: &[u8], truncated_out: &mut bool) -> Option<Decoded> {
+/// file), and `*over_budget_out` is set when `None` came specifically from
+/// the SOF header's declared dimensions exceeding [`MAX_DECODE_BUDGET_BYTES`]
+/// before anything was allocated for them. Both are distinct from every
+/// other reason to bail (an unsupported feature within budget):
+/// [`crate::extract::Source::open`] uses `truncated_out` to fail outright on
+/// a truncated file, and `over_budget_out` to fail outright on an
+/// over-budget one, instead of letting the generic `image`-crate fallback
+/// guess at its own recovery or, worse, decode the same oversized image a
+/// second time with a different, unbounded allocator.
+pub(crate) fn decode(
+    data: &[u8],
+    truncated_out: &mut bool,
+    over_budget_out: &mut bool,
+) -> Option<Decoded> {
     if !data.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
@@ -417,10 +427,24 @@ pub(crate) fn decode(data: &[u8], truncated_out: &mut bool) -> Option<Decoded> {
                     plane_bytes = plane_bytes.checked_add(plane)?;
                 }
                 let rgb_bytes = (width as u64).checked_mul(height as u64)?.checked_mul(3)?;
+                // `full` (jpeg.rs, `upsample`'s per-component output below)
+                // is one `width * height` buffer per component, live
+                // alongside `planes` and then `rgb`: count it too, or the
+                // real peak is roughly this budget plus 3*w*h uncounted.
+                let upsample_bytes = (comps.len() as u64)
+                    .checked_mul(width as u64)?
+                    .checked_mul(height as u64)?;
                 let total = coef_bytes
                     .checked_add(plane_bytes)?
-                    .checked_add(rgb_bytes)?;
+                    .checked_add(rgb_bytes)?
+                    .checked_add(upsample_bytes)?;
                 if total > MAX_DECODE_BUDGET_BYTES {
+                    // Distinct from every other bailout in this function:
+                    // the header is well-formed but declares more than the
+                    // documented budget. The caller must turn this into a
+                    // hard error instead of trying another decoder on the
+                    // same oversized dimensions.
+                    *over_budget_out = true;
                     return None;
                 }
                 for c in &mut comps {
@@ -1099,7 +1123,8 @@ mod tests {
     #[test]
     fn decodes_bit_identically_to_libjpeg_turbo() {
         for name in ["odd-420-progressive", "odd-422-restart"] {
-            let d = decode(&fixture(&format!("{name}.jpg")), &mut false).expect("supported JPEG");
+            let d = decode(&fixture(&format!("{name}.jpg")), &mut false, &mut false)
+                .expect("supported JPEG");
             assert_eq!((d.width, d.height, d.channels), (45, 37, 3));
             let reference = fixture(&format!("{name}.ppm"));
             assert!(
@@ -1130,17 +1155,24 @@ mod tests {
 
     #[test]
     fn unsupported_or_malformed_input_is_none() {
-        assert!(decode(b"not a jpeg", &mut false).is_none());
-        assert!(decode(&[0xFF, 0xD8, 0xFF], &mut false).is_none());
+        assert!(decode(b"not a jpeg", &mut false, &mut false).is_none());
+        assert!(decode(&[0xFF, 0xD8, 0xFF], &mut false, &mut false).is_none());
         // Arithmetic-coded frame marker (SOF9) is left to the fallback.
-        assert!(decode(&[0xFF, 0xD8, 0xFF, 0xC9, 0x00, 0x02], &mut false).is_none());
+        assert!(decode(
+            &[0xFF, 0xD8, 0xFF, 0xC9, 0x00, 0x02],
+            &mut false,
+            &mut false
+        )
+        .is_none());
     }
 
     /// A ~20-byte file whose SOF0 declares 65500x65500 (one grayscale
     /// component): the exact shape of the crafted input that drove RSS to
     /// 11.4 GB before MAX_DECODE_BUDGET_BYTES existed. The declared
     /// coefficient/plane/output buffers must be rejected before any of
-    /// them is allocated, not after.
+    /// them is allocated, not after, and the rejection must be reported as
+    /// `over_budget_out`, not just a generic `None`, so the caller does not
+    /// fall through to a second, unbounded decoder on the same dimensions.
     #[test]
     fn huge_sof_dimensions_are_rejected_before_allocating() {
         let data = [
@@ -1153,14 +1185,19 @@ mod tests {
             0x01, 0x11, 0x00, // component: id 1, h=v=1, quant table 0
             0xFF, 0xD9, // EOI
         ];
-        assert!(decode(&data, &mut false).is_none());
+        let mut over_budget = false;
+        assert!(decode(&data, &mut false, &mut over_budget).is_none());
+        assert!(
+            over_budget,
+            "must be reported as over budget, not a plain None"
+        );
     }
 
     #[test]
     fn truncated_scan_data_is_rejected_not_guessed_at() {
         let full = fixture("odd-420-progressive.jpg");
         assert!(
-            decode(&full, &mut false).is_some(),
+            decode(&full, &mut false, &mut false).is_some(),
             "fixture must decode when whole"
         );
         // Cut well past the headers and into the middle of the
@@ -1176,6 +1213,6 @@ mod tests {
         // fixture, where a mid-file cut deterministically lands inside the
         // one scan's entropy data.
         let truncated = &full[..full.len() * 7 / 10];
-        assert!(decode(truncated, &mut false).is_none());
+        assert!(decode(truncated, &mut false, &mut false).is_none());
     }
 }

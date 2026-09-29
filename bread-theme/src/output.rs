@@ -192,7 +192,8 @@ pub fn palette_from_image(path: &Path) -> std::io::Result<Palette> {
 /// (lower-case `#rrggbb`, 16 or more entries; see
 /// [`palette_from_image`]), or `None` where `wal` would exit with
 /// "Imagemagick couldn't generate a suitable palette". Exposed for fidelity
-/// comparisons against a real ImageMagick (`scripts/compare-pywal.py`).
+/// comparisons against a real ImageMagick
+/// (`bread-palette-extract/scripts/compare-pywal.py`).
 #[cfg(feature = "extract")]
 pub fn pywal_colors(path: &Path) -> std::io::Result<Option<Vec<String>>> {
     bread_palette_extract::wal_colors(path)
@@ -539,5 +540,108 @@ mod tests {
             .unwrap();
             assert_eq!(crate::load_palette().color4, "#222222");
         });
+    }
+}
+
+/// Tests for this crate's own gated API, not `bread-palette-extract`'s
+/// internal `wal_colors` list. `bread-palette-extract/tests/golden.rs`
+/// pins the full ordered colour list matches real pywal; it does not call
+/// anything in `bread-theme`, so a bug in [`palette_from_image`]'s own
+/// slicing (`[8..14]`), its `Palette` field mapping, or its
+/// `default_accents()` fallback could ship with every one of those tests
+/// green. These fixtures live in `bread-palette-extract` (the crate that
+/// owns them); reached here via `CARGO_MANIFEST_DIR`'s sibling path rather
+/// than duplicated, so there is exactly one copy of each golden file.
+#[cfg(all(test, feature = "extract"))]
+mod extract_feature_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../bread-palette-extract/tests/fixtures")
+            .join(name)
+    }
+
+    fn golden_accents(stem: &str) -> [String; 6] {
+        let path = fixture("golden").join(format!("{stem}.json"));
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("missing golden fixture {path:?}: {e}"));
+        let v: serde_json::Value =
+            serde_json::from_str(&text).expect("golden fixture must be valid JSON");
+        std::array::from_fn(|i| {
+            v[format!("color{}", i + 1)]
+                .as_str()
+                .expect("golden fixture missing colorN")
+                .to_lowercase()
+        })
+    }
+
+    /// `palette_from_image` (the real public entry point breadpaper calls),
+    /// not a re-implemented `[8..14]` slice, matches the golden accents
+    /// exactly on two different formats (PNG and JPEG, so the JPEG port is
+    /// exercised through this API too, not just through
+    /// `bread-palette-extract`'s own tests).
+    #[test]
+    fn palette_from_image_matches_golden_accents() {
+        for (image, golden_stem) in [
+            ("bos-default.png", "bos-default"),
+            ("bos-default.jpg", "bos-default.jpg"),
+        ] {
+            let palette =
+                palette_from_image(&fixture(image)).unwrap_or_else(|e| panic!("{image}: {e}"));
+            let want = golden_accents(golden_stem);
+            let got = [
+                palette.color1.to_lowercase(),
+                palette.color2.to_lowercase(),
+                palette.color3.to_lowercase(),
+                palette.color4.to_lowercase(),
+                palette.color5.to_lowercase(),
+                palette.color6.to_lowercase(),
+            ];
+            assert_eq!(got, want, "{image}: accents via palette_from_image");
+        }
+    }
+
+    /// An image wal itself would give up on (fewer than 16 distinct
+    /// colours after resize/quantize) must come back as bread's curated
+    /// defaults, not an error and not six copies of one colour.
+    #[test]
+    fn palette_from_image_falls_back_to_defaults_under_16_colours() {
+        let flat = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/flat.png");
+        let palette = palette_from_image(&flat)
+            .expect("a flat image is a successful extraction, not a decode error");
+        let default = crate::palette::default_accents();
+        assert_eq!(palette.color1, default[0]);
+        assert_eq!(palette.color2, default[1]);
+        assert_eq!(palette.color3, default[2]);
+        assert_eq!(palette.color4, default[3]);
+        assert_eq!(palette.color5, default[4]);
+        assert_eq!(palette.color6, default[5]);
+    }
+
+    /// A genuine decode failure must stay an `Err`, not be swallowed into
+    /// the default-accent fallback: only "wal would have given up" (too
+    /// few colours) gets defaults, per [`palette_from_image`]'s own doc.
+    #[test]
+    fn palette_from_image_propagates_decode_errors() {
+        let dir = std::env::temp_dir().join(format!(
+            "bread-theme-extract-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("not-an-image.png");
+        std::fs::write(&path, b"this is not image data at all").unwrap();
+
+        assert!(
+            palette_from_image(&path).is_err(),
+            "garbage input must be an error, not a default-accent fallback"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

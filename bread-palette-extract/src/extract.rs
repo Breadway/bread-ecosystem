@@ -197,7 +197,8 @@ impl Source {
     fn open(path: &Path) -> io::Result<Self> {
         let bytes = std::fs::read(path)?;
         let mut truncated = false;
-        let decoded = crate::jpeg::decode(&bytes, &mut truncated);
+        let mut over_budget = false;
+        let decoded = crate::jpeg::decode(&bytes, &mut truncated, &mut over_budget);
         if let Some(d) = decoded {
             // libjpeg-turbo-exact decode; grayscale JPEGs are PseudoClass
             // in ImageMagick.
@@ -218,6 +219,18 @@ impl Source {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "truncated JPEG: entropy-coded data ended before a scan finished",
+            ));
+        } else if over_budget {
+            // The SOF header declared dimensions over the decode budget.
+            // This must be a hard error, not a fall-through to the `image`
+            // crate: that crate's `Limits::max_alloc` below only bounds its
+            // own decoders, so a JPEG whose header the port already knows
+            // is too large would otherwise be handed to `image` anyway,
+            // which allocates and decodes the full oversized image before
+            // this function ever gets a chance to reject it.
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "JPEG exceeds the decode budget",
             ));
         }
         // Explicit limits, not `image::load_from_memory`'s undocumented
@@ -1559,6 +1572,77 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert!(wal_colors(&tmp_path("does-not-exist.png")).is_err());
+    }
+
+    /// Overwrite an SOF0 segment's declared height/width (big-endian, right
+    /// after the 1-byte precision field) in an otherwise real, complete
+    /// JPEG. Used to check the budget rejection at the `wal_colors` level,
+    /// with real scan data behind the lie, not just a truncated header.
+    fn patch_sof_dimensions(data: &[u8], width: u16, height: u16) -> Vec<u8> {
+        let mut out = data.to_vec();
+        let mut pos = 2;
+        while pos + 4 <= out.len() {
+            if out[pos] != 0xFF {
+                pos += 1;
+                continue;
+            }
+            let marker = out[pos + 1];
+            if marker == 0xFF {
+                pos += 1;
+                continue;
+            }
+            if (0xD0..=0xD7).contains(&marker) || marker == 0x01 {
+                pos += 2;
+                continue;
+            }
+            if marker == 0xD8 {
+                pos += 2;
+                continue;
+            }
+            if marker == 0xD9 {
+                break;
+            }
+            let len = ((out[pos + 2] as usize) << 8) | out[pos + 3] as usize;
+            if (0xC0..=0xC3).contains(&marker) {
+                let seg = pos + 4; // past marker + length
+                out[seg + 1] = (height >> 8) as u8;
+                out[seg + 2] = (height & 0xFF) as u8;
+                out[seg + 3] = (width >> 8) as u8;
+                out[seg + 4] = (width & 0xFF) as u8;
+                return out;
+            }
+            pos += 2 + len;
+        }
+        panic!("no SOF marker found in fixture");
+    }
+
+    /// A real, complete baseline JPEG with only its SOF0 dimensions lied
+    /// about (20000x20000, comfortably over budget but not the extreme
+    /// 65500x65500 [`crate::jpeg`]'s own header-only test uses): this must
+    /// be rejected by `wal_colors` itself, quickly and without decoding.
+    /// The port's own unit test only asserts `decode(..).is_none()`, which
+    /// would also pass if a lazily-zeroed allocation had happened first and
+    /// merely panicked later; asserting `Err` here, at the public API, with
+    /// a real scan behind the lie, is what actually pins "never falls
+    /// through to the `image` crate and decodes the same oversized claim a
+    /// second time".
+    #[test]
+    fn over_budget_jpeg_is_rejected_quickly_not_fallen_back_to() {
+        let bytes = std::fs::read(fixture("bos-default.jpg")).unwrap();
+        let patched = patch_sof_dimensions(&bytes, 20000, 20000);
+        let path = tmp_path("over-budget.jpg");
+        std::fs::write(&path, &patched).unwrap();
+
+        let start = std::time::Instant::now();
+        let err = wal_colors(&path).expect_err("over-budget JPEG must not decode");
+        let elapsed = start.elapsed();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "rejection took {elapsed:?}, looks like it fell through and actually decoded"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A crafted PNG whose IHDR alone declares 65500x65500 (RGBA, 16-bit):
