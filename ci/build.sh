@@ -115,8 +115,15 @@ docker build \
 #     before the container ever starts.
 # (CACHE_ROOT and its directories are set up above, before the build lock.)
 
+# The host's /etc/passwd and /etc/group are mounted read-only so the numeric
+# --user below resolves to a real account inside the container. Without an
+# entry, anything that looks up the current user fails: dbus-daemon refuses
+# every connection ("Could not get password database information for UID of
+# current process"), which broke breadcrumbs' fake-NetworkManager tests.
 docker run --rm \
     --user "$(id -u):$(id -g)" \
+    -v /etc/passwd:/etc/passwd:ro \
+    -v /etc/group:/etc/group:ro \
     -v "${REPO_PARENT}:/workspace" \
     -v "${CACHE_ROOT}/cargo-registry:/cargo-home/registry" \
     -v "${CACHE_ROOT}/cargo-git:/cargo-home/git" \
