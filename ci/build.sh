@@ -61,6 +61,35 @@ if [ -f "${REPO_ROOT}/ci/deps.txt" ]; then
     EXTRA_PKGS="$(grep -vE '^\s*(#|$)' "${REPO_ROOT}/ci/deps.txt" | tr '\n' ' ')"
 fi
 
+# Persistent cache directories (see the --user note below for why these are
+# host bind mounts). Created before anything else because the per-product
+# build lock lives in the same directory.
+CACHE_ROOT="${BREAD_CI_CACHE_ROOT:-${HOME:-/tmp}/.cache/bread-ci}"
+mkdir -p \
+    "${CACHE_ROOT}/cargo-registry" \
+    "${CACHE_ROOT}/cargo-git" \
+    "${CACHE_ROOT}/target-${PRODUCT}"
+
+# Serialize builds per product. Two jobs for the same product (a dev-release
+# and a check, say) share `target-${PRODUCT}`: while one job's cargo is
+# rewriting `incremental/`, the other's final `cp -a /cargo-target/. target/`
+# fails with "cannot stat '/cargo-target/./debug/incremental/...'" (seen on
+# breadcast). The lock is held until this script exits, since fd 9 stays open
+# through the docker build and run. Different products never contend, and
+# neither do repos that build on different runners.
+if command -v flock >/dev/null 2>&1; then
+    exec 9>"${CACHE_ROOT}/target-${PRODUCT}.lock"
+    if ! flock -n 9; then
+        echo "build.sh: another ${PRODUCT} build is running; waiting for its lock..." >&2
+        flock -w "${BREAD_CI_LOCK_WAIT:-3600}" 9 || {
+            echo "build.sh: timed out waiting for the ${PRODUCT} build lock" >&2
+            exit 1
+        }
+    fi
+else
+    echo "build.sh: flock not found; builds of ${PRODUCT} are NOT serialized" >&2
+fi
+
 docker build \
     --build-arg "EXTRA_PKGS=${EXTRA_PKGS}" \
     -t "bread-ci:${PRODUCT}" \
@@ -84,11 +113,7 @@ docker build \
 #     directories under CACHE_ROOT instead sidesteps both: `mkdir -p` below
 #     runs as the invoking user, so the directories are already theirs
 #     before the container ever starts.
-CACHE_ROOT="${BREAD_CI_CACHE_ROOT:-${HOME:-/tmp}/.cache/bread-ci}"
-mkdir -p \
-    "${CACHE_ROOT}/cargo-registry" \
-    "${CACHE_ROOT}/cargo-git" \
-    "${CACHE_ROOT}/target-${PRODUCT}"
+# (CACHE_ROOT and its directories are set up above, before the build lock.)
 
 docker run --rm \
     --user "$(id -u):$(id -g)" \
