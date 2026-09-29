@@ -100,6 +100,41 @@ origin vX.Y.Z-rc.1` (both remotes). "Freezing" is just pausing pushes to
 an RC has gone without issues, tag the real release the same way, dropping
 the `-rc.N` suffix (`vX.Y.Z`): that's what fires `release.yml`.
 
+## Stale dev-track warnings
+
+The breadboard sweeper can report a bakery-channel repo when its oldest
+unpromoted commit is at least 14 days old, or when its dev track is at least
+20 commits ahead of its latest beta or stable promotion.
+`scripts/check-stale-tracks.py` checks repos with a `dev-*.yml` workflow under
+a directory of local checkouts (by default `~/Projects`). It compares each
+`origin/main` with the nearest reachable version tag matching `vX.Y.Z` or
+`vX.Y.Z-rc.N`. If there is no promotion tag, it measures age and commit count
+from the repository's first commit. Fetch each repo, including tags, before
+running the check so its refs are current.
+
+The check is read-only. It prints warnings for maintainers to review; it does
+not create tags, publish artifacts, or change repositories. A stale warning is
+a prompt to decide whether to promote, not a release action.
+
+### Breadboard sweeper integration
+
+At the end of each normal ecosystem sweep, after fetching the repositories,
+run the checker against the local checkout directory:
+
+```sh
+python3 ~/Projects/bread-ecosystem/scripts/check-stale-tracks.py ~/Projects
+```
+
+Copy any output into a separate **stale-track warnings** section of the sweep
+report, including the repository, promotion tag, age, commit count, and the
+threshold reached. Keep these warnings report-only: do not file backlog issues,
+create tags, or publish artifacts. If there are no warnings, report that no
+stale dev tracks were found.
+
+```sh
+python3 -m unittest scripts/test_check_stale_tracks.py
+```
+
 Auto-versioning: `dev` computes its build version from the latest published
 *stable* `vX.Y.Z` tag (via `git ls-remote --tags`, filtered to exclude any
 tag containing a `-`, not `Cargo.toml` (`Cargo.toml` can drift stale
