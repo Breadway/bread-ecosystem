@@ -18,9 +18,10 @@ use libadwaita as adw;
 /// Call once at startup, before building any widgets from this module:
 /// initializes libadwaita's style manager and forces dark mode regardless of
 /// the system GTK theme preference. bread-theme's whole design is a *fixed*
-/// dark base (only the accent tracks pywal, see `palette::FIXED_BACKGROUND`
-/// etc.) so an app respecting a light system preference here would silently
-/// break that contract the moment someone's GNOME settings say "light".
+/// dark base (only the accent tracks the wallpaper-derived palette, see
+/// `palette::FIXED_BACKGROUND` etc.) so an app respecting a light system
+/// preference here would silently break that contract the moment someone's
+/// GNOME settings say "light".
 pub fn init() {
     adw::init().expect("failed to initialize libadwaita");
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);

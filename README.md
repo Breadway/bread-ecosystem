@@ -17,7 +17,7 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | Package | Description |
 |---------|-------------|
 | `bakery` | Bread ecosystem package manager |
-| `bread-theme` | Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem |
+| `bread-theme` | Shared native-accent, fixed-dark-base theming CLI for the bread ecosystem |
 | `bread` | Reactive automation daemon and CLI for Linux desktops |
 | `breadbar` | Minimal status bar and notification daemon for Hyprland |
 | `breadbox` | App launcher for Hyprland / Wayland |
@@ -54,16 +54,21 @@ to keys.
 
 All GUI products (breadbar, breadbox, breadpad) share one stylesheet via
 `bread-theme`. Background, surface, overlay, and foreground are always BOS's
-fixed dark values; only the accent colors are read from the pywal palette in
-`~/.cache/wal/colors.json`. When that file is absent, the accents fall back
-to BOS's curated bread-toned defaults (not Catppuccin Mocha). The stylesheet
-is written to `$XDG_RUNTIME_DIR/bread/theme.css`; running apps watch that
-file and recolour live when it changes. Per-app CSS overrides live at
+fixed dark values; only the accent colors are extracted natively from the
+current wallpaper and cached at `$XDG_CACHE_HOME/bread/palette.json`. When
+that file is absent, bread-theme also checks `~/.cache/wal/colors.json` (for
+installs upgrading from an older `wal`-based setup) before falling back to
+BOS's curated bread-toned defaults (not Catppuccin Mocha). The stylesheet is
+written to `$XDG_RUNTIME_DIR/bread/theme.css`; running apps watch that file
+and recolour live when it changes. Per-app CSS overrides live at
 `~/.config/<app>/style.css`.
 
 ```sh
-wal -i ~/Pictures/wall.png   # regenerate pywal palette
-bread-theme generate         # render the shared stylesheet (run from a wal hook)
+bread-theme generate         # render the shared stylesheet from the
+                              # current cached palette
+bread-theme reload           # same, and tell running apps to recolour live
+                              # (breadpaper calls this after writing a new
+                              # wallpaper-derived palette)
 ```
 
 `bread-theme` subcommands:
@@ -163,7 +168,7 @@ apps pin, or in-tree tools that are not bakery packages of their own.
 ```
 bread-ecosystem/
 ├── bakery/              # package manager binary
-├── bread-theme/         # shared pywal + fixed-dark-base theming crate
+├── bread-theme/         # shared native-accent + fixed-dark-base theming crate
 ├── bread-utils/         # shared plumbing (Hyprland IPC, singleton, XDG, BreadClient, …)
 ├── bread-app/           # GTK bootstrap new tools should use (app id, singleton, overlay, command listen)
 ├── bread-polkit/        # themed PolicyKit agent (bakery.toml present; unpublished)
@@ -247,4 +252,9 @@ produce empty metadata in production.
 
 ## License
 
-MIT
+MIT, except `bread-palette-extract`, which ports code from ImageMagick and
+libjpeg-turbo/IJG and carries their licence terms alongside its own (see
+`bread-palette-extract/NOTICE`, `LICENSE-ImageMagick` and
+`LICENSE-libjpeg-turbo`). It is an optional dependency: `bread-theme` itself
+stays plain MIT and only links it in when built with the `extract` feature
+(see `bread-theme`'s own licence note in its `Cargo.toml`).

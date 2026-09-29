@@ -1175,7 +1175,7 @@ mod tests {
         );
         assert!(
             !css.contains("#7a9a88"),
-            "the demo's sage hex must never leak into the manifest, pywal theming depends on \
+            "the demo's sage hex must never leak into the manifest, palette theming depends on \
              this staying a palette token name:\n{css}"
         );
     }
@@ -1325,7 +1325,7 @@ mod tests {
         );
         assert!(
             !css.contains("#e87898"),
-            "the demo's pink hex must never leak into the manifest, pywal theming depends on \
+            "the demo's pink hex must never leak into the manifest, palette theming depends on \
              this staying a palette token name:\n{css}"
         );
     }
@@ -1462,7 +1462,7 @@ mod tests {
         );
         assert!(
             !css.contains("#2f6d7a") && !css.contains("#c2683c"),
-            "the demo's teal/amber hex must never leak into the manifest, pywal theming \
+            "the demo's teal/amber hex must never leak into the manifest, palette theming \
              depends on this staying palette token names:\n{css}"
         );
     }

@@ -201,7 +201,7 @@ mod tests {
             let value: serde_json::Value = serde_json::from_str(&contents).unwrap();
             assert!(value.as_object().unwrap().contains_key("breadbox"));
 
-            // Rewriting (theme switch, pywal hook, etc.) must not fail or
+            // Rewriting (theme switch, palette regenerate, etc.) must not fail or
             // leave a stale temp file behind.
             let path2 = write_layerrules_active().unwrap();
             assert_eq!(path, path2);

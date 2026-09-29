@@ -1,0 +1,23 @@
+[package]
+name = "bread-palette-extract"
+version.workspace = true
+edition.workspace = true
+# Not MIT: this crate is a faithful Rust port of ImageMagick's and
+# libjpeg-turbo's (IJG's) decode/quantize/resize/dither/unique-colors code,
+# kept isolated in its own crate specifically so bread-theme (MIT) does not
+# have to carry these terms unless something actually links this crate in.
+# See NOTICE, LICENSE-ImageMagick and LICENSE-libjpeg-turbo.
+license = "ImageMagick AND IJG"
+authors.workspace = true
+description = "Native Rust port of ImageMagick's + libjpeg-turbo's palette-extraction pipeline (what `wal -i` produces), isolated from bread-theme for licensing"
+repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
+keywords = ["imagemagick", "palette", "wallpaper"]
+
+[dependencies]
+image = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[[example]]
+name = "pywal-colors"

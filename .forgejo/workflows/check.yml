@@ -14,6 +14,11 @@ name: check
 # from Breadway/bread), so it runs the same pin-lint every downstream
 # consumer runs: see scripts/lint-pins.sh and docs/release-channels.md
 # (part of ECO-38's dev-track/tag-pin split).
+#
+# The `--features extract` pass matters too: bread-theme's native palette
+# extraction (`palette_from_image`, `pywal_colors`, `generate_output`, and
+# the bread-palette-extract dependency itself) is gated behind it and would
+# otherwise never compile or run its tests in CI (ECO-30/ECO-33).
 on:
   push:
     branches: ['feature/**', 'fix/**', 'main']
@@ -41,8 +46,17 @@ jobs:
       - name: clippy (gtk)
         run: cd src && cargo clippy --workspace --all-targets --locked --features gtk -- -D warnings
 
+      - name: clippy (extract)
+        run: cd src && cargo clippy --workspace --all-targets --locked --features extract -- -D warnings
+
       - name: test
         run: cd src && cargo test --workspace --locked
 
       - name: test (gtk)
         run: cd src && cargo test --workspace --locked --features gtk
+
+      - name: test (extract)
+        run: cd src && cargo test --workspace --locked --features extract
+
+      - name: build --locked (extract)
+        run: cd src && cargo build --workspace --locked --features extract

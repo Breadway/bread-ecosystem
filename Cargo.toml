@@ -1,5 +1,5 @@
 [workspace]
-members = ["bakery", "bread-theme", "bread-utils", "bread-onnx", "bread-screenshots", "bread-capture", "bread-app", "bread-polkit", "bread-launcher"]
+members = ["bakery", "bread-theme", "bread-palette-extract", "bread-utils", "bread-onnx", "bread-screenshots", "bread-capture", "bread-app", "bread-polkit", "bread-launcher"]
 resolver = "2"
 
 [workspace.package]
@@ -22,6 +22,11 @@ chrono = "0.4"
 minisign-verify = "0.2"
 tracing = "0.1"
 semver = "1"
+# Wallpaper decoding for bread-palette-extract's native palette extractor
+# (ECO-30), bread-theme's optional `extract` feature: the formats breadpaper
+# accepts (png, jpg/jpeg, webp, gif, bmp). No jpeg-rayon (parallel decode is
+# not worth pulling in rayon here).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 
 [profile.release]
 lto = "thin"

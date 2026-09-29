@@ -2,11 +2,11 @@
 name = "bread-theme"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
-description = "Shared pywal-accented, fixed-dark-base theming crate for the bread ecosystem"
+description = "Shared native-accent, fixed-dark-base theming crate for the bread ecosystem"
 repository = "https://git.breadway.dev/Breadway/bread-ecosystem"
-keywords = ["theming", "pywal", "gtk4", "wayland"]
+keywords = ["theming", "wallpaper", "gtk4", "wayland"]
 
 [dependencies]
 serde = { workspace = true }
@@ -24,6 +24,13 @@ gtk4 = { version = "0.11", features = ["v4_12"], optional = true }
 # widgets. `v1_7` for ToggleGroup (used for tab-row-style pickers); the
 # system library only needs to be >= that (this machine has 1.9.2).
 libadwaita = { version = "0.9", features = ["v1_7"], optional = true }
+# Native palette extraction from an image (ECO-30/ECO-33). Isolated behind
+# this optional dependency, not folded into this crate, because it is a
+# derivative work of ImageMagick and libjpeg-turbo/IJG and carries their
+# licence terms (see bread-palette-extract/NOTICE): this crate stays plain
+# MIT unless a consumer actually asks for image extraction via the
+# `extract` feature below.
+bread-palette-extract = { path = "../bread-palette-extract", optional = true }
 
 [features]
 # Enable GTK4 CSS provider helpers (breadbar, breadbox, breadpad use this).
@@ -36,6 +43,15 @@ gtk = ["dep:gtk4"]
 # plain CSS, not this. Apps with an ordinary top-level window (breadman,
 # breadhelp) want both.
 adw = ["gtk", "dep:libadwaita"]
+# Native palette extraction from an image: `palette_from_image`,
+# `pywal_colors`, `generate_output`'s `--image` path, and `bread-theme
+# notice`'s extractor section. Off by default so a plain `bread-theme`
+# build (and every consumer that never calls these, e.g. breadpad) stays
+# MIT-only end to end; on for anything that needs to turn a wallpaper into
+# a palette (breadpaper, the bakery build of the `bread-theme` binary).
+# There is no pacman build of bread-theme itself (packaging/arch's
+# PKGBUILD only builds bakery). See bread-palette-extract's own licence.
+extract = ["dep:bread-palette-extract"]
 
 # The generator CLI. It only touches the gtk-free lib API (render + write), so
 # it builds without the gtk feature and stays light.
