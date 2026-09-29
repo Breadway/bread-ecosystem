@@ -29,6 +29,18 @@ pub const BUILTIN_MODULES: &[&str] = &[
     "ram",
     "launcher_entry",
     "launcher_results",
+    // BAR-27 phase 1 (spotlight pill): a divider that collapses when the
+    // workspace strip is empty (`display = "none"`), a low-battery flag,
+    // and an unread-notification dot. Built unconditionally like every
+    // other builtin above; a theme that never names one in `[bar.slots]`
+    // just leaves it registered-but-unparented, same as `cpu`/`ram` under
+    // liquid-motion.
+    "sep",
+    "flag",
+    "unread",
+    // BAR-31: the in-pill level readout (`[osd].style = "pill"`), placed
+    // where the mockup's `.level` sits, just before the flag.
+    "level",
 ];
 
 static REGISTERED: RwLock<Vec<String>> = RwLock::new(Vec::new());

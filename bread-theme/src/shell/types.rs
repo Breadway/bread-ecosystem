@@ -178,12 +178,34 @@ pub struct Slots {
     pub drawer: Vec<String>,
 }
 
+/// `modules.workspaces.display` (BAR-27 phase 1: the spotlight pill
+/// redesign): WHICH workspaces are shown, orthogonal to `style` (HOW they're
+/// drawn). Defaults to `All`, which reproduces exactly the filtering every
+/// existing style already did on its own (`show_empty` for Pill/Dots, an
+/// unconditional occupied-or-active filter for Trail): a theme that never
+/// sets this field renders identically to before this field existed. `None`
+/// and `Current` are new: `None` hides the workspace strip entirely (its
+/// divider collapses with it, see breadbar's pill assembly), `Current` shows
+/// only the active workspace's number, with a small "WS" label standing in
+/// for the hidden others rather than a row of chips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WorkspaceDisplay {
+    None,
+    Current,
+    #[default]
+    All,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspacesModule {
     pub style: WorkspaceStyle,
     pub show_empty: bool,
     /// `style = "dots"` only; see [`DotWidths`]. Trail/Pill ignore this.
     pub dot_widths: DotWidths,
+    /// See [`WorkspaceDisplay`]. Composes with `style`/`show_empty`, doesn't
+    /// replace them: `All` (the default) leaves their existing filtering
+    /// untouched.
+    pub display: WorkspaceDisplay,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,13 +349,24 @@ impl Default for Panel {
 /// The OSD kinds breadbar knows how to show.
 pub const OSD_KINDS: &[&str] = &["volume", "brightness"];
 
+/// `[osd].style` (BAR-30 phase 4): where a volume/brightness change is
+/// drawn. `"window"` is the standalone OSD surface every builtin but
+/// spotlight uses; `"pill"` draws the change inside the bar pill itself
+/// (`bos-ui-demos/proposed/spotlight-stage.html`'s `.wick.leveling`) and
+/// suppresses the OSD window entirely. Checked at display time (`main.rs`'s
+/// `LevelChanged` handler), not baked into a widget at construction, so
+/// this needs no restart entry in `theme::needs_restart`.
+pub const OSD_STYLES: &[&str] = &["window", "pill"];
+
 /// `[osd]`: the volume/brightness on-screen display. `anchor`/radius are
 /// controlled by `[surfaces."breadbar-osd"]` + the `osd_style` token; this
-/// table adds which kinds are enabled and how long they linger.
+/// table adds which kinds are enabled, how long they linger, and (`style`)
+/// whether they show at all as a standalone window.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Osd {
     pub enabled: Vec<String>,
     pub dismiss_ms: i64,
+    pub style: String,
 }
 
 impl Default for Osd {
@@ -341,6 +374,71 @@ impl Default for Osd {
         Osd {
             enabled: OSD_KINDS.iter().map(|s| s.to_string()).collect(),
             dismiss_ms: 2000,
+            style: "window".to_string(),
+        }
+    }
+}
+
+/// `[notifications].style` (BAR-30 phase 4): `"toast"` is the standalone
+/// corner popup every builtin but spotlight uses; `"surtitle"` shows a new
+/// notification as a one-line caption under the bar pill instead
+/// (`bos-ui-demos/proposed/spotlight-stage.html`'s `.surtitle`) and
+/// suppresses the toast window. The notification is still recorded to
+/// history either way.
+pub const NOTIFICATION_STYLES: &[&str] = &["toast", "surtitle"];
+
+/// `[notifications]`: how an incoming notification is presented. Checked at
+/// display time (`notifications::popup::run`'s `Show` handling), not baked
+/// into a widget at construction, so this needs no restart entry either.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Notifications {
+    pub style: String,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Notifications {
+            style: "toast".to_string(),
+        }
+    }
+}
+
+/// `[bar.autohide]` (BAR-27 phase 1: the spotlight pill redesign). Off
+/// (`enabled = false`) for every theme that doesn't set this table, which
+/// means "always visible", exactly what every builtin except spotlight
+/// wants and what breadbar already did before this table existed.
+///
+/// The numbers below are `bos-ui-demos/proposed/spotlight-stage.html`'s own
+/// (`peek(3800)` for a notification, `peek(1400)` for a volume/brightness
+/// level, `peek(1200)` for a workspace switch, `hoverOff`'s 600ms re-tuck
+/// delay, and the `.hotzone` div's `min(420px,70vw)` × `14px` footprint).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AutoHide {
+    pub enabled: bool,
+    pub hover_zone_width: i64,
+    pub hover_zone_height: i64,
+    /// How long after the pointer leaves the pill/hot-zone before it tucks
+    /// away again (`hoverOff`'s `setTimeout(.., 600)`).
+    pub retuck_delay_ms: i64,
+    /// How long a peek triggered by a new notification holds the pill down.
+    pub notification_peek_ms: i64,
+    /// How long a peek triggered by a volume/brightness change holds the
+    /// pill down.
+    pub level_peek_ms: i64,
+    /// How long a peek triggered by a workspace switch holds the pill down.
+    pub workspace_peek_ms: i64,
+}
+
+impl Default for AutoHide {
+    fn default() -> Self {
+        AutoHide {
+            enabled: false,
+            hover_zone_width: 420,
+            hover_zone_height: 14,
+            retuck_delay_ms: 600,
+            notification_peek_ms: 3800,
+            level_peek_ms: 1400,
+            workspace_peek_ms: 1200,
         }
     }
 }

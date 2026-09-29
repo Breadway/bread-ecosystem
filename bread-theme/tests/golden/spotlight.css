@@ -82,20 +82,20 @@
 }
 
 .bar-entrance {
-  animation: bar-in 0.4s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: bar-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 
 window.breadbar {
   color: @on-bg;
-  border-radius: 22px;
-  font-family: 'Outfit', 'Varela Round', sans-serif;
+  border-radius: 999px;
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 400;
 
-background-color: alpha(@bg, 0.82); border: 1px solid alpha(@on-bg, 0.08);
+background-color: alpha(@bg, 0.8); border: 1px solid alpha(@on-bg, 0.08);
 
-transition: border-radius 0.3s cubic-bezier(0.22, 1.35, 0.36, 1);
+transition: border-radius 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
 window.breadbar.searching {
@@ -114,7 +114,7 @@ window.breadbar button {
 
 
 
-.workspace-dot { background-color: alpha(@on-bg, 0.35); color: transparent; border-radius: 999px; border: none; outline: none; box-shadow: none; min-height: 9px; margin: 0; padding: 0; transition: background-color 0.25s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1.35, 0.36, 1); } .workspace-dot:hover { background-color: alpha(@on-bg, 0.55); } .workspace-dot:not(.occupied):not(.active) { opacity: 0.35; } .workspace-dot.active { background-color: @pink; opacity: 1; } .workspace-dot.active:hover { background-color: @pink; }
+.workspace-btn { background: transparent; opacity: 1; color: alpha(@on-bg, 0.4); border-radius: 8px; border: none; outline: none; box-shadow: none; min-width: 26px; min-height: 26px; margin: 0; padding: 0 6px; font-size: 18px; font-weight: 600; transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.22s cubic-bezier(0.22, 1.2, 0.36, 1); } .workspace-btn:hover { background: alpha(@on-bg, 0.08); } .workspace-btn.occupied { color: alpha(@on-bg, 0.8); } .workspace-btn:not(.occupied):not(.active) { opacity: 0.35; } .workspace-btn.active { background: @fg; color: @on-accent; opacity: 1; } .workspace-btn.active:hover { background: @fg; } .workspace-btn.ws-in { animation: row-in 0.32s cubic-bezier(0.22, 1.2, 0.36, 1) both; }
 
 .workspace-btn label {
   font-size: 18px;
@@ -149,7 +149,7 @@ window.breadbar button {
 }
 
 .clock-digit.flip {
-  animation: digit-flip 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .clock-plain {
@@ -175,7 +175,7 @@ window.breadbar button {
 }
 
 .stat-label.tick {
-  animation: digit-flip 0.35s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .stat-digit {
@@ -185,7 +185,7 @@ window.breadbar button {
 }
 
 .stat-digit.flip {
-  animation: digit-flip 0.35s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: digit-flip 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .stats-box {
@@ -193,11 +193,11 @@ window.breadbar button {
 }
 
 .stat-pair {
-  margin: 0 0 0 0px;
-  border-radius: 999px;
+  margin: 0 0 0 10px;
+  border-radius: 8px;
   padding: 5px 9px;
-  min-height: 22px;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.35, 0.36, 1),opacity 0.18s ease;
+  min-height: 20px;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
 }
 
 .stat-pair:hover {
@@ -210,8 +210,8 @@ window.breadbar button {
 
 .stat-pair.icon-only {
   padding: 4px;
-  min-width: 22px;
-  min-height: 22px;
+  min-width: 20px;
+  min-height: 20px;
 }
 
 .stat-icon {
@@ -235,12 +235,22 @@ window.breadbar-notification {
   color: @on-bg;
 }
 
+
+window.breadbar-pill-hotzone {
+  background-color: transparent;
+}
+
+
+.pill-hotzone-debug {
+  background-color: alpha(@red, 0.45);
+}
+
 window.breadbar-history {
   background-color: alpha(@bg, 0.7);
   color: @on-bg;
   border-radius: 12px;
   border: 1px solid alpha(@on-bg, 0.10);
-  animation: pop-in 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: pop-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .notification-card {
@@ -251,7 +261,7 @@ window.breadbar-history {
   margin-bottom: 8px;
   border: 1px solid alpha(@on-bg, 0.10);
   border-left: 3px solid transparent;
-  animation: notif-in 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: notif-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .notification-card.urgency-critical {
@@ -304,7 +314,7 @@ window.breadbar-history {
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.18s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.18s ease;
+  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s ease;
 }
 
 .notification-dismiss:hover {
@@ -371,7 +381,7 @@ window.breadbar-osd {
   color: @on-bg;
   border-radius: 999px;
   border: 1px solid alpha(@on-bg, 0.10);
-  animation: osd-in 0.4s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: osd-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .osd-icon {
@@ -420,9 +430,9 @@ window.breadbar-dismiss, .breadbar-dismiss-hit {
   min-height: 2px;
   margin: 2px 4px 10px;
   border-radius: 2px;
-  background-color: @pink;
-  background-image: linear-gradient(90deg, @pink, @pink);
-  animation: caret-draw 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  background-color: @fg;
+  background-image: linear-gradient(90deg, @fg, @fg);
+  animation: caret-draw 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .wifi-popover-inner {
@@ -454,7 +464,7 @@ window.wifi-popover button {
   font-size: 17px;
   font-weight: bold;
   opacity: 0.55;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.35, 0.36, 1),opacity 0.22s ease, color 0.22s ease;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.22s ease, color 0.22s ease;
 }
 
 .popover-tab:hover {
@@ -502,7 +512,7 @@ window.wifi-popover button {
   border-radius: 10px;
   padding: 0 12px;
   min-height: 42px;
-  transition: background-color 0.18s cubic-bezier(0.22, 1.35, 0.36, 1);
+  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
 .wifi-popover-row label {
@@ -529,7 +539,7 @@ window.wifi-popover button.wifi-popover-row-active {
 }
 
 .row-in {
-  animation: row-in 0.32s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: row-in 0.32s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .stagger-0 {
@@ -602,7 +612,7 @@ switch.bt-switch, switch.bt-switch:hover, switch.bt-switch:checked,switch.bt-swi
 
 switch.bt-switch {
   background-color: alpha(@on-bg, 0.14);
-  transition: background-color 0.25s cubic-bezier(0.22, 1.35, 0.36, 1);
+  transition: background-color 0.25s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
 switch.bt-switch:checked {
@@ -627,7 +637,7 @@ window.wifi-add-dialog {
   min-width: 240px;
   border-radius: 12px;
   border: 1px solid alpha(@on-bg, 0.10);
-  animation: pop-in 0.45s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: pop-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 window.wifi-add-dialog headerbar {
@@ -651,8 +661,8 @@ window.wifi-add-dialog headerbar {
 .media-widget {
   border-radius: 10px;
   padding: 4px 8px;
-  min-height: 22px;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.35, 0.36, 1);
+  min-height: 20px;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
 .media-widget:hover {
@@ -660,7 +670,7 @@ window.wifi-add-dialog headerbar {
 }
 
 .media-widget.media-in {
-  animation: row-in 0.4s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  animation: row-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .media-eq {
@@ -671,7 +681,7 @@ window.wifi-add-dialog headerbar {
 .media-eq-bar {
   min-width: 3px;
   min-height: 5px;
-  background-color: @pink;
+  background-color: @fg;
   border-radius: 2px;
 }
 
@@ -705,7 +715,7 @@ window.wifi-add-dialog headerbar {
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.22s cubic-bezier(0.22, 1.35, 0.36, 1),opacity 0.18s ease;
+  transition: background-color 0.22s cubic-bezier(0.22, 1.2, 0.36, 1),opacity 0.18s ease;
 }
 
 .control-panel-btn:hover {
@@ -828,7 +838,7 @@ scale.control-panel-slider:hover slider {
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.2s cubic-bezier(0.22, 1.35, 0.36, 1), color 0.2s ease;
+  transition: background-color 0.2s cubic-bezier(0.22, 1.2, 0.36, 1), color 0.2s ease;
 }
 
 .power-btn:hover {
@@ -874,7 +884,7 @@ window.breadbar-panel button.power-btn.armed .power-btn-label {
   border: none;
   outline: none;
   box-shadow: none;
-  transition: background-color 0.18s cubic-bezier(0.22, 1.35, 0.36, 1);
+  transition: background-color 0.18s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
 .tray-toggle:hover {
@@ -893,7 +903,7 @@ window.breadbar-panel button.power-btn.armed .power-btn-label {
 
 .tray-chevron {
   opacity: 0.5;
-  transition: transform 0.22s cubic-bezier(0.22, 1.35, 0.36, 1), opacity 0.18s ease;
+  transition: transform 0.22s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.18s ease;
 }
 
 .tray-toggle:hover .tray-chevron {
@@ -1098,7 +1108,7 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   border: none;
   outline: none;
   box-shadow: none;
-  caret-color: @pink;
+  caret-color: @fg;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -1139,7 +1149,7 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
 }
 
 .bread-drawer row:selected {
-  background-color: alpha(@pink, 0.18);
+  background-color: alpha(@fg, 0.18);
   color: @on-bg;
 }
 
@@ -1171,7 +1181,7 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   background-color: alpha(@bg, 0.93);
   color: @on-bg;
   border-radius: 22px;
-  font-family: 'Outfit', 'Varela Round', sans-serif;
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 400;
 }
@@ -1244,4 +1254,918 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   font-size: 10px;
   opacity: 0.4;
   text-transform: uppercase; letter-spacing: 0.12em;
+}
+
+
+
+
+
+window.breadbar.pill {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+window.breadbar.pill > box {
+  min-height: 28px;
+  
+  margin: 14px 24px 30px 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background-color: alpha(@bg, 0.8);
+  border: 1px solid alpha(@fg, 0.12);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  transition: background-color 0.2s ease, opacity 0.25s ease;
+}
+
+window.breadbar.pill > box:hover {
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.94);
+}
+
+window.breadbar.pill.tucked > box {
+  opacity: 0;
+}
+
+window.breadbar.pill > box > centerbox {
+  padding: 0;
+}
+
+window.breadbar.pill .clock-plain {
+  padding: 0;
+}
+
+window.breadbar.pill .clock-plain-time {
+  color: @fg;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-feature-settings: "tnum";
+}
+
+window.breadbar.pill .workspace-btn {
+  min-width: 10px;
+  min-height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  color: alpha(@fg, 0.42);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+window.breadbar.pill .workspace-btn label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+window.breadbar.pill .workspace-btn.occupied {
+  color: alpha(@fg, 0.78);
+}
+
+window.breadbar.pill .workspace-btn:hover {
+  background: alpha(@fg, 0.1);
+}
+
+window.breadbar.pill .workspace-btn.active,
+window.breadbar.pill .workspace-btn.active:hover {
+  background: @fg;
+  color: @bg;
+  box-shadow: 0 0 10px alpha(@fg, 0.45);
+}
+
+
+.pill-ws-current-label {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: alpha(@fg, 0.52);
+  margin-right: 5px;
+}
+
+.pill-ws-current-value {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: @fg;
+}
+
+.pill-ws-current {
+  padding: 0 2px;
+}
+
+window.breadbar.pill separator.bar-sep {
+  min-height: 14px;
+  min-width: 1px;
+  margin: 0;
+  background: alpha(@fg, 0.12);
+}
+
+
+window.breadbar.pill .bread-widget-slot {
+  margin: 0;
+}
+
+window.breadbar.pill .bread-widget-slot progressbar {
+  min-width: 44px;
+}
+
+window.breadbar.pill .bread-widget-slot label {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-size: 12px;
+  color: alpha(@fg, 0.52);
+}
+
+window.breadbar.pill .bread-widget-slot label.bread-weight-bold {
+  font-weight: 500;
+  color: @fg;
+  font-feature-settings: "tnum";
+}
+
+window.breadbar.pill .bread-widget-slot progressbar trough {
+  min-width: 44px;
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+window.breadbar.pill .bread-widget-slot progressbar progress {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @accent;
+}
+
+.pill-flag-dot {
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 999px;
+  background-color: @red;
+  box-shadow: 0 0 8px @red;
+  margin-right: 6px;
+}
+
+.pill-flag-label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: @red;
+}
+
+.pill-unread-dot {
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 999px;
+  background-color: @accent;
+}
+
+
+.pill-lip {
+  min-width: 44px;
+  min-height: 3px;
+  border-radius: 0 0 3px 3px;
+  background-color: alpha(@fg, 0.35);
+  transition: opacity 0.25s ease;
+}
+
+.pill-lip.gone {
+  opacity: 0;
+}
+
+
+.pill-level-name, .pill-level-pct {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: alpha(@fg, 0.52);
+  font-feature-settings: "tnum";
+}
+
+.pill-level-bar {
+  min-width: 120px;
+  min-height: 4px;
+}
+
+.pill-level-bar trough {
+  min-width: 120px;
+  min-height: 4px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+.pill-level-bar progress {
+  min-height: 4px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @fg;
+}
+
+
+window.breadbar-surtitle {
+  background-color: transparent;
+}
+
+.surtitle-row {
+  padding: 7px 14px;
+  border-radius: 8px;
+  background-color: alpha(@bg, 0.88);
+  border: 1px solid alpha(@fg, 0.12);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.surtitle-row.show {
+  opacity: 1;
+}
+
+.surtitle-app {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: @accent;
+}
+
+.surtitle-row.critical .surtitle-app {
+  color: @red;
+}
+
+.surtitle-msg {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-size: 14px;
+  color: @fg;
+}
+
+
+
+window.breadbar-stage {
+  background-color: transparent;
+}
+
+.stage-root {
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.stage-root.open {
+  opacity: 1;
+}
+
+.stage-house {
+  background-color: alpha(@bg, 0.78);
+}
+
+
+.stage-cone {
+  color: @fg;
+  opacity: 0;
+  transition: opacity 0.5s ease 0.05s;
+}
+
+.stage-root.open .stage-cone {
+  opacity: 1;
+}
+
+
+.stage-entry text, .stage-entry placeholder, .stage-chip label, .stage-track-title,
+.stage-track-artist, .stage-sentence, .stage-note-msg, .stage-note-empty,
+.stage-row-name, .stage-tile-name, .stage-empty, .stage-card-v label,
+.stage-card-v {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-size: 14px;
+}
+
+
+.stage-ctl-label, .stage-card-title, .stage-card-tag {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-ctl-value {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-feature-settings: "tnum";
+  color: @fg;
+}
+
+
+button.stage-clear {
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: alpha(@fg, 0.52);
+}
+
+button.stage-clear label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+button.stage-clear:hover {
+  color: @fg;
+}
+
+
+.stage-search {
+  padding: 14px 18px;
+  border-radius: 14px;
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.92);
+  border: 1px solid alpha(@fg, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 18px 50px rgba(0, 0, 0, 0.45),
+    0 -12px 40px alpha(@fg, 0.06);
+}
+
+.stage-mode {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: @bg;
+  background-color: @accent;
+  padding: 5px 7px;
+  border-radius: 4px;
+}
+
+entry.stage-entry, entry.stage-entry:focus-within {
+  min-height: 0;
+  padding: 0;
+  
+  margin: -2px 0;
+  caret-color: @accent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  color: @fg;
+}
+
+.stage-entry text, .stage-entry placeholder {
+  font-size: 22px;
+  
+  line-height: 24.2px;
+  min-height: 0;
+}
+
+.stage-entry placeholder {
+  color: alpha(@fg, 0.32);
+}
+
+.stage-kbd {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+  border: 1px solid alpha(@fg, 0.12);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+
+.stage-tile, .stage-chip, .stage-power-btn, .stage-row,
+.stage-transport button, .stage-note-dismiss {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+
+.stage-tile {
+  padding: 10px 4px 9px;
+  border-radius: 10px;
+  min-width: 84px;
+  color: alpha(@fg, 0.52);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-tile:hover {
+  background-color: alpha(@fg, 0.06);
+  color: @fg;
+}
+
+window.breadbar-stage button.stage-tile.sel {
+  background-color: alpha(@fg, 0.1);
+  color: @fg;
+}
+
+.stage-tile-glyph {
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 10px;
+  background-color: mix(@bg, @fg, 0.11);
+  color: @fg;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-tile.sel .stage-tile-glyph {
+  background-color: @fg;
+  color: @bg;
+  box-shadow: 0 0 18px alpha(@fg, 0.35);
+}
+
+.stage-tile-name {
+  font-size: 12px;
+}
+
+
+.stage-zone {
+  padding: 16px;
+  border-radius: 14px;
+  background-color: alpha(mix(@bg, @fg, 0.05), 0.72);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-zone-centre {
+  background-color: transparent;
+  border-color: transparent;
+  padding-top: 6px;
+}
+
+
+scale.stage-slider.horizontal {
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+}
+
+.stage-slider trough {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+  margin: 0;
+}
+
+.stage-slider trough highlight {
+  min-height: 3px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @fg;
+  border-radius: 2px;
+}
+
+.stage-slider slider {
+  min-width: 10px;
+  min-height: 16px;
+  margin: -7px 0;
+  border: none;
+  border-radius: 2px;
+  outline: none;
+  background-image: none;
+  background-color: @fg;
+  box-shadow: 0 0 10px alpha(@fg, 0.5);
+}
+
+
+.stage-chips > flowboxchild {
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  outline: none;
+}
+
+
+.stage-chip {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid alpha(@fg, 0.12);
+  color: alpha(@fg, 0.52);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.stage-chip label {
+  font-size: 12.5px;
+}
+
+.stage-chip:hover {
+  border-color: alpha(@fg, 0.3);
+  color: @fg;
+}
+
+window.breadbar-stage button.stage-chip.on {
+  color: @bg;
+  background-color: @fg;
+  border-color: @fg;
+}
+
+
+.stage-play {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background-color: alpha(@fg, 0.05);
+}
+
+.stage-art {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 6px;
+  background-image: linear-gradient(135deg, mix(@accent, @bg, 0.62), mix(@accent, @bg, 0.86));
+}
+
+.stage-track-title {
+  color: @fg;
+}
+
+.stage-track-artist {
+  font-size: 12px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-transport button {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-transport button label {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-size: 11px;
+}
+
+.stage-transport button:hover {
+  background-color: alpha(@fg, 0.1);
+  color: @fg;
+}
+
+
+.stage-big-time {
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
+  font-weight: 300;
+  font-size: 96px;
+  letter-spacing: 0.02em;
+  font-feature-settings: "tnum";
+  color: @fg;
+  text-shadow: 0 0 44px alpha(@fg, 0.28);
+}
+
+.stage-floor.narrow .stage-big-time {
+  font-size: 72px;
+}
+
+
+.stage-sentence {
+  color: @fg;
+}
+
+.stage-cards {
+  margin-top: 4px;
+}
+
+.stage-card {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.85);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-card-title, .stage-card-tag {
+  letter-spacing: 0.14em;
+}
+
+
+.stage-card-tray label {
+  font-family: 'Hanken Grotesk', sans-serif;
+  color: @fg;
+}
+
+
+.stage-settings {
+  margin-top: 12px;
+}
+
+.stage-card-v label {
+  color: @fg;
+}
+
+.stage-card-v label.bread-weight-bold {
+  font-weight: 500;
+}
+
+.stage-card-rail {
+  min-height: 3px;
+}
+
+.stage-card-rail trough {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+.stage-card-rail progress {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @accent;
+}
+
+.stage-card-s {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+}
+
+
+.stage-note {
+  padding: 9px 0;
+  border-top: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-note:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.stage-note-app {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: @accent;
+}
+
+.stage-note-time {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+  font-feature-settings: "tnum";
+}
+
+.stage-note-dismiss {
+  padding: 0;
+  color: alpha(@fg, 0.52);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.stage-note-dismiss label {
+  font-size: 12px;
+}
+
+.stage-note:hover .stage-note-dismiss, .stage-note-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.stage-note-msg {
+  font-size: 13px;
+  color: @fg;
+}
+
+
+.stage-note-body {
+  font-family: 'Hanken Grotesk', sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-note-count {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: alpha(@fg, 0.52);
+  margin-left: 6px;
+}
+
+.stage-note-empty {
+  font-size: 13px;
+  color: alpha(@fg, 0.52);
+  padding: 6px 0;
+}
+
+
+.stage-power-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-power-btn label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stage-power-btn:hover {
+  color: @fg;
+  background-color: alpha(@fg, 0.07);
+}
+
+window.breadbar-stage button.stage-power-btn.armed {
+  background-color: @red;
+  color: @bg;
+}
+
+.stage-power-hint {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: @red;
+  margin-left: 6px;
+}
+
+
+.stage-group {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+  padding: 12px 0 6px;
+}
+
+.stage-row {
+  padding: 10px 12px;
+  border-radius: 9px;
+}
+
+window.breadbar-stage button.stage-row.sel {
+  background-color: alpha(@fg, 0.09);
+}
+
+.stage-row-glyph {
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 7px;
+  background-color: mix(@bg, @fg, 0.11);
+  color: alpha(@fg, 0.52);
+}
+
+.stage-row.sel .stage-row-glyph {
+  background-color: @fg;
+  color: @bg;
+}
+
+.stage-row-name {
+  font-size: 16px;
+  color: @fg;
+}
+
+.stage-row-sub {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-row-act {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: @bg;
+  background-color: @fg;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.stage-answer {
+  font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;
+  font-weight: 300;
+  font-size: 64px;
+  color: @fg;
+  padding: 10px 0;
+}
+
+
+.stage-brass-probe {
+  color: @accent;
+}
+
+.stage-empty {
+  color: alpha(@fg, 0.52);
+  padding: 14px 0;
+}
+
+
+.stage-foot label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-foot label.stage-foot-key {
+  font-weight: 500;
+  color: @fg;
+}
+
+
+.stage-tile-name, window.breadbar.pill .bread-widget-slot label {
+  line-height: 17.4px;
+}
+
+.stage-chip label {
+  line-height: 18.125px;
+}
+
+.stage-track-title, .stage-sentence, .stage-card-v label, .stage-empty,
+.surtitle-msg {
+  line-height: 20.3px;
+}
+
+.stage-track-artist {
+  line-height: 17.4px;
+}
+
+.stage-note-msg, .stage-note-empty {
+  line-height: 18.85px;
+}
+
+.stage-row-name {
+  line-height: 23.2px;
+}
+
+.stage-transport button label {
+  line-height: 15.95px;
+}
+
+.stage-ctl-label, .stage-ctl-value, .stage-card-title, .stage-card-tag,
+button.stage-clear label, .stage-power-btn label, .stage-group,
+.stage-row-sub, .stage-row-act, .stage-foot label, .stage-kbd, .stage-mode,
+.surtitle-app, .pill-level-name, .pill-level-pct, .pill-flag-label,
+.stage-power-hint {
+  line-height: 10px;
+}
+
+.stage-note-app, .stage-note-time, .stage-note-dismiss label {
+  line-height: 12px;
+}
+
+.stage-card-s {
+  line-height: 13px;
+}
+
+.stage-tile-glyph, window.breadbar.pill .clock-plain-time {
+  line-height: 17px;
+}
+
+.stage-row-glyph {
+  line-height: 14px;
+}
+
+window.breadbar.pill .workspace-btn label, .pill-ws-current-value {
+  line-height: 13px;
+}
+
+.stage-answer {
+  line-height: 64px;
+}
+
+.stage-big-time {
+  line-height: 78.72px;
+}
+
+.stage-floor.narrow .stage-big-time {
+  line-height: 59.04px;
 }

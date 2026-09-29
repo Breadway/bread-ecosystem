@@ -87,6 +87,10 @@ pub(super) struct RawManifest {
     pub(super) launcher: Option<RawLauncher>,
     pub(super) panel: Option<RawPanel>,
     pub(super) osd: Option<RawOsd>,
+    /// `[notifications]` (BAR-30 phase 4): how an incoming notification is
+    /// presented. `None` for every theme but spotlight, which resolves to
+    /// `Notifications::default()` ("toast", today's behaviour).
+    pub(super) notifications: Option<RawNotifications>,
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
     /// Overlay CSS path, resolved relative to the theme file's own directory.
@@ -110,6 +114,22 @@ pub(super) struct RawBar {
     /// `WidgetSpec`.
     #[serde(default)]
     pub(super) widget: Vec<RawThemeWidget>,
+    /// `[bar.autohide]` (BAR-27 phase 1): whether the bar tucks itself above
+    /// the top edge when idle. Omitted entirely for every theme but
+    /// spotlight, which is exactly `AutoHide::default()`'s `enabled = false`.
+    pub(super) autohide: Option<RawAutoHide>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawAutoHide {
+    pub(super) enabled: Option<bool>,
+    pub(super) hover_zone_width: Option<i64>,
+    pub(super) hover_zone_height: Option<i64>,
+    pub(super) retuck_delay_ms: Option<i64>,
+    pub(super) notification_peek_ms: Option<i64>,
+    pub(super) level_peek_ms: Option<i64>,
+    pub(super) workspace_peek_ms: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -224,6 +244,9 @@ pub(super) struct RawWorkspacesModule {
     /// silently truncated/padded, matching this file's "typo'd key is a
     /// hard error" policy for enum-ish values.
     pub(super) dot_widths: Option<Vec<i64>>,
+    /// See [`super::types::WorkspaceDisplay`]. `None` here (the field unset)
+    /// resolves to `WorkspaceDisplay::All`, not the string `"none"`.
+    pub(super) display: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -274,6 +297,15 @@ pub(super) struct RawPanel {
 pub(super) struct RawOsd {
     pub(super) enabled: Option<Vec<String>>,
     pub(super) dismiss_ms: Option<i64>,
+    /// BAR-30 phase 4: `"window"` (default) or `"pill"`; see `types::OSD_STYLES`.
+    pub(super) style: Option<String>,
+}
+
+/// `[notifications]` (BAR-30 phase 4); see `types::Notifications`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawNotifications {
+    pub(super) style: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -631,6 +663,15 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
         ),
     };
     let show_empty = ws.and_then(|w| w.show_empty).unwrap_or(true);
+    let display = match ws.and_then(|w| w.display.as_deref()) {
+        None => WorkspaceDisplay::All,
+        Some("none") => WorkspaceDisplay::None,
+        Some("current") => WorkspaceDisplay::Current,
+        Some("all") => WorkspaceDisplay::All,
+        Some(other) => bail!(
+            "theme '{theme_id}': modules.workspaces.display = \"{other}\" is not none|current|all"
+        ),
+    };
     let dot_widths = match ws.and_then(|w| w.dot_widths.as_ref()) {
         None => DEFAULT_DOT_WIDTHS,
         Some(v) if v.len() == 4 => [v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32],
@@ -662,6 +703,7 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
             style,
             show_empty,
             dot_widths,
+            display,
         },
         clock: ClockModule {
             style: cstyle,
@@ -910,6 +952,77 @@ fn resolve_osd(theme_id: &str, o: Option<&RawOsd>) -> anyhow::Result<Osd> {
         }
         out.dismiss_ms = ms;
     }
+    if let Some(style) = o.and_then(|o| o.style.clone()) {
+        if !super::types::OSD_STYLES.contains(&style.as_str()) {
+            bail!(
+                "theme '{theme_id}': osd.style = \"{style}\" is not one of {}",
+                super::types::OSD_STYLES.join("|")
+            );
+        }
+        out.style = style;
+    }
+    Ok(out)
+}
+
+fn resolve_notifications(
+    theme_id: &str,
+    n: Option<&RawNotifications>,
+) -> anyhow::Result<Notifications> {
+    let mut out = Notifications::default();
+    if let Some(style) = n.and_then(|n| n.style.clone()) {
+        if !super::types::NOTIFICATION_STYLES.contains(&style.as_str()) {
+            bail!(
+                "theme '{theme_id}': notifications.style = \"{style}\" is not one of {}",
+                super::types::NOTIFICATION_STYLES.join("|")
+            );
+        }
+        out.style = style;
+    }
+    Ok(out)
+}
+
+fn resolve_autohide(theme_id: &str, a: Option<&RawAutoHide>) -> anyhow::Result<AutoHide> {
+    let mut out = AutoHide::default();
+    let Some(a) = a else { return Ok(out) };
+    if let Some(v) = a.enabled {
+        out.enabled = v;
+    }
+    if let Some(v) = a.hover_zone_width {
+        if v < 1 {
+            bail!("theme '{theme_id}': bar.autohide.hover_zone_width must be >= 1");
+        }
+        out.hover_zone_width = v;
+    }
+    if let Some(v) = a.hover_zone_height {
+        if v < 1 {
+            bail!("theme '{theme_id}': bar.autohide.hover_zone_height must be >= 1");
+        }
+        out.hover_zone_height = v;
+    }
+    if let Some(v) = a.retuck_delay_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.retuck_delay_ms must be >= 0");
+        }
+        out.retuck_delay_ms = v;
+    }
+    if let Some(v) = a.notification_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.notification_peek_ms must be >= 0");
+        }
+        out.notification_peek_ms = v;
+    }
+    if let Some(v) = a.level_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.level_peek_ms must be >= 0");
+        }
+        out.level_peek_ms = v;
+    }
+    if let Some(v) = a.workspace_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.workspace_peek_ms must be >= 0");
+        }
+        out.workspace_peek_ms = v;
+    }
     Ok(out)
 }
 
@@ -1028,6 +1141,8 @@ impl RawManifest {
         let launcher = resolve_launcher(&id, self.launcher.as_ref())?;
         let panel = resolve_panel(&id, self.panel.as_ref())?;
         let osd = resolve_osd(&id, self.osd.as_ref())?;
+        let notifications = resolve_notifications(&id, self.notifications.as_ref())?;
+        let autohide = resolve_autohide(&id, self.bar.as_ref().and_then(|b| b.autohide.as_ref()))?;
         let widgets = resolve_widgets(
             &id,
             self.bar
@@ -1078,6 +1193,8 @@ impl RawManifest {
             launcher,
             panel,
             osd,
+            notifications,
+            autohide,
             widgets,
             surfaces,
             compositor,

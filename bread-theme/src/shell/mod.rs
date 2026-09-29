@@ -85,6 +85,8 @@ pub struct ShellTheme {
     launcher: Launcher,
     panel: Panel,
     osd: Osd,
+    notifications: Notifications,
+    autohide: AutoHide,
     widgets: Vec<ThemeWidget>,
     surfaces: BTreeMap<String, Surface>,
     compositor: BTreeMap<String, LayerRule>,
@@ -123,9 +125,22 @@ impl ShellTheme {
     pub fn panel(&self) -> &Panel {
         &self.panel
     }
-    /// `[osd]`: which on-screen displays are enabled and their linger time.
+    /// `[osd]`: which on-screen displays are enabled, their linger time, and
+    /// (BAR-30 phase 4) whether a level change draws in a standalone window
+    /// or inside the bar pill.
     pub fn osd(&self) -> &Osd {
         &self.osd
+    }
+    /// `[notifications]` (BAR-30 phase 4): whether an incoming notification
+    /// shows as a standalone toast or a surtitle caption under the pill.
+    pub fn notifications(&self) -> &Notifications {
+        &self.notifications
+    }
+    /// `[bar.autohide]`: whether the bar tucks itself away above the top
+    /// edge and the hot-zone/peek timings that bring it back. `enabled` is
+    /// `false` for every theme that doesn't set this table.
+    pub fn autohide(&self) -> &AutoHide {
+        &self.autohide
     }
     /// `[[bar.widget]]`: theme-declared live bar widgets (each a poll + a
     /// node tree). Empty for every builtin except where a demo adds one.
@@ -1180,7 +1195,7 @@ mod tests {
         );
     }
 
-    // ---- spotlight builtin (plan §11 phase 6) ------------------------------
+    // ---- spotlight builtin (BAR-27 phase 1: the pill redesign) ------------
 
     #[test]
     fn spotlight_loads_and_appears_in_list_alongside_the_other_two() {
@@ -1208,77 +1223,134 @@ mod tests {
     }
 
     #[test]
-    fn spotlight_window_is_a_centred_capsule_not_a_full_width_bar() {
+    fn spotlight_window_is_a_floating_content_hugging_pill() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
         let w = theme.window();
         // Anchored top ONLY: neither left nor right, which is what makes
-        // gtk4-layer-shell centre the surface instead of stretching it
-        // (THEME_SYSTEM_PLAN.md §7).
+        // gtk4-layer-shell centre the surface instead of stretching it.
         assert_eq!(w.anchors, vec!["top"]);
-        assert_eq!(w.width, Width::Px(480));
-        assert_eq!(w.height, 36);
-        assert_eq!(w.margin.top, 16);
+        // "fill" on a bar with no left/right anchor to stretch between means
+        // "hug the content's natural width" (see breadbar's `Width::Fill`
+        // handling), not liquid-motion's edge-to-edge stretch: this is what
+        // lets the pill's own width track its workspace/widget content.
+        assert_eq!(w.width, Width::Fill);
+        assert_eq!(w.height, 30);
+        assert_eq!(w.margin.top, 10);
         assert_eq!(
             w.exclusive,
             Exclusive::None,
-            "the capsule floats over tiled content, unlike Island/Edge's reserved strip"
+            "no exclusive zone: windows use the full screen behind the pill"
         );
+    }
+
+    #[test]
+    fn spotlight_bar_border_is_full_and_rounds_to_a_pill() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.bar_border(), BarBorder::Full);
+        // A 30px-tall window with a >=15px corner radius renders fully
+        // rounded (GTK clamps radius to half the shorter side); 999
+        // guarantees that regardless of the window's exact measured height.
+        assert!(t.radius_bar() >= 15);
+    }
+
+    #[test]
+    fn spotlight_pill_slots_are_one_flat_row_in_mockup_order() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        // Workspaces, divider, left widget slot, time, right widget slot,
+        // low-battery flag, unread dot: bos-ui-demos/proposed/
+        // spotlight-stage.html's `.wick` row, in that exact order, plus the
+        // other themes' right_of_workspaces / left_of_stats widget
+        // placements so widgets registered there still render. Everything
+        // lives in ONE slot (not spread across left/centre/right) so the
+        // pill renders as a single tight flex row with no CenterBox-induced
+        // gaps between groups of uneven width. The centre slot specifically:
+        // GtkCenterBox measures `centre + 2 * max(left, right)`, so a
+        // left-slot row would render at twice its content's width.
         assert_eq!(
-            w.keyboard,
-            Keyboard::OnDemand,
-            "keyboard focus hands over only while launcher_entry holds it"
+            theme.slots().centre,
+            vec![
+                "workspaces",
+                "sep",
+                "widget:right_of_workspaces",
+                "widget:left_of_clock",
+                "clock",
+                "widget:right_of_clock",
+                "widget:left_of_stats",
+                "level",
+                "flag",
+                "unread",
+            ]
         );
-    }
-
-    #[test]
-    fn spotlight_launcher_is_embedded_not_an_overlay_window() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert_eq!(theme.launcher().mode, LauncherMode::Embedded);
-        assert_eq!(theme.slots().centre, vec!["launcher_entry"]);
-        assert_eq!(theme.slots().drawer, vec!["launcher_results"]);
+        assert!(theme.slots().left.is_empty());
+        assert!(theme.slots().right.is_empty());
         assert!(
-            !theme.slots().drawer.is_empty(),
-            "spotlight is the one builtin that actually uses the drawer slot"
+            theme.slots().drawer.is_empty(),
+            "phase 1 is the pill only; the stage/drawer isn't wired up yet"
         );
     }
 
     #[test]
-    fn spotlight_launcher_widget_slot_gives_left_of_stats_widgets_a_home() {
+    fn spotlight_workspaces_are_pill_style_showing_all_by_default() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let ws = &theme.modules().workspaces;
+        assert!(matches!(ws.style, WorkspaceStyle::Pill));
+        assert!(matches!(ws.display, WorkspaceDisplay::All));
         assert!(
-            theme
-                .slots()
-                .right
-                .iter()
-                .any(|s| s == "widget:left_of_stats"),
-            "a Lua widget requesting WidgetPlacement::LeftOfStats (e.g. \
-             git-branch-widget.lua) must have a home under spotlight: {:?}",
-            theme.slots().right
+            !ws.show_empty,
+            "display=all means occupied-plus-active, same as show_empty=false already did"
         );
     }
 
     #[test]
-    fn spotlight_query_modes_and_sections_are_enabled_phase_6c() {
+    fn spotlight_clock_is_plain_not_flip_or_none() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let l = theme.launcher();
-        assert!(l.sections, "phase 6c: recent/apps headers are implemented");
-        for mode in ["apps", "calc", "cmd", "url"] {
-            assert!(
-                l.modes.iter().any(|m| m == mode),
-                "spotlight.modes should list \"{mode}\": {:?}",
-                l.modes
-            );
-        }
+        assert!(matches!(theme.modules().clock.style, ClockStyle::Plain));
     }
 
     #[test]
-    fn spotlight_launcher_search_state_geometry_differs_from_idle() {
+    fn spotlight_autohide_is_enabled_with_the_mockups_own_timings() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let l = theme.launcher();
-        assert_eq!(l.width, 480);
-        assert_eq!(l.search_width, 520);
-        assert_eq!(l.radius, 22);
-        assert_eq!(l.search_radius, 20);
+        let a = theme.autohide();
+        assert!(a.enabled);
+        assert_eq!(a.hover_zone_width, 420);
+        assert_eq!(a.hover_zone_height, 14);
+        assert_eq!(a.retuck_delay_ms, 600);
+        assert_eq!(a.notification_peek_ms, 3800);
+        assert_eq!(a.level_peek_ms, 1400);
+        assert_eq!(a.workspace_peek_ms, 1200);
+    }
+
+    #[test]
+    fn autohide_defaults_to_disabled_for_every_theme_that_omits_the_table() {
+        // liquid-motion (and every other builtin but spotlight) never sets
+        // [bar.autohide]: "always visible" must be what a theme gets for
+        // free, not something every theme has to opt into.
+        let theme = resolve_builtin();
+        assert!(!theme.autohide().enabled);
+        assert_eq!(theme.autohide(), &AutoHide::default());
+    }
+
+    #[test]
+    fn spotlight_light_fill_is_flat_and_a_palette_token_not_hex() {
+        // Phase-1 review must-fix: the mockup's `--light` (warm-white
+        // active-chip/on-accent fill) is a fixed foreground tone, not the
+        // wallpaper-tracking accent hue, so `accent_from`/`accent_to` point
+        // at `fg`, not `accent`. Still flat (both ends the same token) and
+        // still a palette token, not raw hex.
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.accent_from(), "fg");
+        assert_eq!(t.accent_to(), "fg");
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("@fg"),
+            "accent_from/accent_to must resolve to the @fg palette token:\n{css}"
+        );
+        assert!(
+            !css.contains("#e87898"),
+            "the demo's pink hex must not leak into this palette-token theme:\n{css}"
+        );
     }
 
     #[test]
@@ -1292,42 +1364,106 @@ mod tests {
         assert_eq!(l.search_radius, l.radius);
     }
 
+    // ---- modules.workspaces.display (BAR-27 phase 1) ----------------------
+
     #[test]
-    fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+    fn workspace_display_defaults_to_all_when_unset() {
+        let theme = resolve_builtin();
         assert!(matches!(
-            theme.modules().workspaces.style,
-            WorkspaceStyle::Dots
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::All
         ));
-        assert_eq!(theme.modules().workspaces.dot_widths, [8, 13, 17, 22]);
     }
 
     #[test]
-    fn spotlight_clock_is_none_with_placeholder_clock_set() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert!(matches!(theme.modules().clock.style, ClockStyle::None));
-        assert!(
-            theme.modules().clock.placeholder_clock,
-            "spotlight's entry placeholder stands in for a clock module entirely"
+    fn workspace_display_none_and_current_parse() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "wsnone",
+            r#"
+            name = "N"
+            id = "wsnone"
+            [modules.workspaces]
+            display = "none"
+        "#,
         );
+        let theme = load_named("wsnone").unwrap();
+        assert!(matches!(
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::None
+        ));
+
+        write_theme(
+            &xdg,
+            "wscur",
+            r#"
+            name = "C"
+            id = "wscur"
+            [modules.workspaces]
+            display = "current"
+        "#,
+        );
+        let theme = load_named("wscur").unwrap();
+        assert!(matches!(
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::Current
+        ));
     }
 
     #[test]
-    fn spotlight_accent_is_flat_pink_and_a_palette_token_not_hex() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let t = theme.tokens();
-        assert_eq!(t.accent_from(), "pink");
-        assert_eq!(t.accent_to(), "pink");
-        let css = theme.css(&crate::Palette::default());
-        assert!(
-            css.contains("@pink"),
-            "accent_from/accent_to must resolve to the @pink palette token, not a hex literal:\n{css}"
+    fn workspace_display_bad_value_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "wsbad",
+            r#"
+            name = "B"
+            id = "wsbad"
+            [modules.workspaces]
+            display = "sometimes"
+        "#,
         );
-        assert!(
-            !css.contains("#e87898"),
-            "the demo's pink hex must never leak into the manifest, palette theming depends on \
-             this staying a palette token name:\n{css}"
+        let err = load_named("wsbad").unwrap_err();
+        assert!(format!("{err:#}").contains("none|current|all"));
+    }
+
+    // ---- bar.autohide validation (BAR-27 phase 1) --------------------------
+
+    #[test]
+    fn autohide_negative_duration_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "ahbad",
+            r#"
+            name = "A"
+            id = "ahbad"
+            [bar.autohide]
+            enabled = true
+            retuck_delay_ms = -1
+        "#,
         );
+        let err = load_named("ahbad").unwrap_err();
+        assert!(format!("{err:#}").contains("retuck_delay_ms"));
+    }
+
+    #[test]
+    fn autohide_zero_hover_zone_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "ahzero",
+            r#"
+            name = "A"
+            id = "ahzero"
+            [bar.autohide]
+            enabled = true
+            hover_zone_width = 0
+        "#,
+        );
+        let err = load_named("ahzero").unwrap_err();
+        assert!(format!("{err:#}").contains("hover_zone_width"));
     }
 
     // ---- daylight builtin (plan §11 phase 7) -------------------------

@@ -87,12 +87,24 @@ pub fn describe() -> Value {
                 "limits": { "max_depth": super::types::WIDGET_MAX_DEPTH,
                             "max_nodes": super::types::WIDGET_MAX_NODES },
             },
+            "autohide": {
+                "enabled":              { "type": "bool", "default": false },
+                "hover_zone_width":     { "type": "int", "unit": "px", "default": super::types::AutoHide::default().hover_zone_width },
+                "hover_zone_height":    { "type": "int", "unit": "px", "default": super::types::AutoHide::default().hover_zone_height },
+                "retuck_delay_ms":      { "type": "int", "unit": "ms", "default": super::types::AutoHide::default().retuck_delay_ms },
+                "notification_peek_ms": { "type": "int", "unit": "ms", "default": super::types::AutoHide::default().notification_peek_ms },
+                "level_peek_ms":        { "type": "int", "unit": "ms", "default": super::types::AutoHide::default().level_peek_ms },
+                "workspace_peek_ms":    { "type": "int", "unit": "ms", "default": super::types::AutoHide::default().workspace_peek_ms },
+                "note": "false (always visible) for every theme that omits this table",
+            },
         },
         "modules": {
             "workspaces": {
                 "style":      { "type": "enum", "values": ["trail", "pill", "dots"] },
                 "show_empty": { "type": "bool" },
                 "dot_widths": { "type": "[int; 4]", "note": "style = dots only" },
+                "display":    { "type": "enum", "values": ["none", "current", "all"], "default": "all",
+                                 "note": "which workspaces are shown, independent of style/show_empty" },
             },
             "clock": {
                 "style":            { "type": "enum", "values": ["flip", "plain", "none"] },

@@ -219,9 +219,20 @@ pub(super) fn subst_pairs(
             "font_family_css".into(),
             crate::font_family_css(&t.font_family, &t.font_fallback),
         ),
+        // The theme's body/UI face on its own (its `font_fallback` list),
+        // for surfaces whose running text is set apart from the display
+        // face: spotlight's stage and surtitle (the mockup's `--ui` vs
+        // `--display`).
+        (
+            "font_ui_css".into(),
+            crate::font_family_css(&t.font_fallback, "sans-serif"),
+        ),
         ("panel".into(), panel.into()),
         ("ink".into(), ink.into()),
         ("card_alpha".into(), card_alpha),
+        // The bar's own fill alpha, for surfaces that draw the bar's chrome
+        // on an inner box instead of the window (spotlight's shadowed pill).
+        ("bg_alpha".into(), bg_alpha.clone()),
         ("panel_surface_alpha".into(), panel_surface_alpha),
         ("trough_bg".into(), trough_bg),
         ("radius_search".into(), radius_search),

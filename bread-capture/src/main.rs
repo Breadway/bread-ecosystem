@@ -61,6 +61,46 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             // (item E) doesn't need a view of its own.
             ("capsule-sections", "capsule-sections.png"),
             ("capsule-calc", "capsule-calc.png"),
+            // BAR-27 phase 1: the spotlight pill redesign (only rendered
+            // under `BREAD_SHELL_THEME=spotlight`, same caveat as the
+            // capsule views above). "pill-ws-none"/"pill-ws-current"/
+            // "pill-ws-all" all dispatch through the same capture code as
+            // "pill-shown" inside breadbar's own `screenshot.rs`; what
+            // actually varies between them is `modules.workspaces.display`
+            // in the theme selected via `BREAD_SHELL_THEME`/
+            // `XDG_CONFIG_HOME`, not anything in breadbar's dispatch logic,
+            // so a caller wanting all three needs three separate
+            // invocations with three different themes, not three flags to
+            // this one.
+            ("pill-shown", "pill-shown.png"),
+            ("pill-tucked", "pill-tucked.png"),
+            ("pill-hover", "pill-hover.png"),
+            ("pill-widgets-off", "pill-widgets-off.png"),
+            ("pill-widgets-on", "pill-widgets-on.png"),
+            ("pill-ws-none", "pill-ws-none.png"),
+            ("pill-ws-current", "pill-ws-current.png"),
+            ("pill-ws-all", "pill-ws-all.png"),
+            ("pill-low-battery", "pill-low-battery.png"),
+            // Phase-1 review must-fix: the tucked hot-zone's narrowed input
+            // region (a debug-only overlay; see breadbar's
+            // `pill_hotzone::set_debug_visible`).
+            ("pill-tucked-input", "pill-tucked-input.png"),
+            // BAR-30 phases 2-4: the spotlight stage, surtitles, and
+            // in-pill levels.
+            ("stage-idle", "stage-idle.png"),
+            ("stage-results", "stage-results.png"),
+            ("stage-commands", "stage-commands.png"),
+            ("stage-calc", "stage-calc.png"),
+            ("stage-power-armed", "stage-power-armed.png"),
+            ("stage-settings", "stage-settings.png"),
+            ("stage-narrow", "stage-narrow.png"),
+            // BAR-31: parity views for the empty-results hint, a
+            // notification row's hover state and a critical caption.
+            ("stage-empty", "stage-empty.png"),
+            ("stage-note-hover", "stage-note-hover.png"),
+            ("surtitle", "surtitle.png"),
+            ("surtitle-critical", "surtitle-critical.png"),
+            ("pill-level", "pill-level.png"),
         ],
     ),
     ("breadbox", &[("launcher", "launcher.png")]),
@@ -171,6 +211,12 @@ struct Cli {
     /// Height of the isolated session's capture canvas.
     #[arg(long, default_value_t = 1080)]
     isolate_height: u32,
+
+    /// Image to use as the isolated session's background instead of the
+    /// generated rainbow (for example a render of a design mockup's desktop,
+    /// so a capture can be laid over the mockup's own backdrop).
+    #[arg(long)]
+    background: Option<PathBuf>,
 }
 
 fn known_app_names() -> String {
@@ -248,6 +294,7 @@ fn main() -> Result<ExitCode> {
         Some(isolation::Isolation::start(
             cli.isolate_width,
             cli.isolate_height,
+            cli.background.as_deref(),
         )?)
     };
 

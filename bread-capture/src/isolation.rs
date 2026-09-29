@@ -64,6 +64,9 @@ pub struct Isolation {
     pub wayland_display: String,
     config_path: PathBuf,
     background_path: PathBuf,
+    /// Whether `background_path` is a generated file this instance must
+    /// remove on drop (false for a caller-supplied `--background`).
+    owns_background: bool,
     runtime_dir: PathBuf,
 }
 
@@ -73,11 +76,17 @@ impl Isolation {
     /// `HYPRLAND_INSTANCE_SIGNATURE`) so every subsequent
     /// `bread_utils::proc::run` spawn (the target app, and in turn its own
     /// `grim` calls) inherits them and lands inside the isolated instance.
-    pub fn start(width: u32, height: u32) -> Result<Self> {
+    /// `background`: an image to use as the canvas instead of the generated
+    /// rainbow, e.g. a render of a design mockup's own desktop so a capture
+    /// can be compared against the mockup pixel for pixel.
+    pub fn start(width: u32, height: u32, background: Option<&Path>) -> Result<Self> {
         let runtime_dir = PathBuf::from(
             std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string()),
         );
-        let background_path = write_rainbow_background(width, height)?;
+        let (background_path, owns_background) = match background {
+            Some(path) => (path.to_path_buf(), false),
+            None => (write_rainbow_background(width, height)?, true),
+        };
         let config_path = write_headless_config(width, height, &background_path)?;
         let before_sockets: HashSet<String> = dir_names(&runtime_dir)
             .into_iter()
@@ -100,6 +109,7 @@ impl Isolation {
             wayland_display: String::new(),
             config_path,
             background_path,
+            owns_background,
             runtime_dir: runtime_dir.clone(),
         };
 
@@ -136,7 +146,9 @@ impl Drop for Isolation {
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.config_path);
-        let _ = std::fs::remove_file(&self.background_path);
+        if self.owns_background {
+            let _ = std::fs::remove_file(&self.background_path);
+        }
         // Killing sway doesn't unlink the socket it bound: confirmed
         // empirically, a killed instance leaves both files behind, so
         // without this, every capture run permanently orphans a

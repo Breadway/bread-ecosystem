@@ -244,6 +244,21 @@ window.breadbar-notification {
   color: {ink};
 }
 
+/* BAR-27 phase 1: the pill's hot-zone/lip satellite (`pill_hotzone.rs`).
+ * Transparent everywhere except the `.pill-lip` mark itself: this window's
+ * whole footprint is the hover target, most of which must stay invisible. */
+window.breadbar-pill-hotzone {
+  background-color: transparent;
+}
+
+/* Phase-1 review must-fix, screenshot-only (`pill_hotzone::set_debug_
+ * visible`, the "pill-tucked-input" view): a real input region paints
+ * nothing on its own, so this is what makes the fix visually checkable in a
+ * capture. Never shown on a real desktop. */
+.pill-hotzone-debug {
+  background-color: alpha(@red, 0.45);
+}
+
 window.breadbar-history {
   background-color: alpha({panel}, {card_alpha});
   color: {ink};
@@ -1264,4 +1279,949 @@ progressbar.bread-widget-node.bread-color-teal trough progress {
   font-size: 10px;
   opacity: 0.4;
   {launcher_footer_case}
+}
+
+
+/* ── Spotlight: pill, surtitle and stage (BAR-27, BAR-30, BAR-31) ───────
+ * Every rule below is scoped to a class only spotlight's surfaces carry
+ * (`window.breadbar.pill`, `.surtitle-*`, `.stage-*`), so it is inert for
+ * every other builtin. Values are the mockup's own
+ * (bos-ui-demos/proposed/spotlight-stage.html), with its colour variables
+ * mapped to palette roles instead of hex:
+ *   --light   -> @fg                       (warm-white fills and text)
+ *   --brass   -> @accent                   (caret, mode badge, app names, unread)
+ *   --ash     -> alpha(@fg, 0.52)          (secondary text)
+ *   --red     -> @red                      (critical, armed, low battery)
+ *   --line    -> alpha(@fg, 0.12)          (hairlines)
+ *   --stage   -> @bg
+ *   --velvet  -> mix(@bg, @fg, 0.07)
+ *   --velvet-2-> mix(@bg, @fg, 0.11)
+ * Fonts: --display is {font_family_css}, --ui is {font_ui_css}, --mono is
+ * Martian Mono. The shared sheet's `* { font-family; font-size }` targets
+ * every node, so faces and sizes are named on the label nodes themselves. */
+
+/* The pill (`.wick`). breadbar draws it on the window's inner box, inside a
+ * transparent margin, so the drop shadow has room to render; the input
+ * region is trimmed back to the pill itself. */
+window.breadbar.pill {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+window.breadbar.pill > box {
+  min-height: 28px;
+  /* 18px above the pill for its shadow; GTK already lays the window's
+   * child out 4px below the surface edge here, so 14 + 4. */
+  margin: 14px 24px 30px 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background-color: alpha(@bg, {bg_alpha});
+  border: 1px solid alpha(@fg, 0.12);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  transition: background-color 0.2s ease, opacity 0.25s ease;
+}
+
+window.breadbar.pill > box:hover {
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.94);
+}
+
+window.breadbar.pill.tucked > box {
+  opacity: 0;
+}
+
+window.breadbar.pill > box > centerbox {
+  padding: 0;
+}
+
+window.breadbar.pill .clock-plain {
+  padding: 0;
+}
+
+window.breadbar.pill .clock-plain-time {
+  color: @fg;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-feature-settings: "tnum";
+}
+
+window.breadbar.pill .workspace-btn {
+  min-width: 10px;
+  min-height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  color: alpha(@fg, 0.42);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+window.breadbar.pill .workspace-btn label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+window.breadbar.pill .workspace-btn.occupied {
+  color: alpha(@fg, 0.78);
+}
+
+window.breadbar.pill .workspace-btn:hover {
+  background: alpha(@fg, 0.1);
+}
+
+window.breadbar.pill .workspace-btn.active,
+window.breadbar.pill .workspace-btn.active:hover {
+  background: @fg;
+  color: @bg;
+  box-shadow: 0 0 10px alpha(@fg, 0.45);
+}
+
+/* `display = "current"`: the mockup's `.ws.current .wsb` plus its "WS"
+ * prefix. */
+.pill-ws-current-label {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: alpha(@fg, 0.52);
+  margin-right: 5px;
+}
+
+.pill-ws-current-value {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: @fg;
+}
+
+.pill-ws-current {
+  padding: 0 2px;
+}
+
+window.breadbar.pill separator.bar-sep {
+  min-height: 14px;
+  min-width: 1px;
+  margin: 0;
+  background: alpha(@fg, 0.12);
+}
+
+/* Widget slots either side of the time (`.slot`, `.wgt`). */
+window.breadbar.pill .bread-widget-slot {
+  margin: 0;
+}
+
+window.breadbar.pill .bread-widget-slot progressbar {
+  min-width: 44px;
+}
+
+window.breadbar.pill .bread-widget-slot label {
+  font-family: {font_ui_css};
+  font-size: 12px;
+  color: alpha(@fg, 0.52);
+}
+
+window.breadbar.pill .bread-widget-slot label.bread-weight-bold {
+  font-weight: 500;
+  color: @fg;
+  font-feature-settings: "tnum";
+}
+
+window.breadbar.pill .bread-widget-slot progressbar trough {
+  min-width: 44px;
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+window.breadbar.pill .bread-widget-slot progressbar progress {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @accent;
+}
+
+.pill-flag-dot {
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 999px;
+  background-color: @red;
+  box-shadow: 0 0 8px @red;
+  margin-right: 6px;
+}
+
+.pill-flag-label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: @red;
+}
+
+.pill-unread-dot {
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 999px;
+  background-color: @accent;
+}
+
+/* The tucked pill's lip; fades rather than snapping. */
+.pill-lip {
+  min-width: 44px;
+  min-height: 3px;
+  border-radius: 0 0 3px 3px;
+  background-color: alpha(@fg, 0.35);
+  transition: opacity 0.25s ease;
+}
+
+.pill-lip.gone {
+  opacity: 0;
+}
+
+/* In-pill levels (`.level`), shown in place of everything but the flag. */
+.pill-level-name, .pill-level-pct {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: alpha(@fg, 0.52);
+  font-feature-settings: "tnum";
+}
+
+.pill-level-bar {
+  min-width: 120px;
+  min-height: 4px;
+}
+
+.pill-level-bar trough {
+  min-width: 120px;
+  min-height: 4px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+.pill-level-bar progress {
+  min-height: 4px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @fg;
+}
+
+/* The surtitle caption. The window is transparent; the row carries the
+ * look and fades, while breadbar slides the surface down 6px. */
+window.breadbar-surtitle {
+  background-color: transparent;
+}
+
+.surtitle-row {
+  padding: 7px 14px;
+  border-radius: 8px;
+  background-color: alpha(@bg, 0.88);
+  border: 1px solid alpha(@fg, 0.12);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.surtitle-row.show {
+  opacity: 1;
+}
+
+.surtitle-app {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: @accent;
+}
+
+.surtitle-row.critical .surtitle-app {
+  color: @red;
+}
+
+.surtitle-msg {
+  font-family: {font_ui_css};
+  font-size: 14px;
+  color: @fg;
+}
+
+/* ── The stage ───────────────────────────────────────────────────────── */
+
+window.breadbar-stage {
+  background-color: transparent;
+}
+
+.stage-root {
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.stage-root.open {
+  opacity: 1;
+}
+
+.stage-house {
+  background-color: alpha(@bg, 0.78);
+}
+
+/* Drawn by breadbar (a clipped trapezoid of a radial gradient); only its
+ * colour and fade come from here. */
+.stage-cone {
+  color: @fg;
+  opacity: 0;
+  transition: opacity 0.5s ease 0.05s;
+}
+
+.stage-root.open .stage-cone {
+  opacity: 1;
+}
+
+/* Running text on the stage is the UI face at the mockup's 14px body size. */
+.stage-entry text, .stage-entry placeholder, .stage-chip label, .stage-track-title,
+.stage-track-artist, .stage-sentence, .stage-note-msg, .stage-note-empty,
+.stage-row-name, .stage-tile-name, .stage-empty, .stage-card-v label,
+.stage-card-v {
+  font-family: {font_ui_css};
+  font-size: 14px;
+}
+
+/* `.label`: small mono caps with a value on the right. */
+.stage-ctl-label, .stage-card-title, .stage-card-tag {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-ctl-value {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-feature-settings: "tnum";
+  color: @fg;
+}
+
+/* "Clear all": a button inside a `.label`, so the label's mono face, but
+ * mixed case (browsers reset text-transform on buttons). */
+button.stage-clear {
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: alpha(@fg, 0.52);
+}
+
+button.stage-clear label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+button.stage-clear:hover {
+  color: @fg;
+}
+
+/* Search */
+.stage-search {
+  padding: 14px 18px;
+  border-radius: 14px;
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.92);
+  border: 1px solid alpha(@fg, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 18px 50px rgba(0, 0, 0, 0.45),
+    0 -12px 40px alpha(@fg, 0.06);
+}
+
+.stage-mode {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: @bg;
+  background-color: @accent;
+  padding: 5px 7px;
+  border-radius: 4px;
+}
+
+entry.stage-entry, entry.stage-entry:focus-within {
+  min-height: 0;
+  padding: 0;
+  /* Pango will not set the line box below the face's own extent; trim
+   * the rest so the field is the mockup's 54px. */
+  margin: -2px 0;
+  caret-color: @accent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  color: @fg;
+}
+
+.stage-entry text, .stage-entry placeholder {
+  font-size: 22px;
+  /* `font: 400 22px/1.1`. */
+  line-height: 24.2px;
+  min-height: 0;
+}
+
+.stage-entry placeholder {
+  color: alpha(@fg, 0.32);
+}
+
+.stage-kbd {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+  border: 1px solid alpha(@fg, 0.12);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+/* Every stage button starts from nothing, so only the rules below paint. */
+.stage-tile, .stage-chip, .stage-power-btn, .stage-row,
+.stage-transport button, .stage-note-dismiss {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Recent tiles */
+.stage-tile {
+  padding: 10px 4px 9px;
+  border-radius: 10px;
+  min-width: 84px;
+  color: alpha(@fg, 0.52);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-tile:hover {
+  background-color: alpha(@fg, 0.06);
+  color: @fg;
+}
+
+window.breadbar-stage button.stage-tile.sel {
+  background-color: alpha(@fg, 0.1);
+  color: @fg;
+}
+
+.stage-tile-glyph {
+  font-family: {font_family_css};
+  font-size: 17px;
+  font-weight: 500;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 10px;
+  background-color: mix(@bg, @fg, 0.11);
+  color: @fg;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-tile.sel .stage-tile-glyph {
+  background-color: @fg;
+  color: @bg;
+  box-shadow: 0 0 18px alpha(@fg, 0.35);
+}
+
+.stage-tile-name {
+  font-size: 12px;
+}
+
+/* The floor's three zones */
+.stage-zone {
+  padding: 16px;
+  border-radius: 14px;
+  background-color: alpha(mix(@bg, @fg, 0.05), 0.72);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-zone-centre {
+  background-color: transparent;
+  border-color: transparent;
+  padding-top: 6px;
+}
+
+/* Sliders (`input[type=range]`: 18px tall, no inset). Element + both
+ * classes, to outrank the stock `scale.horizontal` padding. */
+scale.stage-slider.horizontal {
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+}
+
+.stage-slider trough {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+  margin: 0;
+}
+
+.stage-slider trough highlight {
+  min-height: 3px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @fg;
+  border-radius: 2px;
+}
+
+.stage-slider slider {
+  min-width: 10px;
+  min-height: 16px;
+  margin: -7px 0;
+  border: none;
+  border-radius: 2px;
+  outline: none;
+  background-image: none;
+  background-color: @fg;
+  box-shadow: 0 0 10px alpha(@fg, 0.5);
+}
+
+/* Chips. The row is a FlowBox (for `flex-wrap`); its children carry no
+ * padding or fill of their own. */
+.stage-chips > flowboxchild {
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  outline: none;
+}
+
+/* Chips */
+.stage-chip {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid alpha(@fg, 0.12);
+  color: alpha(@fg, 0.52);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.stage-chip label {
+  font-size: 12.5px;
+}
+
+.stage-chip:hover {
+  border-color: alpha(@fg, 0.3);
+  color: @fg;
+}
+
+window.breadbar-stage button.stage-chip.on {
+  color: @bg;
+  background-color: @fg;
+  border-color: @fg;
+}
+
+/* Now playing */
+.stage-play {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background-color: alpha(@fg, 0.05);
+}
+
+.stage-art {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 6px;
+  background-image: linear-gradient(135deg, mix(@accent, @bg, 0.62), mix(@accent, @bg, 0.86));
+}
+
+.stage-track-title {
+  color: @fg;
+}
+
+.stage-track-artist {
+  font-size: 12px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-transport button {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-transport button label {
+  font-family: {font_ui_css};
+  font-size: 11px;
+}
+
+.stage-transport button:hover {
+  background-color: alpha(@fg, 0.1);
+  color: @fg;
+}
+
+/* Centre zone */
+.stage-big-time {
+  font-family: {font_family_css};
+  font-weight: 300;
+  font-size: 96px;
+  letter-spacing: 0.02em;
+  font-feature-settings: "tnum";
+  color: @fg;
+  text-shadow: 0 0 44px alpha(@fg, 0.28);
+}
+
+.stage-floor.narrow .stage-big-time {
+  font-size: 72px;
+}
+
+/* Opaque: the ash running text and light emphasis are alpha in markup. */
+.stage-sentence {
+  color: @fg;
+}
+
+.stage-cards {
+  margin-top: 4px;
+}
+
+.stage-card {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background-color: alpha(mix(@bg, @fg, 0.07), 0.85);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-card-title, .stage-card-tag {
+  letter-spacing: 0.14em;
+}
+
+/* A tray-placement widget rendered whole inside the card frame: its own node
+ * lays itself out, so the card only frames it and sets the UI font. */
+.stage-card-tray label {
+  font-family: {font_ui_css};
+  color: @fg;
+}
+
+/* Stage settings menu: a chip row revealed under the power row. */
+.stage-settings {
+  margin-top: 12px;
+}
+
+.stage-card-v label {
+  color: @fg;
+}
+
+.stage-card-v label.bread-weight-bold {
+  font-weight: 500;
+}
+
+.stage-card-rail {
+  min-height: 3px;
+}
+
+.stage-card-rail trough {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: alpha(@fg, 0.14);
+}
+
+.stage-card-rail progress {
+  min-height: 3px;
+  border-radius: 2px;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  background-color: @accent;
+}
+
+.stage-card-s {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+}
+
+/* Notifications */
+.stage-note {
+  padding: 9px 0;
+  border-top: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-note:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.stage-note-app {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: @accent;
+}
+
+.stage-note-time {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: alpha(@fg, 0.52);
+  font-feature-settings: "tnum";
+}
+
+.stage-note-dismiss {
+  padding: 0;
+  color: alpha(@fg, 0.52);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.stage-note-dismiss label {
+  font-size: 12px;
+}
+
+.stage-note:hover .stage-note-dismiss, .stage-note-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.stage-note-msg {
+  font-size: 13px;
+  color: @fg;
+}
+
+/* The notification's body: its own line, dimmer than the title. */
+.stage-note-body {
+  font-family: {font_ui_css};
+  font-size: 12px;
+  line-height: 16px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-note-count {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: alpha(@fg, 0.52);
+  margin-left: 6px;
+}
+
+.stage-note-empty {
+  font-size: 13px;
+  color: alpha(@fg, 0.52);
+  padding: 6px 0;
+}
+
+/* Power row */
+.stage-power-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-power-btn label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stage-power-btn:hover {
+  color: @fg;
+  background-color: alpha(@fg, 0.07);
+}
+
+window.breadbar-stage button.stage-power-btn.armed {
+  background-color: @red;
+  color: @bg;
+}
+
+.stage-power-hint {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  color: @red;
+  margin-left: 6px;
+}
+
+/* Results */
+.stage-group {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+  padding: 12px 0 6px;
+}
+
+.stage-row {
+  padding: 10px 12px;
+  border-radius: 9px;
+}
+
+window.breadbar-stage button.stage-row.sel {
+  background-color: alpha(@fg, 0.09);
+}
+
+.stage-row-glyph {
+  font-family: {font_family_css};
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 7px;
+  background-color: mix(@bg, @fg, 0.11);
+  color: alpha(@fg, 0.52);
+}
+
+.stage-row.sel .stage-row-glyph {
+  background-color: @fg;
+  color: @bg;
+}
+
+.stage-row-name {
+  font-size: 16px;
+  color: @fg;
+}
+
+.stage-row-sub {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-row-act {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: @bg;
+  background-color: @fg;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.stage-answer {
+  font-family: {font_family_css};
+  font-weight: 300;
+  font-size: 64px;
+  color: @fg;
+  padding: 10px 0;
+}
+
+/* Only read for its colour: breadbar formats the calc result and the
+ * status sentence's emphasis with it. */
+.stage-brass-probe {
+  color: @accent;
+}
+
+.stage-empty {
+  color: alpha(@fg, 0.52);
+  padding: 14px 0;
+}
+
+/* Key hints (`.foot`) */
+.stage-foot label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-foot label.stage-foot-key {
+  font-weight: 500;
+  color: @fg;
+}
+
+/* Line boxes. The mockup's body is `14px/1.45`, so running text inherits a
+ * 1.45 line height, while its mono caps and numerals set `/1` (or their own
+ * factor). CSS scales line height by font size and Pango by the face's own
+ * extent, so each is given here as the mockup's pixel value. */
+.stage-tile-name, window.breadbar.pill .bread-widget-slot label {
+  line-height: 17.4px;
+}
+
+.stage-chip label {
+  line-height: 18.125px;
+}
+
+.stage-track-title, .stage-sentence, .stage-card-v label, .stage-empty,
+.surtitle-msg {
+  line-height: 20.3px;
+}
+
+.stage-track-artist {
+  line-height: 17.4px;
+}
+
+.stage-note-msg, .stage-note-empty {
+  line-height: 18.85px;
+}
+
+.stage-row-name {
+  line-height: 23.2px;
+}
+
+.stage-transport button label {
+  line-height: 15.95px;
+}
+
+.stage-ctl-label, .stage-ctl-value, .stage-card-title, .stage-card-tag,
+button.stage-clear label, .stage-power-btn label, .stage-group,
+.stage-row-sub, .stage-row-act, .stage-foot label, .stage-kbd, .stage-mode,
+.surtitle-app, .pill-level-name, .pill-level-pct, .pill-flag-label,
+.stage-power-hint {
+  line-height: 10px;
+}
+
+.stage-note-app, .stage-note-time, .stage-note-dismiss label {
+  line-height: 12px;
+}
+
+.stage-card-s {
+  line-height: 13px;
+}
+
+.stage-tile-glyph, window.breadbar.pill .clock-plain-time {
+  line-height: 17px;
+}
+
+.stage-row-glyph {
+  line-height: 14px;
+}
+
+window.breadbar.pill .workspace-btn label, .pill-ws-current-value {
+  line-height: 13px;
+}
+
+.stage-answer {
+  line-height: 64px;
+}
+
+.stage-big-time {
+  line-height: 78.72px;
+}
+
+.stage-floor.narrow .stage-big-time {
+  line-height: 59.04px;
 }
