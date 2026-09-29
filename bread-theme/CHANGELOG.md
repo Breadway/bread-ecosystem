@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0
+
 Epic PYWAL (ECO-29..33): removes the `wal`/ImageMagick subprocess dependency
 entirely.
 
