@@ -88,3 +88,15 @@ name = "breadarr"
 repo = "Breadway/breadarr"
 description = "Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI"
 notes = "Homelab, not shipped on BOS"
+
+[[products]]
+name = "breadboard-cli"
+repo = "Breadway/breadboard"
+description = "Command line and terminal UI for breadboard"
+notes = "Client package, not included in the BOS ISO"
+
+[[products]]
+name = "breadboard-desktop"
+repo = "Breadway/breadboard"
+description = "Native desktop shell for breadboard"
+notes = "Client package, not included in the BOS ISO"
