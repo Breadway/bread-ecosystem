@@ -1649,7 +1649,9 @@ entry.stage-entry, entry.stage-entry:focus-within {
 
 
 .stage-tile, .stage-chip, .stage-power-btn, .stage-row,
-.stage-transport button, .stage-note-dismiss {
+.stage-transport button, .stage-note-dismiss, .stage-split-main,
+.stage-split-more, .stage-drow, .stage-tray-btn, .stage-note-act,
+.stage-notes-more {
   background-color: transparent;
   background-image: none;
   border: none;
@@ -2003,11 +2005,14 @@ window.breadbar-stage button.stage-power-btn.armed {
   color: @bg;
 }
 
+
 .stage-power-hint {
   font-family: "Martian Mono", monospace;
   font-size: 10px;
+  letter-spacing: 0.08em;
   color: @red;
-  margin-left: 6px;
+  min-height: 12px;
+  margin-top: 6px;
 }
 
 
@@ -2168,4 +2173,307 @@ window.breadbar.pill .workspace-btn label, .pill-ws-current-value {
 
 .stage-floor.narrow .stage-big-time {
   line-height: 59.04px;
+}
+
+
+
+
+.pill-nowplaying-eq {
+  min-height: 10px;
+}
+
+.pill-eq-bar {
+  min-width: 2px;
+  min-height: 3px;
+  border-radius: 1px;
+  background-color: @accent;
+  animation: pill-eq 1s ease-in-out infinite;
+}
+
+.pill-eq-bar.b2 {
+  animation-delay: -0.4s;
+}
+
+.pill-eq-bar.b3 {
+  animation-delay: -0.7s;
+}
+
+@keyframes pill-eq {
+  0% { min-height: 3px; }
+  50% { min-height: 10px; }
+  100% { min-height: 3px; }
+}
+
+.pill-nowplaying.paused .pill-eq-bar {
+  animation: none;
+  min-height: 3px;
+}
+
+.pill-nowplaying-title {
+  font-family: sans-serif;
+  font-size: 12px;
+  line-height: 17.4px;
+  color: alpha(@fg, 0.52);
+}
+
+
+.pill-dnd {
+  min-width: 11px;
+  min-height: 11px;
+  border-radius: 999px;
+  box-shadow: inset -3px -2px 0 0 @accent;
+}
+
+
+.pill-unread-count {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: @accent;
+  color: @bg;
+}
+
+
+.stage-split {
+  border-radius: 6px;
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-split-main {
+  padding: 5px 10px;
+  border-radius: 5px 0 0 5px;
+  color: alpha(@fg, 0.52);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-split-main:hover, .stage-split-more:hover {
+  color: @fg;
+}
+
+.stage-split-name {
+  font-family: sans-serif;
+  font-size: 12.5px;
+  line-height: 16px;
+}
+
+.stage-split-sub {
+  font-family: sans-serif;
+  font-size: 10px;
+  line-height: 13px;
+  opacity: 0.8;
+}
+
+.stage-split-more {
+  padding: 0 9px;
+  border-radius: 0 5px 5px 0;
+  border-left: 1px solid alpha(@fg, 0.12);
+  color: alpha(@fg, 0.52);
+}
+
+.stage-split-more label {
+  font-family: sans-serif;
+  font-size: 11px;
+}
+
+.stage-split.on .stage-split-main {
+  background-color: @fg;
+  color: @bg;
+}
+
+.stage-split.on .stage-split-more {
+  background-color: alpha(@fg, 0.85);
+  color: @bg;
+  border-left-color: alpha(@bg, 0.15);
+}
+
+window.breadbar-stage button.stage-split-more.open {
+  background-color: @accent;
+  color: @bg;
+}
+
+.stage-drawer {
+  padding: 8px;
+  border-radius: 10px;
+  background-color: alpha(@bg, 0.55);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-dhead {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+  padding: 8px 8px 4px;
+}
+
+.stage-facts {
+  padding: 2px 8px 6px;
+}
+
+.stage-facts label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  line-height: 14px;
+  color: @fg;
+}
+
+.stage-drow {
+  padding: 6px 8px;
+  border-radius: 7px;
+  transition: background-color 0.15s ease;
+}
+
+.stage-drow:hover {
+  background-color: alpha(@fg, 0.06);
+}
+
+.stage-drow-name {
+  font-family: sans-serif;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: @fg;
+}
+
+.stage-drow.cur .stage-drow-name {
+  color: @accent;
+}
+
+.stage-drow-meta {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  line-height: 10px;
+  letter-spacing: 0.04em;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-drawer-empty {
+  font-family: sans-serif;
+  font-size: 12.5px;
+  color: alpha(@fg, 0.52);
+  padding: 6px 8px;
+}
+
+
+.stage-tray-btn {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  background-color: alpha(@fg, 0.05);
+  border: 1px solid alpha(@fg, 0.12);
+}
+
+.stage-tray-btn:hover {
+  background-color: alpha(@fg, 0.12);
+}
+
+
+.stage-sys-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.03em;
+  font-feature-settings: "tnum";
+  color: @fg;
+}
+
+.stage-sys-label, .stage-sys-foot {
+  font-family: "Martian Mono", monospace;
+  font-size: 9px;
+  line-height: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: alpha(@fg, 0.52);
+}
+
+.stage-sys-foot {
+  font-size: 10px;
+  line-height: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+
+.stage-spark {
+  color: @accent;
+  min-height: 26px;
+}
+
+
+.stage-note.critical {
+  padding: 9px 8px;
+  margin-bottom: 4px;
+  border-radius: 9px;
+  border: 1px solid alpha(@red, 0.3);
+  background-color: alpha(@red, 0.08);
+}
+
+.stage-note.critical + .stage-note {
+  border-top: none;
+}
+
+.stage-note.critical .stage-note-app {
+  color: @red;
+}
+
+.stage-note-actions {
+  margin-top: 6px;
+}
+
+.stage-note-act {
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid alpha(@fg, 0.12);
+  color: @fg;
+}
+
+.stage-note-act label {
+  font-family: sans-serif;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.stage-note-act.primary {
+  background-color: alpha(@fg, 0.09);
+}
+
+.stage-note-act:hover {
+  border-color: alpha(@fg, 0.3);
+}
+
+.stage-notes-more {
+  padding: 9px 0 0;
+  margin-top: 4px;
+  border-top: 1px solid alpha(@fg, 0.12);
+  color: alpha(@fg, 0.52);
+}
+
+.stage-notes-more label {
+  font-family: "Martian Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.stage-notes-more:hover {
+  color: @fg;
+}
+
+
+.stage-calc-note {
+  font-family: "Martian Mono", monospace;
+  font-size: 11px;
+  line-height: 15px;
+  color: alpha(@fg, 0.52);
 }

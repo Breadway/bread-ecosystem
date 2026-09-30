@@ -103,7 +103,10 @@ left   = []
 # system stats. The pill has no stats of its own, so both sit in its row, in
 # the order the other themes' bars would put them. Widgets registered at the
 # `tray` placement (the control panel's cards elsewhere) are the stage's cards.
-centre = ["workspaces", "sep", "widget:right_of_workspaces", "widget:left_of_clock", "clock", "widget:right_of_clock", "widget:left_of_stats", "level", "flag", "unread"]
+# BAR-38: `nowplaying` (the track title while a player is playing) follows
+# the time, and `dnd` (a moon while do-not-disturb is on) sits before the
+# unread count.
+centre = ["workspaces", "sep", "widget:right_of_workspaces", "widget:left_of_clock", "clock", "nowplaying", "widget:right_of_clock", "widget:left_of_stats", "dnd", "level", "flag", "unread"]
 right  = []
 drawer = []
 
@@ -223,9 +226,13 @@ no_anim      = true
 # The stage, surtitle and pill hot zone are spotlight's own surfaces. Without
 # a rule Hyprland gives each its default layer "popin": on the full-screen,
 # translucent stage that reads as a dark box growing out of nothing. They
-# animate in GTK (or not at all), so the compositor must not.
+# animate in GTK (or not at all), so the compositor must not. BAR-38: the
+# stage blurs the desktop behind its scrim, so a busy window underneath
+# (htop, a terminal full of logs) stops competing with the stage's text.
 [compositor."breadbar-stage"]
-no_anim = true
+blur         = true
+ignore_alpha = 0.2
+no_anim      = true
 
 [compositor."breadbar-surtitle"]
 blur         = true

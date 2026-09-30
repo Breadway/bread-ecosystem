@@ -41,6 +41,10 @@ pub const BUILTIN_MODULES: &[&str] = &[
     // BAR-31: the in-pill level readout (`[osd].style = "pill"`), placed
     // where the mockup's `.level` sits, just before the flag.
     "level",
+    // BAR-38: the pill's glance items, a now-playing ticker and a
+    // do-not-disturb mark.
+    "nowplaying",
+    "dnd",
 ];
 
 static REGISTERED: RwLock<Vec<String>> = RwLock::new(Vec::new());
