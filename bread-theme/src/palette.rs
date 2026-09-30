@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
 /// BOS's fixed dark theme: background, surface, overlay, and foreground never
 /// come from pywal. Only the accent slots (color1-6) track the wallpaper.
@@ -72,22 +71,15 @@ struct WalColors {
     colors: HashMap<String, String>,
 }
 
-/// Load the session-global palette: bread's own cache
+/// Load the session-global palette from bread's own cache
 /// ([`crate::output::palette_cache_path`], accepting either the wal
 /// `colors.json` shape or a flat `{color1..color6}` object via
-/// [`crate::output::palette_from_json`]) first, then pywal's own
-/// `~/.cache/wal/colors.json` for installs that upgraded before anything
-/// wrote the new cache, then [`Palette::default`].
+/// [`crate::output::palette_from_json`]), then [`Palette::default`].
+/// The historical `~/.cache/wal/colors.json` cache is not consulted.
 pub fn load_palette() -> Palette {
-    if let Some(p) = std::fs::read_to_string(crate::output::palette_cache_path())
+    std::fs::read_to_string(crate::output::palette_cache_path())
         .ok()
         .and_then(|s| crate::output::palette_from_json(&s))
-    {
-        return p;
-    }
-    std::fs::read_to_string(wal_path())
-        .ok()
-        .and_then(|s| from_wal_json(&s))
         .unwrap_or_default()
 }
 
@@ -149,25 +141,13 @@ pub(crate) fn from_accents(accents: [String; 6]) -> Palette {
     }
 }
 
-fn wal_path() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.cache"))
-        .join("wal/colors.json")
-}
-
-/// pywal's cache file, `~/.cache/wal/colors.json`, the path [`load_palette`]
-/// reads and [`write_wal_cache`] writes.
-pub fn wal_cache_path() -> PathBuf {
-    wal_path()
-}
-
 /// Serialise `palette` into pywal's `colors.json` cache shape.
 ///
-/// pywal's cache is read by `wal`'s own templates and by anything else that
-/// renders from `~/.cache/wal/colors.json` (terminal palettes, editor
-/// themes), so all 16 ANSI slots plus `special` are written, not just the
-/// six accents bread-theme itself consumes. `color8..color15` mirror
-/// `color0..color7`: bread-theme has no bright variants, matching pywal's
+/// Bread's cache deliberately preserves this shape for explicit JSON imports
+/// and third-party template consumers. All 16 ANSI slots plus `special` are
+/// written, not just the six accents bread-theme itself consumes.
+/// `color8..color15` mirror `color0..color7`: bread-theme has no bright variants,
+/// matching pywal's
 /// own behaviour when brightening is off.
 pub fn wal_cache_json(palette: &Palette) -> String {
     let slots = [
@@ -200,19 +180,6 @@ pub fn wal_cache_json(palette: &Palette) -> String {
     let mut s = serde_json::to_string_pretty(&doc).unwrap_or_default();
     s.push('\n');
     s
-}
-
-/// Write `palette` to `path` in pywal's `colors.json` shape, atomically
-/// (temp file then rename), the same durability discipline the rest of
-/// bread-theme's file writes use.
-///
-/// A consumer that already holds a per-output [`Palette`] (breadpaper's
-/// `sync_focused_global`) can call this instead of shelling out to a second
-/// `wal -i` just to refresh the cache: no subprocess spawn, and the cache
-/// matches the palette that consumer computed rather than a fresh
-/// re-extract from the image.
-pub fn write_wal_cache(palette: &Palette, path: &Path) -> std::io::Result<()> {
-    crate::output::atomic_write(path, &wal_cache_json(palette))
 }
 
 #[cfg(test)]
@@ -333,34 +300,5 @@ mod tests {
         assert_eq!(special["cursor"], p.foreground);
         assert!(v.get("wallpaper").is_some());
         assert!(v.get("alpha").is_some());
-    }
-
-    #[test]
-    fn write_wal_cache_writes_a_parseable_file_and_no_temp_left_behind() {
-        let dir = std::env::temp_dir().join(format!(
-            "bread-theme-walcache-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("colors.json");
-
-        write_wal_cache(&distinct_accent_palette(), &path).unwrap();
-
-        let loaded = from_wal_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(loaded.color4, "#444444");
-
-        let leftover: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.contains(".tmp."))
-            .collect();
-        assert!(leftover.is_empty(), "leftover tmp files: {leftover:?}");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

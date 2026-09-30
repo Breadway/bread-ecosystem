@@ -213,11 +213,10 @@ pub fn palette_cache_dir() -> PathBuf {
 }
 
 /// Bread-owned global palette cache: replaces pywal's
-/// `~/.cache/wal/colors.json` as the primary source [`crate::load_palette`]
+/// `~/.cache/wal/colors.json` as the sole cache source [`crate::load_palette`]
 /// reads. Written by [`write_global_palette`]; kept in the same wal
-/// `colors.json` shape ([`crate::palette::wal_cache_json`]) so a copied wal
-/// cache file, or anything written by [`crate::write_wal_cache`], is also
-/// valid input here.
+/// `colors.json` shape ([`crate::palette::wal_cache_json`]) so explicitly
+/// imported wal-shaped JSON and third-party templates remain compatible.
 pub fn palette_cache_path() -> PathBuf {
     palette_cache_dir().join("palette.json")
 }
@@ -519,9 +518,9 @@ mod tests {
     }
 
     #[test]
-    fn load_palette_prefers_the_new_cache_over_the_wal_fallback() {
+    fn load_palette_ignores_legacy_wal_cache() {
         with_cache_home(|dir| {
-            // Only the wal fallback exists: load_palette must still find it.
+            // A legacy wal cache must not override the built-in fallback.
             let wal_colors = dir.join("wal");
             std::fs::create_dir_all(&wal_colors).unwrap();
             std::fs::write(
@@ -529,16 +528,18 @@ mod tests {
                 r##"{"colors":{"color4":"#111111"}}"##,
             )
             .unwrap();
-            assert_eq!(crate::load_palette().color4, "#111111");
+            assert_eq!(crate::load_palette().color4, Palette::default().color4);
 
-            // Once the new cache exists, it wins even though the wal file
-            // is still there.
+            // The bread-owned cache is the only source read from disk.
             write_global_palette(&Palette {
                 color4: "#222222".into(),
                 ..Default::default()
             })
             .unwrap();
             assert_eq!(crate::load_palette().color4, "#222222");
+            // Broken bread data falls back to defaults, never to the legacy cache.
+            std::fs::write(palette_cache_path(), "invalid json").unwrap();
+            assert_eq!(crate::load_palette().color4, Palette::default().color4);
         });
     }
 }

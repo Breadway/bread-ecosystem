@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- ECO-35: stop reading `~/.cache/wal/colors.json` as a palette fallback and
+  remove the unused `wal_cache_path` and `write_wal_cache` APIs. Keep wal-shaped
+  JSON imports and `wal_cache_json` for the bread cache and third-party templates.
+  Merge and release this removal only after breadpaper and BOS have shipped the
+  bread-owned cache path for at least one full release cycle.
+
 ## 0.8.0
 
 Epic PYWAL (ECO-29..33): removes the `wal`/ImageMagick subprocess dependency
