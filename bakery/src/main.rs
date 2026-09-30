@@ -3,6 +3,7 @@ mod download;
 mod install;
 mod manifest;
 mod prefix;
+mod snapshots;
 mod state;
 mod track;
 mod ui;
@@ -87,6 +88,8 @@ enum Cmd {
     Rollback { package: String },
     /// Update bakery itself
     SelfUpdate,
+    /// Report optional integration capabilities
+    Capabilities,
     /// Generate a shell completion script
     Completions { shell: clap_complete::Shell },
     /// View or switch which build track bakery follows (stable/beta/dev)
@@ -107,13 +110,28 @@ enum TrackCmd {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if matches!(cli.command, Cmd::Capabilities) {
+        println!("snapper-transactions-v1");
+        if snapshots::enabled(&prefix::resolve(cli.bin_dir)) {
+            println!("snapper-transactions-configured-v1");
+        }
+        return Ok(());
+    }
     let layout = prefix::resolve(cli.bin_dir);
     let no_hooks = cli.no_hooks;
     let assume_yes = cli.yes;
     let dry_run = cli.dry_run;
     let track = state::State::load()?.track;
 
-    match cli.command {
+    let operation = match &cli.command {
+        Cmd::Install { .. } => Some("install"),
+        Cmd::Remove { .. } => Some("remove"),
+        Cmd::Update { .. } | Cmd::SelfUpdate => Some("update"),
+        Cmd::Rollback { .. } => Some("rollback"),
+        _ => None,
+    };
+    let mut transaction = snapshots::Transaction::begin(&layout, operation, dry_run);
+    let result = (|| match cli.command {
         Cmd::Install { packages } => {
             let index = manifest::load(true, track)?;
             for pkg in &packages {
@@ -151,9 +169,12 @@ fn main() -> Result<()> {
             assume_yes,
             dry_run,
         ),
+        Cmd::Capabilities => unreachable!("handled before loading state"),
         Cmd::Completions { shell } => cmd_completions(shell),
         Cmd::Track { action } => cmd_track(action),
-    }
+    })();
+    transaction.finish(result.is_ok());
+    result
 }
 
 fn cmd_completions(shell: clap_complete::Shell) -> Result<()> {
