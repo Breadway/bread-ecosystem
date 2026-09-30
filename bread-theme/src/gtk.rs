@@ -205,9 +205,29 @@ pub fn output_for_widget(widget: &impl IsA<gtk4::Widget>) -> Option<String> {
 
 /// Every `observe_children` model in a bound widget's current subtree, kept
 /// alive together (drop them all when the bind is forgotten). Shared so the
-/// recursive [`hook_subtree`] can push newly-discovered descendant containers
-/// in from inside an `items-changed` closure.
-type SubtreeWatches = Rc<RefCell<Vec<gio::ListModel>>>;
+/// recursive [`hook_subtree`] can register newly discovered widgets after a
+/// coalesced `items-changed` notification.
+type SubtreeWatches = Rc<SubtreeWatchRegistry>;
+
+#[derive(Default)]
+struct SubtreeWatchRegistry {
+    models: RefCell<HashMap<usize, SubtreeWatch>>,
+    pending: Cell<bool>,
+}
+
+struct SubtreeWatch {
+    widget: glib::WeakRef<gtk4::Widget>,
+    model: gio::ListModel,
+    changed_handler: Option<glib::SignalHandlerId>,
+}
+
+impl Drop for SubtreeWatch {
+    fn drop(&mut self) {
+        if let Some(handler) = self.changed_handler.take() {
+            self.model.disconnect(handler);
+        }
+    }
+}
 
 struct WidgetBind {
     output: String,
@@ -406,30 +426,66 @@ fn reattach_bound_tree(root: &gtk4::Widget) {
 /// deeper than one level that appeared after bind/map silently rendered with
 /// the display-wide shared sheet (the wrong monitor's colours). Every model is
 /// parked in `watches` (which the `WidgetBind` owns) so the whole set is
-/// dropped together when the bind is forgotten; newly-appeared containers are
-/// hooked in from inside the `items-changed` closure.
+/// dropped together when the bind is forgotten. Child changes schedule one
+/// reconciliation after the widget tree settles; sorting existing rows never
+/// registers the same widget twice.
 fn hook_subtree(
     widget: &gtk4::Widget,
     root: &glib::WeakRef<gtk4::Widget>,
     watches: &SubtreeWatches,
 ) {
-    let model = widget.observe_children();
-    {
-        let root = root.clone();
-        let watches = watches.clone();
-        model.connect_items_changed(move |model, pos, _removed, added| {
-            let Some(root_w) = root.upgrade() else {
-                return;
-            };
-            reattach_bound_tree(&root_w);
-            for i in pos..pos + added {
-                if let Some(child) = model.item(i).and_downcast::<gtk4::Widget>() {
-                    hook_subtree(&child, &root, &watches);
+    let key = widget_key(widget);
+    let already_registered = {
+        let registered = watches.models.borrow();
+        registered
+            .get(&key)
+            .is_some_and(|watch| watch.widget.upgrade().is_some())
+    };
+    if !already_registered {
+        watches.models.borrow_mut().remove(&key);
+        let model = widget.observe_children();
+        let changed_handler = {
+            let root = root.clone();
+            // The registry owns the models, so their callbacks must not own the
+            // registry. Otherwise forgetting a bind leaves the entire cycle alive.
+            let watches = Rc::downgrade(watches);
+            model.connect_items_changed(move |_, _, _, _| {
+                let Some(watches) = watches.upgrade() else {
+                    return;
+                };
+                if watches.pending.replace(true) {
+                    return;
                 }
-            }
-        });
+                let watches = Rc::downgrade(&watches);
+                let root = root.clone();
+                // ListBox sorting exposes intermediate child-model contents during
+                // items-changed. Walk the settled widget tree once on the next
+                // main-loop turn, rather than reading model items during a sort.
+                glib::idle_add_local_once(move || {
+                    let Some(watches) = watches.upgrade() else {
+                        return;
+                    };
+                    if let Some(root_w) = root.upgrade() {
+                        watches
+                            .models
+                            .borrow_mut()
+                            .retain(|_, watch| watch.widget.upgrade().is_some());
+                        reattach_bound_tree(&root_w);
+                        hook_subtree(&root_w, &root, &watches);
+                    }
+                    watches.pending.set(false);
+                });
+            })
+        };
+        watches.models.borrow_mut().insert(
+            key,
+            SubtreeWatch {
+                widget: widget.downgrade(),
+                model,
+                changed_handler: Some(changed_handler),
+            },
+        );
     }
-    watches.borrow_mut().push(model);
     let mut child = widget.first_child();
     while let Some(c) = child {
         hook_subtree(&c, root, watches);
@@ -438,7 +494,7 @@ fn hook_subtree(
 }
 
 fn watch_subtree(widget: &gtk4::Widget) -> SubtreeWatches {
-    let watches: SubtreeWatches = Rc::new(RefCell::new(Vec::new()));
+    let watches: SubtreeWatches = Rc::new(SubtreeWatchRegistry::default());
     hook_subtree(widget, &widget.downgrade(), &watches);
     watches
 }
@@ -818,12 +874,74 @@ mod tests {
         root.append(&mid);
         mid.append(&leaf);
         let watches = watch_subtree(root.upcast_ref());
+        let weak_watches = Rc::downgrade(&watches);
         assert!(
-            watches.borrow().len() >= 3,
+            watches.models.borrow().len() >= 3,
             "expected a child-model per container (root/mid/leaf), got {}",
-            watches.borrow().len()
+            watches.models.borrow().len()
         );
         drop(watches);
+        assert!(
+            weak_watches.upgrade().is_none(),
+            "observer callbacks retained the registry"
+        );
+
+        // BOX-8: ListBox sorting emits items-changed with existing rows in
+        // the added range. Each widget must retain exactly one child observer
+        // rather than multiplying weak references on every query.
+        let list = gtk4::ListBox::new();
+        for i in 0..160 {
+            let row = gtk4::ListBoxRow::new();
+            row.set_widget_name(&format!("row-{i:03}"));
+            row.set_child(Some(&gtk4::Label::new(Some("application"))));
+            list.append(&row);
+        }
+        let reverse = Rc::new(Cell::new(false));
+        list.set_sort_func({
+            let reverse = reverse.clone();
+            move |a, b| {
+                let order = a.widget_name().cmp(&b.widget_name());
+                if reverse.get() {
+                    order.reverse().into()
+                } else {
+                    order.into()
+                }
+            }
+        });
+        let watches = watch_subtree(list.upcast_ref());
+        let baseline = watches.models.borrow().len();
+        for round in 0..200 {
+            reverse.set(round % 2 == 0);
+            list.invalidate_sort();
+            while glib::MainContext::default().pending() {
+                glib::MainContext::default().iteration(false);
+            }
+            assert_eq!(
+                watches.models.borrow().len(),
+                baseline,
+                "sorting duplicated observers"
+            );
+        }
+        let row = list.row_at_index(0).unwrap();
+        list.remove(&row);
+        list.append(&row);
+        while glib::MainContext::default().pending() {
+            glib::MainContext::default().iteration(false);
+        }
+        assert_eq!(
+            watches.models.borrow().len(),
+            baseline,
+            "reparenting duplicated observers"
+        );
+        let model = list.observe_children();
+        let before_drop = model.ref_count();
+        let weak_watches = Rc::downgrade(&watches);
+        drop(watches);
+        assert!(weak_watches.upgrade().is_none());
+        assert!(
+            model.ref_count() < before_drop,
+            "registry did not release its models"
+        );
 
         // Finding #3b: a grandchild appended *after* the bind must trigger the
         // recursive items-changed hook on `mid` and get re-walked.
@@ -834,9 +952,12 @@ mod tests {
         let key = widget_key(root.upcast_ref());
         assert!(BINDS.with(|b| b.borrow().contains_key(&key)));
 
-        let before = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        let before = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.models.borrow().len());
         mid.append(&gtk4::Label::new(Some("added late")));
-        let after = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        while glib::MainContext::default().pending() {
+            glib::MainContext::default().iteration(false);
+        }
+        let after = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.models.borrow().len());
         assert!(
             after > before,
             "a widget added two levels below the bound root never triggered re-attach ({before} -> {after})"
