@@ -48,11 +48,6 @@ repo = "Breadway/breadpaper"
 description = "Wallpaper manager for the bread desktop"
 
 [[products]]
-name = "breadmon"
-repo = "Breadway/breadmon"
-description = "Terminal UI monitor manager for Hyprland"
-
-[[products]]
 name = "breadsearch"
 repo = "Breadway/breadsearch"
 description = "Semantic system-wide search for BOS"

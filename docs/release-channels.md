@@ -39,7 +39,7 @@ only if:
    `.pkg.tar.zst` to `https://git.breadway.dev/api/packages/Breadway/arch/os`.
 
 A repo can be on **both** channels, **bakery only** (bread, breadbar,
-breadbox, breadcrumbs, breadpad, breadpaper, breadclip, breadmon,
+breadbox, breadcrumbs, breadpad, breadpaper, breadclip,
 breadsearch, breadshot, breadhelp, bos-settings, bread-theme, breadcast,
 breadarr, bakery itself), **pacman only** (breadlock, installs a
 root-owned `/etc/pam.d/breadlock` PAM service file with no per-user
@@ -339,7 +339,7 @@ first (see above) before assuming the wiring is wrong.
   `bread-ecosystem/registry/bread-ecosystem.toml`, copy a sibling's
   `dev-release.yml` / `rc-release.yml` / `release.yml` trio (prefer one with
   the same shape: single binary vs. binary + systemd service, compare
-  against `bread`'s if there's a service to install, `breadmon`'s if not)
+  against `bread`'s if there's a service to install, `breadshot`'s if not)
   and swap the repo name / binary name / `PKG_DIR`. No branch setup beyond
   the repo's single `main`.
 - **Pacman**: write `packaging/PKGBUILD` (or `packaging/arch/PKGBUILD`),
@@ -359,7 +359,8 @@ first (see above) before assuming the wiring is wrong.
 | bread-ecosystem (bakery product) | yes | leftover `package.yml` | stable, beta, dev | bakery-channel (`curl -fsSL https://get.breadway.dev \| sh`) is the supported install; `package.yml` + `packaging/arch/PKGBUILD` remain from when bakery was also published to `[breadway]` |
 | bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | single-trunk model |
 | bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | no | stable, beta, dev | pacman packaging (PKGBUILD + `package.yml`) dropped: bakery-only, single-trunk model |
-| breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
+| breadclip, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
+| breadmon | no | no | n/a | deprecated; source and historical releases remain available, but it is no longer in the registry or BOS image |
 | breadhelp, bos-settings | yes | no | stable, beta, dev | bakery-channel desktop/settings apps; not pacman |
 | breadlock | no | yes | n/a | deliberate, permanent exception: installs a root-owned `/etc/pam.d/breadlock` PAM service file with no per-user equivalent, so it can never move to bakery |
 | bos | no | no | n/a | ISO-only via `release-iso.yml`; ships via a manual local build (`build-local.sh`), not a CI track; see its own branch note below |
