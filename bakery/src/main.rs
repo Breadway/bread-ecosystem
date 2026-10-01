@@ -355,6 +355,7 @@ fn cmd_update(
 ) -> Result<()> {
     let index = manifest::load(true, track)?;
     let state = state::State::load()?;
+    let bulk_update = all || name.is_none();
 
     let targets: Vec<String> = match name {
         Some(n) if !all => vec![n.to_string()],
@@ -375,6 +376,7 @@ fn cmd_update(
     let mut any_failed = false;
     let mut updated = 0u32;
     let mut unchanged = 0u32;
+    let mut unavailable = 0u32;
     for pkg_name in &targets {
         let installed = match state.packages.get(pkg_name.as_str()) {
             Some(p) => p,
@@ -390,11 +392,19 @@ fn cmd_update(
         let latest = match index.get(pkg_name) {
             Some(p) => p,
             None => {
-                eprintln!(
-                    "  {}",
-                    ui::fail(&format!("{pkg_name} not found in index, skipping"))
-                );
-                any_failed = true;
+                if bulk_update {
+                    eprintln!(
+                        "  {}",
+                        ui::note(&format!(
+                            "{pkg_name} is not in the {} index; skipping (remove retired packages with `bakery remove {pkg_name}`)",
+                            track.as_str()
+                        ))
+                    );
+                    unavailable += 1;
+                } else {
+                    eprintln!("  {}", ui::fail(&format!("{pkg_name} not found in index")));
+                    any_failed = true;
+                }
                 continue;
             }
         };
@@ -499,11 +509,15 @@ fn cmd_update(
     if all {
         let updated_s = format!("{updated} updated");
         let unchanged_s = format!("{unchanged} already current");
+        let unavailable_s = format!("{unavailable} unavailable");
         let mut parts: Vec<&str> = Vec::new();
         if updated > 0 {
             parts.push(&updated_s);
         }
         parts.push(&unchanged_s);
+        if unavailable > 0 {
+            parts.push(&unavailable_s);
+        }
         ui::summary(&parts);
     }
 

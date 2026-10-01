@@ -24,7 +24,6 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadcrumbs` | Profile-aware Wi-Fi state machine with Tailscale integration |
 | `breadpad` | Quick-capture scratchpad and note viewer with AI classification |
 | `breadpaper` | Wallpaper manager for the bread desktop |
-| `breadmon` | Terminal UI monitor manager for Hyprland |
 | `breadsearch` | Semantic system-wide search for BOS |
 | `breadclip` | Wayland clipboard history manager for Hyprland |
 | `breadshot` | Screenshot utility for the bread ecosystem |
@@ -34,6 +33,10 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI (Homelab, not shipped on BOS) |
 
 <!-- gen-readme-products:end -->
+
+`breadmon` is deprecated and no longer appears in the bakery registry. Use
+the Displays page in `bos-settings` for monitor layout. Existing installs can
+be removed with `bakery remove breadmon`; saved profiles are preserved.
 
 ## Recommended keybinds
 
