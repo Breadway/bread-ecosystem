@@ -25,7 +25,8 @@
 #
 # Font: the mockup's `--display` (Big Shoulders Display, for the time and
 # workspace numbers) is this theme's `tokens.font_family`, with Hanken
-# Grotesk (the mockup's own `--ui` font) as `font_fallback` for body text.
+# Grotesk (the mockup's own `--ui` font) as `font_fallback` for shell body
+# text. Shared app body and control typography stays on the app design tokens.
 # BAR-30 phases 2-4: Big Shoulders Display, Hanken Grotesk and Martian Mono
 # (the mockup's `--mono`, for small-caps labels: the stage's mode badge,
 # group headers, notification app names, the surtitle's app name, the power

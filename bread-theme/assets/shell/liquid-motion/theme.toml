@@ -19,12 +19,12 @@ name = "Liquid Motion"
 id   = "liquid-motion"
 
 [tokens]
-# font_family / font_fallback / font_size_base / font_weight drive the whole
-# shell (breadbar bar text, breadbox launcher panel) AND the shared ecosystem
-# stylesheet (`bread_theme::stylesheet` → every bread GUI). This builtin (the
-# default theme) pins them to the historical `bread_theme::tokens::FONT_*`
-# constants so a default install looks exactly as it did before typography
-# became theme-controlled (Stage 1e). Other builtins deviate on purpose.
+# font_family / font_fallback / font_size_base / font_weight drive shell text
+# and the breadbox launcher panel. The shared app stylesheet retains the
+# application design tokens. This builtin (the default theme) pins them to the
+# historical `bread_theme::tokens::FONT_*` constants so a default install
+# keeps its original shell typography. Other builtins can style the shell
+# differently without changing app body or control text.
 font_family    = "Varela Round, sans-serif"
 font_fallback  = "sans-serif"
 font_size_base = 14

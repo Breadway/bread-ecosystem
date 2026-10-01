@@ -93,7 +93,8 @@
 
 /* The bar's own type scale is fixed across themes (16px base, 22px clock,
  * 18px workspace/stat chips) so switching theme never resizes the bar;
- * font_size_base still drives the launcher and shared app stylesheet. */
+ * font_size_base still drives the launcher. Shared app typography stays on
+ * the application design system scale. */
 window.breadbar {
   color: {ink};
   border-radius: {bar_radius};
