@@ -2477,3 +2477,49 @@ window.breadbar-stage button.stage-split-more.open {
   line-height: 15px;
   color: alpha(@fg, 0.52);
 }
+
+
+.pill-battery-shell {
+  min-width: 18px;
+  min-height: 8px;
+  padding: 1px;
+  border-radius: 3px;
+  border: 1px solid alpha(@fg, 0.45);
+}
+
+.pill-battery-fill {
+  min-height: 8px;
+  border-radius: 1px;
+  background-color: alpha(@fg, 0.78);
+}
+
+.pill-battery-tip {
+  min-width: 2px;
+  min-height: 4px;
+  border-radius: 0 1px 1px 0;
+  background-color: alpha(@fg, 0.45);
+}
+
+.pill-battery-pct {
+  font-family: sans-serif;
+  font-size: 12px;
+  line-height: 17.4px;
+  font-feature-settings: "tnum";
+  color: alpha(@fg, 0.52);
+}
+
+.pill-battery.charging .pill-battery-fill {
+  background-color: @accent;
+}
+
+.pill-battery.low .pill-battery-fill {
+  background-color: @red;
+}
+
+.pill-battery.low .pill-battery-shell {
+  border-color: @red;
+}
+
+.pill-battery.low .pill-battery-pct {
+  color: @red;
+}

@@ -45,6 +45,8 @@ pub const BUILTIN_MODULES: &[&str] = &[
     // do-not-disturb mark.
     "nowplaying",
     "dnd",
+    // The pill's battery: a charge gauge and percentage (a setting).
+    "pill_battery",
 ];
 
 static REGISTERED: RwLock<Vec<String>> = RwLock::new(Vec::new());

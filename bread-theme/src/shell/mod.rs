@@ -1278,6 +1278,7 @@ mod tests {
                 "nowplaying",
                 "widget:right_of_clock",
                 "widget:left_of_stats",
+                "pill_battery",
                 "dnd",
                 "level",
                 "flag",
