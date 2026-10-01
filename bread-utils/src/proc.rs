@@ -20,6 +20,13 @@ pub struct Output {
     pub stderr: String,
 }
 
+/// Process output plus whether the timeout limit killed the child.
+#[derive(Debug, Clone)]
+pub struct DetailedOutput {
+    pub output: Output,
+    pub timed_out: bool,
+}
+
 impl Output {
     pub fn failed() -> Output {
         Output {
@@ -36,10 +43,25 @@ pub fn run(prog: &str, args: &[&str], timeout: Duration) -> Output {
     run_with_stdin(prog, args, None, timeout)
 }
 
+/// Run a command and retain whether it was killed by the timeout.
+pub fn run_detailed(prog: &str, args: &[&str], timeout: Duration) -> DetailedOutput {
+    run_with_stdin_detailed(prog, args, None, timeout)
+}
+
 /// Like [`run`], but feeds `stdin` to the child's standard input. Useful for
 /// handing secrets (e.g. Wi-Fi PSKs, API tokens) to a CLI without exposing
 /// them in argv, where any local user could read them via `ps`.
 pub fn run_with_stdin(prog: &str, args: &[&str], stdin: Option<&str>, timeout: Duration) -> Output {
+    run_with_stdin_detailed(prog, args, stdin, timeout).output
+}
+
+/// Like [`run_with_stdin`], while distinguishing a timeout from other failures.
+pub fn run_with_stdin_detailed(
+    prog: &str,
+    args: &[&str],
+    stdin: Option<&str>,
+    timeout: Duration,
+) -> DetailedOutput {
     let stdin_cfg = if stdin.is_some() {
         Stdio::piped()
     } else {
@@ -57,7 +79,12 @@ pub fn run_with_stdin(prog: &str, args: &[&str], stdin: Option<&str>, timeout: D
         .spawn()
     {
         Ok(c) => c,
-        Err(_) => return Output::failed(),
+        Err(_) => {
+            return DetailedOutput {
+                output: Output::failed(),
+                timed_out: false,
+            };
+        }
     };
 
     let mut stdout_pipe = child.stdout.take();
@@ -89,6 +116,7 @@ pub fn run_with_stdin(prog: &str, args: &[&str], stdin: Option<&str>, timeout: D
     }
 
     let start = Instant::now();
+    let mut timed_out = false;
     let status = loop {
         match child.try_wait() {
             Ok(Some(s)) => break Some(s),
@@ -96,6 +124,7 @@ pub fn run_with_stdin(prog: &str, args: &[&str], stdin: Option<&str>, timeout: D
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    timed_out = true;
                     break None;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -107,10 +136,13 @@ pub fn run_with_stdin(prog: &str, args: &[&str], stdin: Option<&str>, timeout: D
     let stdout = out_handle.join().unwrap_or_default();
     let stderr = err_handle.join().unwrap_or_default();
 
-    Output {
-        success: status.map(|s| s.success()).unwrap_or(false),
-        stdout,
-        stderr,
+    DetailedOutput {
+        output: Output {
+            success: status.map(|s| s.success()).unwrap_or(false),
+            stdout,
+            stderr,
+        },
+        timed_out,
     }
 }
 
@@ -148,8 +180,9 @@ mod tests {
     #[test]
     fn run_kills_hung_child_after_timeout() {
         let start = Instant::now();
-        let out = run("sleep", &["30"], Duration::from_millis(200));
-        assert!(!out.success);
+        let out = run_detailed("sleep", &["30"], Duration::from_millis(200));
+        assert!(!out.output.success);
+        assert!(out.timed_out);
         assert!(
             start.elapsed() < Duration::from_secs(5),
             "child was not killed promptly"
