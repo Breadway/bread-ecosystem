@@ -37,6 +37,9 @@ jobs:
       - name: lint git.breadway.dev dependency pins
         run: cd src && bash scripts/lint-pins.sh
 
+      - name: shared CI target cache locking
+        run: cd src && bash ci/test-build-lock.sh
+
       - name: fmt
         run: cd src && cargo fmt --all -- --check
 
