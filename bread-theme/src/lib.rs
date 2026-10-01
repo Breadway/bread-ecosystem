@@ -110,13 +110,11 @@ pub fn font_family_css(primary: &str, fallback: &str) -> String {
     segs.join(", ")
 }
 
-/// Resolved typography for the shared component stylesheet: the CSS
-/// `font-family` value, base size, and weight. Built from the **active shell
-/// theme**'s `[tokens]` via [`Typography::active`], so a theme's
-/// `font_family` / `font_fallback` / `font_size_base` / `font_weight` reach
-/// every bread GUI, not just breadbox's launcher panel.
-/// [`Typography::default`] is the BREAD_DESIGN_SYSTEM baseline
-/// (`'Varela Round', sans-serif` / 14px / 400).
+/// Resolved typography for the shared application component stylesheet: the
+/// CSS `font-family` value, base size, and weight. These are stable design
+/// system values, independent of the active shell theme. Shell themes apply
+/// their own typography in shell CSS, while app body and control text keeps
+/// [`Typography::default`] (`'Varela Round', sans-serif` / 14px / 400).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Typography {
     /// A ready-to-use CSS `font-family` value (see [`font_family_css`]).
@@ -137,11 +135,11 @@ impl Typography {
         }
     }
 
-    /// Resolve from the active shell theme. [`shell::load`] never fails (it
-    /// falls back to the compiled-in `liquid-motion` builtin), so this is
-    /// infallible.
+    /// Return the stable application typography. Retained for API compatibility;
+    /// shell theme typography belongs to shell CSS and must not leak into the
+    /// shared application stylesheet.
     pub fn active() -> Self {
-        Self::from_tokens(shell::load().tokens())
+        Self::default()
     }
 }
 
@@ -299,10 +297,9 @@ pub fn css_tokens() -> String {
 /// every bread GUI (bos-settings, breadbar, breadbox, breadpad, breadman) styles
 /// common widgets. Apps load this, then append only their own *layout* rules.
 ///
-/// Built from the [`Palette`] (`@define-color`), the spacing/radius design
-/// tokens, and the active shell theme's [`Typography`]: so changing the
-/// palette recolours every app and changing the shell theme's
-/// `font_family` / `font_size_base` / `font_weight` re-fonts every app.
+/// Built from the [`Palette`] (`@define-color`), stable typography, and the
+/// spacing/radius design tokens. Changing the palette recolours every app;
+/// shell theme selection does not change application typography.
 pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
     use tokens::*;
     format!(
@@ -399,9 +396,9 @@ pub fn stylesheet(ty: &Typography, p: &Palette) -> String {
     )
 }
 
-/// Render the shared stylesheet for the current (pywal) palette and the
-/// active shell theme's typography. Used by the `bread-theme` generator and
-/// as the in-app fallback when the generated file isn't present yet.
+/// Render the shared stylesheet for the current (pywal) palette and stable
+/// application typography. Used by the `bread-theme` generator and as the
+/// in-app fallback when the generated file isn't present yet.
 pub fn render() -> String {
     stylesheet(&Typography::active(), &load_palette())
 }
@@ -576,6 +573,18 @@ mod tests {
             !css.contains("font-family: 'Varela Round, sans-serif'"),
             "named face and generic fallback must not be one quoted family"
         );
+    }
+
+    #[test]
+    fn shared_app_typography_is_independent_of_shell_theme_tokens() {
+        let app_type = Typography::active();
+        assert_eq!(app_type, Typography::default());
+
+        let css = stylesheet(&app_type, &Palette::default());
+        assert!(css.contains(
+            "* { font-family: 'Varela Round', sans-serif; font-size: 14px; font-weight: 400; }"
+        ));
+        assert!(!css.contains("Big Shoulders Display"));
     }
 
     #[test]

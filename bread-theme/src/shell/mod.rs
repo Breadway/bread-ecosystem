@@ -862,10 +862,9 @@ mod tests {
         }
     }
 
-    /// Stage 1e: the active shell theme's typography reaches the shared
-    /// ecosystem stylesheet, not just breadbox's launcher panel.
+    /// Shell theme typography reaches shell CSS and stays out of app CSS.
     #[test]
-    fn shared_stylesheet_uses_active_shell_theme_typography() {
+    fn shell_typography_stays_out_of_shared_app_stylesheet() {
         let xdg = isolated_xdg();
         write_theme(
             &xdg,
@@ -883,16 +882,14 @@ mod tests {
         std::env::set_var("BREAD_SHELL_THEME", "testfont");
 
         let ty = crate::Typography::active();
-        assert_eq!(ty.family_css, "'Test Face', 'Noto Sans', sans-serif");
-        assert_eq!(ty.size, 17);
-        assert_eq!(ty.weight, 650);
+        assert_eq!(ty, crate::Typography::default());
 
         let sheet = crate::stylesheet(&ty, &crate::Palette::default());
         assert!(
-            sheet.contains("font-family: 'Test Face', 'Noto Sans', sans-serif;"),
-            "shared stylesheet ignored the theme font:\n{sheet}"
+            sheet.contains("font-family: 'Varela Round', sans-serif;"),
+            "shared app stylesheet must retain app typography:\n{sheet}"
         );
-        assert!(sheet.contains("font-size: 17px; font-weight: 650;"));
+        assert!(sheet.contains("font-size: 14px; font-weight: 400;"));
 
         // A standalone theme (no `extends`) still renders the full shell from
         // the shared base template, so its own CSS carries the font too, the
@@ -905,8 +902,21 @@ mod tests {
             "shell CSS missing the theme font-family"
         );
         assert!(
+            css.contains("font-size: 17px;"),
+            "shell CSS missing the theme font size"
+        );
+        assert!(
             css.contains("font-weight: 650;"),
             "shell CSS missing the theme font-weight"
+        );
+
+        let spotlight = load_named("spotlight").expect("builtin Spotlight theme");
+        assert_eq!(spotlight.tokens().font_family, "Big Shoulders Display");
+        let spotlight_css = spotlight.css(&crate::Palette::default());
+        assert!(
+            spotlight_css
+                .contains("font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;"),
+            "Spotlight display face should remain available to shell elements"
         );
     }
 
