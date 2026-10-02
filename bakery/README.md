@@ -6,8 +6,8 @@ Package manager for the bread ecosystem. Usage lives in the
 ## Install prefix
 
 Default root is `~/.local` (bins in `~/.local/bin`, data in
-`~/.local/share`). That is the hermes / `get.sh` path and must stay the
-default.
+`~/.local/share`). That is the plain `get.sh` path (non-BOS installs) and
+must stay the default.
 
 BOS sets a system prefix so bakery-managed desktop apps live on the `@`
 root subvolume and are included in snapper/grub-btrfs snapshots:

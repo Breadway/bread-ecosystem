@@ -1,6 +1,6 @@
 //! Install prefix: default `~/.local`, or a system root for BOS.
 //!
-//! Hermes and `get.sh` keep the user-local default. BOS sets
+//! Plain `get.sh` installs keep the user-local default. BOS sets
 //! `prefix = "/usr/local"` in `/etc/bakery/config.toml` (or `BAKERY_PREFIX`)
 //! so bakery-managed desktop apps live on the `@` root subvolume and ride
 //! along with snapper/grub-btrfs snapshots. Per-user state stays under
@@ -68,7 +68,7 @@ impl Layout {
 
     /// Historical default: `~/.local` bins, XDG data dir for share,
     /// `~/.config/systemd/user` for units. Used when neither `BAKERY_PREFIX`
-    /// nor `/etc/bakery/config.toml` sets a prefix: hermes / get.sh.
+    /// nor `/etc/bakery/config.toml` sets a prefix: plain `get.sh` installs.
     pub fn user_default(bin_override: Option<PathBuf>) -> Self {
         let prefix = default_user_prefix();
         let bin_dir = bin_override.unwrap_or_else(|| prefix.join("bin"));
