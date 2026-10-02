@@ -77,17 +77,17 @@ mkdir -p \
 # breadcast). The lock is held until this script exits, since fd 9 stays open
 # through the docker build and run. Different products never contend, and
 # neither do repos that build on different runners.
-if command -v flock >/dev/null 2>&1; then
-    exec 9>"${CACHE_ROOT}/target-${PRODUCT}.lock"
-    if ! flock -n 9; then
-        echo "build.sh: another ${PRODUCT} build is running; waiting for its lock..." >&2
-        flock -w "${BREAD_CI_LOCK_WAIT:-3600}" 9 || {
-            echo "build.sh: timed out waiting for the ${PRODUCT} build lock" >&2
-            exit 1
-        }
-    fi
-else
-    echo "build.sh: flock not found; builds of ${PRODUCT} are NOT serialized" >&2
+if ! command -v flock >/dev/null 2>&1; then
+    echo "build.sh: flock is required to protect the shared ${PRODUCT} target cache" >&2
+    exit 1
+fi
+exec 9>"${CACHE_ROOT}/target-${PRODUCT}.lock"
+if ! flock -n 9; then
+    echo "build.sh: another ${PRODUCT} build is running; waiting for its lock..." >&2
+    flock -w "${BREAD_CI_LOCK_WAIT:-3600}" 9 || {
+        echo "build.sh: timed out waiting for the ${PRODUCT} build lock" >&2
+        exit 1
+    }
 fi
 
 docker build \
