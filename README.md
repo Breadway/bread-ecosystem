@@ -31,6 +31,8 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadhelp` | Onboarding and help center for Bread OS |
 | `breadcast` | Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup (Bakery product; not included in the BOS ISO) |
 | `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI (Homelab, not shipped on BOS) |
+| `breadboard-cli` | Command line and terminal UI for breadboard (Client package, not included in the BOS ISO) |
+| `breadboard-desktop` | Native desktop shell for breadboard (Client package, not included in the BOS ISO) |
 
 <!-- gen-readme-products:end -->
 
