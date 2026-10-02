@@ -28,7 +28,7 @@ struct Cli {
     /// Override the directory where binaries are installed
     #[arg(long, env = "BAKERY_BIN_DIR", global = true)]
     bin_dir: Option<PathBuf>,
-    /// Skip post_install hooks entirely
+    /// Skip post_install hooks and service-manager side effects
     #[arg(long, global = true)]
     no_hooks: bool,
     /// Assume yes to interactive prompts
@@ -139,7 +139,9 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Remove { package, purge } => cmd_remove(&package, &layout, assume_yes, purge),
+        Cmd::Remove { package, purge } => {
+            cmd_remove(&package, &layout, assume_yes, purge, no_hooks, dry_run)
+        }
         Cmd::Update { package, all } => cmd_update(
             package.as_deref(),
             all,
@@ -360,8 +362,15 @@ fn print_dry_run_plan(pkg: &manifest::Package) {
     }
 }
 
-fn cmd_remove(name: &str, layout: &prefix::Layout, assume_yes: bool, purge: bool) -> Result<()> {
-    install::remove_package(name, layout, assume_yes, purge)
+fn cmd_remove(
+    name: &str,
+    layout: &prefix::Layout,
+    assume_yes: bool,
+    purge: bool,
+    no_hooks: bool,
+    dry_run: bool,
+) -> Result<()> {
+    install::remove_package(name, layout, assume_yes, purge, no_hooks, dry_run)
 }
 
 #[allow(clippy::too_many_arguments)]

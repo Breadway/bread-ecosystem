@@ -222,8 +222,16 @@ pub fn remove_package(
     layout: &Layout,
     assume_yes: bool,
     purge: bool,
+    no_hooks: bool,
+    dry_run: bool,
 ) -> Result<()> {
-    let installed = State::with_lock(|state| Ok(state.remove(pkg_name)))?;
+    // A dry run must not enter the write transaction: with_lock persists the
+    // state even when its callback only reads it.
+    let installed = if dry_run {
+        State::load()?.packages.get(pkg_name).cloned()
+    } else {
+        State::with_lock(|state| Ok(state.remove(pkg_name)))?
+    };
     let installed = match installed {
         Some(p) => p,
         None => {
@@ -232,6 +240,63 @@ pub fn remove_package(
         }
     };
     ui::action("Removing", pkg_name, Some(&installed.version));
+    if dry_run {
+        for bin in &installed.binaries {
+            ui::step(
+                "would remove",
+                &layout.bin_dir.join(bin).display().to_string(),
+            );
+        }
+        for unit in &installed.services {
+            ui::step(
+                "would remove",
+                &format!("unit {}", layout.systemd_user_dir.join(unit).display()),
+            );
+            if !no_hooks {
+                ui::step(
+                    "would run",
+                    &format!("systemctl --user disable --now {unit}"),
+                );
+                ui::step("would run", "systemctl --user daemon-reload");
+            }
+        }
+        if purge {
+            let share_dir = &layout.share_dir;
+            ui::step(
+                "would remove",
+                &share_dir
+                    .join("licenses")
+                    .join(pkg_name)
+                    .display()
+                    .to_string(),
+            );
+            ui::step(
+                "would remove",
+                &share_dir
+                    .join("applications")
+                    .join(format!("{pkg_name}.desktop"))
+                    .display()
+                    .to_string(),
+            );
+            ui::step(
+                "would remove",
+                &share_dir.join(pkg_name).display().to_string(),
+            );
+        } else {
+            ui::step(
+                "would preserve",
+                &format!("data  {}", layout.share_dir.join(pkg_name).display()),
+            );
+        }
+        if let Some(cfg_dir) = guess_config_dir(pkg_name) {
+            ui::step("would preserve", &format!("config  {}", cfg_dir.display()));
+        }
+        ui::step(
+            "would remove",
+            &format!("installed.json entry for {pkg_name}"),
+        );
+        return Ok(());
+    }
     // State is already committed by with_lock above; everything from here
     // is best-effort file cleanup, and must all run even if part of it fails.
 
@@ -255,15 +320,19 @@ pub fn remove_package(
         for unit in &installed.services {
             let unit_path = service_dir.join(unit);
             if confirm_remove_unit(unit, assume_yes) {
-                let _ = Command::new("systemctl")
-                    .args(["--user", "disable", "--now", unit])
-                    .status();
+                if !no_hooks {
+                    let _ = Command::new("systemctl")
+                        .args(["--user", "disable", "--now", unit])
+                        .status();
+                }
                 if unit_path.exists() {
                     let _ = prefix::remove_file(&unit_path);
                 }
-                let _ = Command::new("systemctl")
-                    .args(["--user", "daemon-reload"])
-                    .status();
+                if !no_hooks {
+                    let _ = Command::new("systemctl")
+                        .args(["--user", "daemon-reload"])
+                        .status();
+                }
                 ui::step("removed", &format!("unit {unit}"));
             }
         }
