@@ -60,6 +60,11 @@ pub struct BugOptions {
     pub version: Option<String>,
     /// Install the Rust panic hook.
     pub panic_hook: bool,
+    /// Include the panic message in the report. Turn off for apps that
+    /// handle private text (a clipboard manager, a search index): a
+    /// formatted panic message can contain user data. The location and
+    /// stack are always kept.
+    pub panic_message: bool,
     /// Install native crash signal handlers.
     pub native_crashes: bool,
     /// Forward [`BugGuard::log`] / [`BugLogger`] lines to breadd.
@@ -80,6 +85,7 @@ impl BugOptions {
         Self {
             version: Some(version.into()),
             panic_hook: true,
+            panic_message: true,
             native_crashes: true,
             forward_logs: true,
             heartbeat: true,
@@ -96,6 +102,7 @@ impl BugOptions {
         Self {
             version: None,
             panic_hook: false,
+            panic_message: false,
             native_crashes: false,
             forward_logs: false,
             heartbeat: false,
@@ -169,7 +176,12 @@ impl BreadClient {
         let app = self.app_id().to_string();
 
         if opts.panic_hook {
-            panic::install(app.clone(), opts.version.clone(), socket.clone());
+            panic::install(
+                app.clone(),
+                opts.version.clone(),
+                socket.clone(),
+                opts.panic_message,
+            );
         }
         if opts.native_crashes {
             native::install(&app, opts.version.as_deref(), &socket);

@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 use super::maps::Layout;
 use super::send_request;
 
+/// What a report says in place of a panic message the app asked to withhold.
+pub const OMITTED: &str = "(message omitted by the app)";
+
 /// Most frames reported.
 pub const MAX_FRAMES: usize = 64;
 const SEND_DEADLINE: Duration = Duration::from_millis(400);
@@ -130,12 +133,12 @@ fn exe_build_id(layout: &Layout) -> Option<String> {
 }
 
 /// Install the hook. The previous hook still runs afterwards.
-pub fn install(app: String, version: Option<String>, socket: PathBuf) {
+pub fn install(app: String, version: Option<String>, socket: PathBuf, include_message: bool) {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         if !IN_HOOK.with(|f| f.replace(true)) {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                report(&app, version.as_deref(), &socket, info);
+                report(&app, version.as_deref(), &socket, include_message, info);
             }));
             IN_HOOK.with(|f| f.set(false));
         }
@@ -149,7 +152,13 @@ pub fn install(app: String, version: Option<String>, socket: PathBuf) {
     let _ = HOOK_DEPTH.set(depth);
 }
 
-fn report(app: &str, version: Option<&str>, socket: &std::path::Path, info: &PanicHookInfo<'_>) {
+fn report(
+    app: &str,
+    version: Option<&str>,
+    socket: &std::path::Path,
+    include_message: bool,
+    info: &PanicHookInfo<'_>,
+) {
     let skip = HOOK_DEPTH.get().copied().unwrap_or(0);
     let mut ips = capture_ips(MAX_FRAMES + 16);
     // The install-time probe takes the same path as a real panic up to here,
@@ -164,7 +173,11 @@ fn report(app: &str, version: Option<&str>, socket: &std::path::Path, info: &Pan
         app,
         version,
         exe_build_id(&layout).as_deref(),
-        &payload_message(info),
+        &if include_message {
+            payload_message(info)
+        } else {
+            OMITTED.to_string()
+        },
         info.location()
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .as_deref(),

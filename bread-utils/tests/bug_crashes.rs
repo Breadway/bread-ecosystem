@@ -50,6 +50,7 @@ fn module_offset_of(f: *const ()) -> (String, u64) {
 fn child_main(mode: &str) {
     let client = BreadClient::connect("clip");
     let mut o = BugOptions::new("9.9.9");
+    o.panic_message = std::env::var("BUG_KEEP_MESSAGE").is_ok();
     o.heartbeat = false;
     o.forward_logs = false;
     let _guard = client.enable_bug_reporting(o);
@@ -73,6 +74,10 @@ struct Outcome {
 }
 
 fn run_child(mode: &str) -> Outcome {
+    run_child_with(mode, true)
+}
+
+fn run_child_with(mode: &str, keep_message: bool) -> Outcome {
     let dir = tempfile::tempdir().unwrap();
     let runtime = dir.path().join("rt");
     std::fs::create_dir_all(runtime.join("bread")).unwrap();
@@ -93,7 +98,11 @@ fn run_child(mode: &str) -> Outcome {
         }
     });
 
-    let mut child = Command::new(std::env::current_exe().unwrap())
+    let mut cmd = Command::new(std::env::current_exe().unwrap());
+    if keep_message {
+        cmd.env("BUG_KEEP_MESSAGE", "1");
+    }
+    let mut child = cmd
         .args(["--exact", "child_entry", "--nocapture", "--test-threads=1"])
         .env("BUG_FIXTURE", mode)
         .env("XDG_RUNTIME_DIR", &runtime)
@@ -214,4 +223,18 @@ fn a_real_segfault_is_reported_then_the_process_still_dies_of_it() {
             "{keys:?}"
         );
     }
+}
+
+#[test]
+fn an_app_can_withhold_the_panic_message_but_keeps_location_and_stack() {
+    let o = run_child_with("panic", false);
+    let p = marker_of(&o);
+    let m = &p["marker"];
+    assert_eq!(m["message"], "(message omitted by the app)");
+    assert!(
+        !p.to_string().contains("fixture panic 7"),
+        "message text leaked: {p}"
+    );
+    assert!(m["location"].as_str().unwrap().contains("bug_crashes.rs"));
+    assert!(frames_hit_site(&p, &o.site));
 }
