@@ -22,6 +22,9 @@
 //!   client for breadd's IPC socket (`emit`, unsourced `command`,
 //!   `health`/`api_version`, `subscribe`), for sibling `bread*` app
 //!   daemons integrating with the bread automation fabric.
+//! - [`bug`] (feature `bread-client`): breadbug integration. One call turns
+//!   on a panic hook, native crash handlers, log forwarding and a freeze
+//!   heartbeat, all reporting to breadd's `bug.*` IPC methods.
 //! - [`screenshot_cli`]: shared `--screenshot` / `--output` /
 //!   `--width` / `--height` values, `SETTLE_DELAY` (300ms), and the
 //!   "both flags or neither" validator. Next-pin helper; no clap/GTK
@@ -54,3 +57,6 @@ pub mod gtk_popup;
 
 #[cfg(feature = "bread-client")]
 pub mod bread_client;
+
+#[cfg(feature = "bread-client")]
+pub mod bug;
