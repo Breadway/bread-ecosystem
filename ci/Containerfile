@@ -19,6 +19,7 @@ ARG EXTRA_PKGS=""
 
 RUN pacman -Syu --noconfirm --needed \
         base-devel \
+        binutils \
         git \
         pkgconf \
         rust \
