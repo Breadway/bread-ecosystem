@@ -83,7 +83,23 @@ impl BreadClient {
     /// `emit` and `subscribe` each connect (or reconnect) as needed. This
     /// is itself part of the graceful-degradation story: constructing a
     /// `BreadClient` can never fail just because breadd isn't running yet.
+    ///
+    /// Also starts breadbug reporting for the process by default (panic hook,
+    /// native crash handlers, log forwarding, heartbeat) unless the app opts
+    /// out with [`BreadClient::connect_without_bug_reporting`] or the user sets
+    /// `BREAD_BUG_REPORTING=0`. See [`crate::bug`].
     pub fn connect(app_id: impl Into<String>) -> Self {
+        let client = Self {
+            app_id: app_id.into(),
+        };
+        crate::bug::start_automatic(client.app_id());
+        client
+    }
+
+    /// Like [`BreadClient::connect`], but starts no breadbug reporting. For
+    /// apps that handle sensitive data (a clipboard manager, a search index).
+    /// They can still opt in later with [`BreadClient::enable_bug_reporting`].
+    pub fn connect_without_bug_reporting(app_id: impl Into<String>) -> Self {
         Self {
             app_id: app_id.into(),
         }
