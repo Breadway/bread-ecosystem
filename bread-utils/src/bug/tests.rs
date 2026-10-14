@@ -16,16 +16,17 @@ fn recorder() -> Recorder {
     let lines = Arc::new(Mutex::new(Vec::new()));
     let l2 = lines.clone();
     std::thread::spawn(move || {
+        // One connection per request, read to EOF before accepting the next:
+        // the client sends over strictly sequential senders, so accept order
+        // is send order. A thread per connection reordered lines across
+        // sends (third overtaking second) and made the batching test flaky.
         for stream in listener.incoming() {
             let Ok(stream) = stream else { return };
-            let l3 = l2.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                    if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                        l3.lock().unwrap().push(v);
-                    }
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    l2.lock().unwrap().push(v);
                 }
-            });
+            }
         }
     });
     Recorder {
@@ -186,6 +187,75 @@ fn overflow_drops_the_oldest_lines_and_keeps_the_newest() {
         kept.last().map(String::as_str),
         Some((LOG_QUEUE + 9).to_string().as_str())
     );
+}
+
+#[test]
+fn contended_push_drops_nothing_while_under_cap() {
+    // Regression for ECO-77: push used a single try_lock and dropped the NEW
+    // line on WouldBlock, so a producer racing the worker's take() lost lines
+    // even with room in the queue. Only a full queue may drop (oldest first).
+    // Fails on the old code: 8 producers hammering one try_lock each lose
+    // lines to each other and to the taker.
+    const PRODUCERS: usize = 8;
+    const PER: usize = 50;
+    const TOTAL: usize = PRODUCERS * PER; // 400: under the 512 cap
+    let q = Arc::new(Queue::new());
+    let dropped = Arc::new(AtomicU64::new(0));
+    let done = Arc::new(AtomicBool::new(false));
+    let taken: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    // Taker mimics the log worker: short waits, small batches.
+    let (tq, tdone, ttaken) = (q.clone(), done.clone(), taken.clone());
+    let worker = std::thread::spawn(move || {
+        while !tdone.load(Ordering::Acquire) {
+            for l in tq.take(LOG_BATCH, Duration::from_millis(1)) {
+                ttaken.lock().unwrap().push(l.msg);
+            }
+        }
+    });
+    let start = Arc::new(std::sync::Barrier::new(PRODUCERS));
+    let mut handles = Vec::with_capacity(PRODUCERS);
+    for t in 0..PRODUCERS {
+        let (qq, dd, ss) = (q.clone(), dropped.clone(), start.clone());
+        handles.push(std::thread::spawn(move || {
+            ss.wait();
+            for k in 0..PER {
+                let d = qq.push(Line {
+                    level: "INFO",
+                    msg: format!("t{t}-{k:03}"),
+                    t: 0,
+                });
+                dd.fetch_add(d, Ordering::Relaxed);
+            }
+        }));
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+    done.store(true, Ordering::Release);
+    worker.join().unwrap();
+    // Everything taken plus everything still queued must be exactly the 400
+    // pushed lines: the queue never filled, so any drop was contention.
+    let mut all = taken.lock().unwrap().drain(..).collect::<Vec<_>>();
+    all.extend(
+        q.take(LOG_QUEUE + 1, Duration::ZERO)
+            .into_iter()
+            .map(|l| l.msg),
+    );
+    assert_eq!(
+        dropped.load(Ordering::Relaxed),
+        0,
+        "contention dropped lines while under cap"
+    );
+    assert_eq!(all.len(), TOTAL, "lost lines under contention");
+    all.sort();
+    let mut want = Vec::with_capacity(TOTAL);
+    for t in 0..PRODUCERS {
+        for k in 0..PER {
+            want.push(format!("t{t}-{k:03}"));
+        }
+    }
+    want.sort();
+    assert_eq!(all, want);
 }
 
 #[test]

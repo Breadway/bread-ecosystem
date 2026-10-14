@@ -227,6 +227,12 @@ fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// Blocking lock that survives poisoning: a panicked worker must never wedge
+/// the app thread. Recovering the inner queue is safe because it holds only
+/// best-effort telemetry lines with no cross-line invariant; the worst a
+/// panic mid-push/drain leaves behind is one partial line, already an
+/// accepted loss mode. Dropping the backlog instead would need `&mut` access
+/// we do not have and would destroy evidence for zero safety gain.
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -237,13 +243,19 @@ struct Line {
     t: u64,
 }
 
-/// Bounded log queue. Producers never wait: a full queue evicts its oldest
-/// line, and a busy lock (the worker is draining) counts the new line as
-/// dropped.
+/// Bounded log queue. Producers never wait for a free slot: a full queue
+/// evicts its oldest line. A push retries a busy lock briefly (the worker
+/// only holds it for microseconds: drain, never IO), so a line that fits is
+/// never mistaken for a full queue.
 struct Queue {
     lines: Mutex<VecDeque<Line>>,
     ready: Condvar,
 }
+
+/// How long [`Queue::push`] retries `try_lock` before taking the lock: long
+/// enough to ride out the worker's microsecond-scale drain, far below
+/// anything the calling app thread could notice.
+const PUSH_RETRY: Duration = Duration::from_micros(1000);
 
 impl Queue {
     fn new() -> Self {
@@ -253,12 +265,31 @@ impl Queue {
         }
     }
 
-    /// Queue `line`. Returns how many lines were dropped to make room.
+    /// Queue `line`. Returns how many lines were dropped to make room: 1
+    /// when the queue was full (the oldest line is evicted), else 0. A busy
+    /// lock is retried for [`PUSH_RETRY`], then taken: only a full queue
+    /// drops, and then the oldest. The blocking tail only triggers when the
+    /// holder was preempted mid-drain; the holder never does IO under the
+    /// lock, so it still resolves in microseconds in practice.
     fn push(&self, line: Line) -> u64 {
         let mut q = match self.lines.try_lock() {
             Ok(q) => q,
             Err(TryLockError::Poisoned(p)) => p.into_inner(),
-            Err(TryLockError::WouldBlock) => return 1,
+            Err(TryLockError::WouldBlock) => {
+                let deadline = Instant::now() + PUSH_RETRY;
+                loop {
+                    match self.lines.try_lock() {
+                        Ok(q) => break q,
+                        Err(TryLockError::Poisoned(p)) => break p.into_inner(),
+                        Err(TryLockError::WouldBlock) => {
+                            if Instant::now() >= deadline {
+                                break lock(&self.lines);
+                            }
+                            std::hint::spin_loop();
+                        }
+                    }
+                }
+            }
         };
         let mut dropped = 0;
         if q.len() >= LOG_QUEUE {
@@ -274,8 +305,11 @@ impl Queue {
         dropped
     }
 
-    /// Up to `max` lines, waiting at most `wait` for the first one.
+    /// Up to `max` lines, waiting at most `wait` for the first one. The
+    /// output buffer is reserved before locking, so no allocation happens
+    /// while producers may be waiting on the lock.
     fn take(&self, max: usize, wait: Duration) -> Vec<Line> {
+        let mut out = Vec::with_capacity(max.min(LOG_QUEUE));
         let mut q = lock(&self.lines);
         if q.is_empty() && !wait.is_zero() {
             q = match self.ready.wait_timeout(q, wait) {
@@ -284,7 +318,9 @@ impl Queue {
             };
         }
         let n = q.len().min(max);
-        q.drain(..n).collect()
+        out.extend(q.drain(..n));
+        drop(q);
+        out
     }
 
     /// Throw away everything queued; returns how many lines that was.
@@ -544,8 +580,8 @@ impl BugGuard {
         enqueue(&self.shared, level_name(level), msg);
     }
 
-    /// How many log lines were dropped (evicted, contended or over the rate
-    /// budget with breadd unreachable).
+    /// How many log lines were dropped (evicted from a full queue, or over
+    /// the rate budget with breadd unreachable).
     pub fn dropped_logs(&self) -> u64 {
         self.shared.dropped_logs.load(Ordering::Relaxed)
     }
