@@ -27,6 +27,17 @@
 //!   again, so the handler calls `raise` itself. The default action terminates,
 //!   a prior handler runs once, and an ignored signal stays ignored.
 //!
+//! The one exception is Rust std's stack-overflow guard handler (SIGSEGV and
+//! SIGBUS): chaining to it aborts, which would turn the fault into SIGABRT,
+//! so it is treated as `SIG_DFL` and the process dies of the original signal.
+//! It is detected at install time, as a real handler with
+//! `SA_SIGINFO | SA_ONSTACK` whose address is in this binary's own executable
+//! (see [`is_std_guard`]). The trade-off: a genuine stack overflow is reported
+//! as a plain crash rather than as "overflowed its stack", and an app handler
+//! in its own binary with those same flags, installed before [`install`],
+//! would be mistaken for std's. Every other prior handler (C libraries,
+//! custom handlers) keeps chaining.
+//!
 //! # Alternate stack
 //!
 //! The handler needs an alternate stack so stack overflows can be reported. If
@@ -99,6 +110,9 @@ struct Report {
 /// locking.
 struct Resources {
     prev: [libc::sigaction; SIGNALS.len()],
+    /// Whether `prev[i]` is Rust std's stack-overflow guard handler, decided
+    /// at install time (see [`is_std_guard`]). Set once; only read afterwards.
+    std_guard: [bool; SIGNALS.len()],
     pipe_r: libc::c_int,
     pipe_w: libc::c_int,
 }
@@ -275,7 +289,7 @@ unsafe fn walk(res: &Resources, ctx: *mut c_void, out: &mut [u64; MAX_FRAMES]) -
         n += 1;
     }
     let mut fp = gregs[REG_RBP] as usize;
-    while n < MAX_FRAMES && fp != 0 && fp % std::mem::align_of::<usize>() == 0 {
+    while n < MAX_FRAMES && fp != 0 && fp.is_multiple_of(std::mem::align_of::<usize>()) {
         let mut pair = [0usize; 2];
         if !read_pair(res, fp, &mut pair) {
             break;
@@ -316,7 +330,12 @@ fn send_report(rep: &Report, signal: &str, frames: &[u64]) {
         if fd < 0 {
             return;
         }
-        if libc::connect(fd, &rep.addr as *const _ as *const libc::sockaddr, rep.addr_len) == 0 {
+        if libc::connect(
+            fd,
+            &rep.addr as *const _ as *const libc::sockaddr,
+            rep.addr_len,
+        ) == 0
+        {
             let mut sent = 0usize;
             while sent < out.len {
                 let w = libc::send(
@@ -365,7 +384,13 @@ extern "C" fn handler(sig: libc::c_int, info: *mut libc::siginfo_t, ctx: *mut c_
         // SAFETY: the kernel passes a valid siginfo_t with SA_SIGINFO.
         unsafe { (*info).si_code }
     };
-    let prev = &res.prev[idx];
+    let mut prev = res.prev[idx];
+    if res.std_guard[idx] {
+        // Rust std's stack-overflow guard handler: chaining to it aborts on
+        // any fault that reaches it, which would turn SIGSEGV into SIGABRT.
+        // Treat it as SIG_DFL so the process dies of the original signal.
+        prev.sa_sigaction = libc::SIG_DFL;
+    }
     if prev.sa_sigaction == libc::SIG_IGN {
         // Returning from a synchronous fault under SIG_IGN would retry the
         // instruction forever. Terminate as the kernel would have.
@@ -376,7 +401,7 @@ extern "C" fn handler(sig: libc::c_int, info: *mut libc::siginfo_t, ctx: *mut c_
     }
     if prev.sa_sigaction == libc::SIG_DFL {
         // SAFETY: restoring the default saved at install time.
-        unsafe { libc::sigaction(sig, prev, ptr::null_mut()) };
+        unsafe { libc::sigaction(sig, &prev, ptr::null_mut()) };
         if si_code <= 0 {
             // Sent by the process itself: returning would not deliver it
             // again. Deliver it now so the default action runs.
@@ -400,6 +425,72 @@ extern "C" fn handler(sig: libc::c_int, info: *mut libc::siginfo_t, ctx: *mut c_
         let f: extern "C" fn(libc::c_int) = unsafe { std::mem::transmute(prev.sa_sigaction) };
         f(sig);
     }
+}
+
+/// Whether `addr` is code in this process's own executable. The loader tells
+/// which object an address belongs to ([`libc::dladdr`]); the object is this
+/// binary when its device and inode match `/proc/self/exe`, not by comparing
+/// path text, which can differ in form between the two. Rust std links its
+/// stack-overflow guard handler into the binary, so this is how std's handler
+/// is told apart from a C library's.
+///
+/// Only called at install time, never from the signal handler.
+fn handler_in_own_exe(addr: usize) -> bool {
+    // SAFETY: `dladdr` only reads the loader's tables; `stat` only reads
+    // file metadata. Both are fine outside signal context.
+    unsafe {
+        let mut info: libc::Dl_info = std::mem::zeroed();
+        if libc::dladdr(addr as *const c_void, &mut info) == 0 || info.dli_fname.is_null() {
+            return false;
+        }
+        let mut named: libc::stat = std::mem::zeroed();
+        let mut exe: libc::stat = std::mem::zeroed();
+        if libc::stat(info.dli_fname, &mut named) != 0 {
+            return false;
+        }
+        if libc::stat(c"/proc/self/exe".as_ptr(), &mut exe) != 0 {
+            return false;
+        }
+        named.st_dev == exe.st_dev && named.st_ino == exe.st_ino
+    }
+}
+
+/// Whether a saved prior action is Rust std's stack-overflow guard handler.
+///
+/// std installs it for SIGSEGV and SIGBUS during runtime init, before any app
+/// code (including [`install`]) runs, with `SA_SIGINFO | SA_ONSTACK` and its
+/// code linked into the executable. (A constructor snapshot cannot catch it:
+/// constructors run before runtime init, so at that point the action is still
+/// `SIG_DFL`. The check must run at install time.) A prior action counts as
+/// std's only when all three hold: a real handler (not `SIG_DFL`/`SIG_IGN`),
+/// those flag bits, and an address in this binary's own executable object.
+///
+/// Neither half suffices alone: the address check would misfire on an app
+/// handler defined in the app's own binary, and the flag check would misfire
+/// on a C library handler using an alternate stack, so both are required. The
+/// remaining edge (an app handler in its own binary with
+/// `SA_SIGINFO | SA_ONSTACK`, installed before [`install`]) is treated as
+/// std's: its crash is reported as a plain crash and the process dies of the
+/// original signal instead of chaining. That trade-off beats the alternative:
+/// chaining to std's handler aborts, turning the fault into SIGABRT and
+/// misreporting the signal. Every other prior handler (C libraries, custom
+/// handlers without `SA_ONSTACK` such as the one in
+/// `tests/bug_crashes.rs`) keeps chaining.
+///
+/// Only called at install time, never from the signal handler.
+fn is_std_guard(sig: libc::c_int, prev: &libc::sigaction) -> bool {
+    if sig != libc::SIGSEGV && sig != libc::SIGBUS {
+        return false;
+    }
+    if prev.sa_sigaction == libc::SIG_DFL || prev.sa_sigaction == libc::SIG_IGN {
+        return false;
+    }
+    if prev.sa_flags & (libc::SA_SIGINFO | libc::SA_ONSTACK)
+        != (libc::SA_SIGINFO | libc::SA_ONSTACK)
+    {
+        return false;
+    }
+    handler_in_own_exe(prev.sa_sigaction)
 }
 
 /// Put back the default action for `sig` and deliver it again.
@@ -430,6 +521,10 @@ fn make_resources() -> Option<Resources> {
     for (i, (sig, _)) in SIGNALS.iter().enumerate() {
         prev[i] = query(*sig)?;
     }
+    let mut std_guard = [false; SIGNALS.len()];
+    for (i, (sig, _)) in SIGNALS.iter().enumerate() {
+        std_guard[i] = is_std_guard(*sig, &prev[i]);
+    }
     let mut fds = [-1 as libc::c_int; 2];
     // SAFETY: pipe2 writes two fds into the array on success.
     if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) } != 0 {
@@ -437,6 +532,7 @@ fn make_resources() -> Option<Resources> {
     }
     Some(Resources {
         prev,
+        std_guard,
         pipe_r: fds[0],
         pipe_w: fds[1],
     })
@@ -538,7 +634,9 @@ pub fn install(app: &str, version: Option<&str>, socket: &Path) -> bool {
 
     if RESOURCES.get().is_none() {
         let Some(res) = make_resources() else {
-            log::warn!("breadbug: could not read signal actions or make a pipe; crash reporting off");
+            log::warn!(
+                "breadbug: could not read signal actions or make a pipe; crash reporting off"
+            );
             // SAFETY: the report was never published.
             drop(unsafe { Box::from_raw(report) });
             return false;

@@ -37,3 +37,7 @@ bread-client = ["dep:bread-shared", "dep:libc", "dep:log"]
 [dev-dependencies]
 tempfile = "3"
 libc = "0.2"
+
+[[example]]
+name = "bug_overhead"
+required-features = ["bread-client"]

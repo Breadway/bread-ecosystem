@@ -16,7 +16,9 @@ const ROOTS: [(&str, &str); 3] = [
     ("/Users/", "/Users/<user>"),
     ("/run/user/", "/run/user/<uid>"),
 ];
-const SECRET_PREFIXES: [&str; 8] = ["sk-", "sk_", "ghp_", "gho_", "ghs_", "glpat-", "xox", "AKIA"];
+const SECRET_PREFIXES: [&str; 8] = [
+    "sk-", "sk_", "ghp_", "gho_", "ghs_", "glpat-", "xox", "AKIA",
+];
 const SENSITIVE_KEYS: [&str; 6] = ["pass", "secret", "token", "key", "auth", "cookie"];
 
 /// Redacts text using a known home directory and user name.
@@ -220,7 +222,11 @@ mod tests {
     #[test]
     fn long_hex_identifiers_are_hidden_but_short_ones_are_not() {
         assert_eq!(
-            redact_with("serial 0123456789abcdef0123456789abcdef build cafe", None, None),
+            redact_with(
+                "serial 0123456789abcdef0123456789abcdef build cafe",
+                None,
+                None
+            ),
             "serial <id> build cafe"
         );
     }

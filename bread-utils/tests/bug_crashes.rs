@@ -27,10 +27,15 @@ pub fn fixture_panic_site(n: u32) -> u32 {
 #[inline(never)]
 #[no_mangle]
 pub extern "C" fn fixture_segv_site(p: *mut u8) {
-    // SAFETY: deliberately invalid; this child process is meant to crash. The
-    // store is in this function's own body (no helper call), so the faulting
-    // instruction is inside the fixture's entry window.
-    unsafe { *std::hint::black_box(p) = 1 };
+    // A raw store, not `ptr::write_volatile` or `*p = 1`: debug builds check
+    // null and alignment before those and panic instead of faulting. The
+    // store is in this function's own body, so the faulting instruction sits
+    // inside the fixture's entry window.
+    //
+    // SAFETY: deliberately invalid; this child process is meant to crash.
+    unsafe {
+        std::arch::asm!("mov byte ptr [{0}], 1", in(reg) std::hint::black_box(p), options(nostack));
+    }
 }
 
 fn module_offset_of(f: *const ()) -> (String, u64) {
@@ -96,16 +101,22 @@ fn child_main(mode: &str) {
 /// Setup-failure check: the handler cannot be installed because the socket
 /// path is unusable, and nothing about the process's signals may change.
 fn child_setup_failure() {
-    let before: Vec<libc::sigaction> = [libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGFPE, libc::SIGABRT]
-        .iter()
-        .map(|s| {
-            // SAFETY: a zeroed sigaction is a valid out-parameter.
-            let mut old: libc::sigaction = unsafe { std::mem::zeroed() };
-            // SAFETY: a null act only reads the current action.
-            unsafe { libc::sigaction(*s, std::ptr::null(), &mut old) };
-            old
-        })
-        .collect();
+    let before: Vec<libc::sigaction> = [
+        libc::SIGSEGV,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGFPE,
+        libc::SIGABRT,
+    ]
+    .iter()
+    .map(|s| {
+        // SAFETY: a zeroed sigaction is a valid out-parameter.
+        let mut old: libc::sigaction = unsafe { std::mem::zeroed() };
+        // SAFETY: a null act only reads the current action.
+        unsafe { libc::sigaction(*s, std::ptr::null(), &mut old) };
+        old
+    })
+    .collect();
     let long = std::path::PathBuf::from(format!("/{}", "x".repeat(300)));
     let ok = bread_utils::bug::native::install("clip", None, &long);
     let after_sigsegv_handler = {
@@ -116,7 +127,10 @@ fn child_setup_failure() {
         old.sa_sigaction
     };
     let unchanged = before[0].sa_sigaction == after_sigsegv_handler;
-    println!("SETUP ok={ok} unchanged={unchanged} active={}", bread_utils::bug::native::is_active());
+    println!(
+        "SETUP ok={ok} unchanged={unchanged} active={}",
+        bread_utils::bug::native::is_active()
+    );
 }
 
 struct Outcome {
@@ -199,17 +213,13 @@ fn run_child_with(mode: &str, keep_message: bool) -> Outcome {
 fn child_entry() {
     match std::env::var("BUG_FIXTURE").as_deref() {
         Ok("setup_failure") => child_setup_failure(),
+        Ok("prior_handler") => child_prior_handler(),
         Ok(mode) => child_main(mode),
         Err(_) => {}
     }
 }
 
-/// UNRESOLVED (see the PR comment): with a prior SIG_DFL set in the child,
-/// the fault still ends in SIGABRT and the marker is a `panic`, not a
-/// `crash`. Rust's own SIGSEGV handling is intercepting the fault before the
-/// native handler runs. Ignored until that path is understood.
 #[test]
-#[ignore = "unresolved: std's SIGSEGV handler intercepts the fault (see PR comment)"]
 fn segv_with_default_prior_action_dies_of_sigsegv() {
     let o = run_child("segv_default");
     use std::os::unix::process::ExitStatusExt;
@@ -220,6 +230,112 @@ fn segv_with_default_prior_action_dies_of_sigsegv() {
         o.status
     );
     assert_eq!(marker_of(&o)["marker"]["signal"], "SIGSEGV");
+}
+
+/// A prior SIGSEGV handler that is not Rust std's: it writes a marker byte to
+/// a pipe and exits with code 77. It stands in for a C library's handler,
+/// which must keep being called after our report.
+fn child_prior_handler() {
+    extern "C" fn prior(_sig: libc::c_int, _info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
+        // SAFETY: write and _exit are async-signal-safe; FD 3 is the pipe the
+        // parent set up for us.
+        unsafe {
+            let byte = b'P';
+            libc::write(3, &byte as *const u8 as *const libc::c_void, 1);
+            libc::_exit(77);
+        }
+    }
+    // SAFETY: a zeroed sigaction with SA_SIGINFO and our handler is valid.
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = prior as *const () as usize;
+        sa.sa_flags = libc::SA_SIGINFO;
+        libc::sigemptyset(&mut sa.sa_mask);
+        libc::sigaction(libc::SIGSEGV, &sa, std::ptr::null_mut());
+    }
+    let client = BreadClient::connect_without_bug_reporting("clip");
+    let mut o = BugOptions::new("9.9.9");
+    o.panic_hook = false;
+    o.heartbeat = false;
+    o.forward_logs = false;
+    let _guard = client.enable_bug_reporting(o);
+    fixture_segv_site(std::ptr::null_mut());
+}
+
+#[test]
+fn a_custom_prior_sigsegv_handler_is_still_called_after_our_report() {
+    // The prior handler reports through FD 3. The parent passes the write end.
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: pipe writes two fds on success.
+    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+    let (r, w) = (fds[0], fds[1]);
+    let dir = tempfile::tempdir().unwrap();
+    let runtime = dir.path().join("rt");
+    std::fs::create_dir_all(runtime.join("bread")).unwrap();
+    let listener = UnixListener::bind(runtime.join("bread/breadd.sock")).unwrap();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { return };
+            let s3 = s2.clone();
+            std::thread::spawn(move || {
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                        s3.lock().unwrap().push(v);
+                    }
+                }
+            });
+        }
+    });
+    let mut cmd = Command::new(std::env::current_exe().unwrap());
+    // SAFETY: the child inherits FD 3 as the write end; nothing else is moved.
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(move || {
+            if libc::dup2(w, 3) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let status = cmd
+        .args(["--exact", "child_entry", "--nocapture", "--test-threads=1"])
+        .env("BUG_FIXTURE", "prior_handler")
+        .env("XDG_RUNTIME_DIR", &runtime)
+        .env("RUST_BACKTRACE", "0")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    // SAFETY: closing the descriptors this test opened.
+    unsafe {
+        libc::close(w);
+    }
+    let mut buf = [0u8; 1];
+    // SAFETY: reading one byte from the pipe we own.
+    let got = unsafe { libc::read(r, buf.as_mut_ptr() as *mut libc::c_void, 1) };
+    unsafe {
+        libc::close(r);
+    }
+    assert_eq!(
+        status.code(),
+        Some(77),
+        "the custom prior handler must run and exit: {status:?}"
+    );
+    assert_eq!(got, 1, "prior handler did not write its marker");
+    assert_eq!(buf[0], b'P');
+    for _ in 0..100 {
+        if !seen.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    let reported = seen.lock().unwrap().clone();
+    assert!(
+        reported.iter().any(|v| v["method"] == "bug.marker"),
+        "our crash marker must still be sent before chaining: {reported:?}"
+    );
 }
 
 #[test]
@@ -252,6 +368,11 @@ fn marker_of(o: &Outcome) -> Value {
 fn redacted(path: &str) -> String {
     bread_utils::bug::scrub::Scrubber::from_env().redact(path)
 }
+
+/// Bytes after `fixture_segv_site`'s entry that belong to the function. The
+/// function is 0x28 bytes (`nm -S`); 0x80 leaves room for alignment padding
+/// and a prologue change without loosening the check to a whole module.
+const FIXTURE_SPAN: u64 = 0x80;
 
 fn frames_hit_site(m: &Value, site: &(String, u64)) -> bool {
     let module = redacted(&site.0);
@@ -293,22 +414,20 @@ fn a_rust_panic_is_reported_with_message_location_and_a_stack_through_the_panick
     );
 }
 
-/// UNRESOLVED (see the PR comment): the reported signal is SIGABRT, not the
-/// SIGSEGV that faulted, because the chained prior handler (Rust's std
-/// SIGSEGV handler) aborts. Ignored until the signal-reporting choice is made.
 #[test]
-#[ignore = "unresolved: reports SIGABRT from the chained std handler (see PR comment)"]
 fn a_real_segfault_is_reported_then_the_process_still_dies_of_it() {
     let o = run_child("segv");
     use std::os::unix::process::ExitStatusExt;
     // The test binary has Rust's own SIGSEGV handler installed (stack-overflow
-    // detection), and the handler chains to it. That handler ends the process
-    // with a signal of its own choosing, so only "died by a signal" is pinned
-    // here. Death by SIGSEGV with no prior handler is pinned in
+    // detection), but ours recognizes it at install time (address in this
+    // binary plus SA_SIGINFO|SA_ONSTACK) and falls back to the default action,
+    // so the process still dies of the faulting signal itself. Death by
+    // SIGSEGV with no prior handler at all is pinned separately in
     // `segv_with_default_prior_action_dies_of_sigsegv`.
-    assert!(
-        o.status.signal().is_some(),
-        "the process must still die of a signal: {:?}",
+    assert_eq!(
+        o.status.signal(),
+        Some(libc::SIGSEGV),
+        "the process must still die of SIGSEGV: {:?}",
         o.status
     );
     let p = marker_of(&o);
@@ -316,11 +435,15 @@ fn a_real_segfault_is_reported_then_the_process_still_dies_of_it() {
     assert_eq!(m["kind"], "crash");
     assert_eq!(m["signal"], "SIGSEGV");
     assert_eq!(m["app_version"], "9.9.9");
-    // The fault's stack must be present. Which frame is the top one depends on
-    // where the CPU faulted, so the frame-to-site check is not asserted here.
+    // The first frame is the faulting instruction, taken from the signal's
+    // ucontext, so it must lie inside the fixture's own code.
+    let first = &m["frames"][0];
+    assert_eq!(first["module"], redacted(&o.site.0).as_str(), "{m:#}");
+    let off = first["offset"].as_u64().unwrap();
     assert!(
-        !m["frames"].as_array().unwrap().is_empty(),
-        "no frames in the crash report:\n{m:#}"
+        off >= o.site.1 && off < o.site.1 + FIXTURE_SPAN,
+        "fault frame {off:#x} is outside fixture_segv_site {:#x}+{FIXTURE_SPAN:#x}:\n{m:#}",
+        o.site.1
     );
     for f in m["frames"].as_array().unwrap() {
         let keys: Vec<_> = f.as_object().unwrap().keys().cloned().collect();

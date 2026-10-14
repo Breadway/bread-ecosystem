@@ -271,7 +271,11 @@ fn forwarded_logs_are_redacted_before_they_reach_the_socket() {
     );
     r.wait_for("bug.logs", 1);
     let wire = serde_json::to_string(&r.all_log_lines()).unwrap();
-    for leak in ["dana.fake@example.com", "sk-FAKE0123456789ABCDEF", "10.1.2.3"] {
+    for leak in [
+        "dana.fake@example.com",
+        "sk-FAKE0123456789ABCDEF",
+        "10.1.2.3",
+    ] {
         assert!(!wire.contains(leak), "{leak} leaked: {wire}");
     }
     assert!(wire.contains("<email>"));
