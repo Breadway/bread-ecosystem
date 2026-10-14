@@ -27,6 +27,7 @@ semver = "1"
 # accepts (png, jpg/jpeg, webp, gif, bmp). No jpeg-rayon (parallel decode is
 # not worth pulling in rayon here).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+crossbeam-queue = "0.3"
 
 [profile.release]
 lto = "thin"
