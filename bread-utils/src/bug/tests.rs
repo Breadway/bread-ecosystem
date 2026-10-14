@@ -259,6 +259,30 @@ fn contended_push_drops_nothing_while_under_cap() {
 }
 
 #[test]
+fn producer_is_nonblocking_while_consumer_is_stalled() {
+    let q = Queue::new();
+    q.push(Line {
+        level: "INFO",
+        msg: "before".into(),
+        t: 0,
+    });
+    // Hold the consumer's wait coordination lock well beyond the former
+    // retry interval. Enqueue must not depend on this lock or lose a line.
+    let held = q.wait_lock.lock().unwrap();
+    let start = Instant::now();
+    q.push(Line {
+        level: "INFO",
+        msg: "during-stall".into(),
+        t: 0,
+    });
+    assert!(start.elapsed() < Duration::from_millis(100));
+    drop(held);
+    let lines = q.take(LOG_QUEUE, Duration::ZERO);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1].msg, "during-stall");
+}
+
+#[test]
 fn a_sustained_flood_is_sent_at_the_rate_budget_not_all_at_once() {
     let r = recorder();
     let client = BreadClient::connect_without_bug_reporting("clip");

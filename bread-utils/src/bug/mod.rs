@@ -54,7 +54,7 @@ pub mod native;
 pub mod panic;
 pub mod scrub;
 
-use std::collections::VecDeque;
+use crossbeam_queue::ArrayQueue;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::os::unix::io::FromRawFd;
@@ -62,7 +62,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -227,82 +227,52 @@ fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// Blocking lock that survives poisoning: a panicked worker must never wedge
-/// the app thread. Recovering the inner queue is safe because it holds only
-/// best-effort telemetry lines with no cross-line invariant; the worst a
-/// panic mid-push/drain leaves behind is one partial line, already an
-/// accepted loss mode. Dropping the backlog instead would need `&mut` access
-/// we do not have and would destroy evidence for zero safety gain.
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 struct Line {
     level: &'static str,
     msg: String,
     t: u64,
 }
 
-/// Bounded log queue. Producers never wait for a free slot: a full queue
-/// evicts its oldest line. A push retries a busy lock briefly (the worker
-/// only holds it for microseconds: drain, never IO), so a line that fits is
-/// never mistaken for a full queue.
-struct Queue {
-    lines: Mutex<VecDeque<Line>>,
-    ready: Condvar,
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// How long [`Queue::push`] retries `try_lock` before taking the lock: long
-/// enough to ride out the worker's microsecond-scale drain, far below
-/// anything the calling app thread could notice.
-const PUSH_RETRY: Duration = Duration::from_micros(1000);
+/// Bounded lock-free log queue. Producers never wait for the consumer: a full
+/// queue evicts its oldest line before retrying the push.
+struct Queue {
+    lines: ArrayQueue<Line>,
+    wait_lock: Mutex<()>,
+    ready: Condvar,
+}
 
 impl Queue {
     fn new() -> Self {
         Self {
-            lines: Mutex::new(VecDeque::with_capacity(LOG_QUEUE)),
+            lines: ArrayQueue::new(LOG_QUEUE),
+            wait_lock: Mutex::new(()),
             ready: Condvar::new(),
         }
     }
 
-    /// Queue `line`. Returns how many lines were dropped to make room: 1
-    /// when the queue was full (the oldest line is evicted), else 0. A busy
-    /// lock is retried for [`PUSH_RETRY`], then taken: only a full queue
-    /// drops, and then the oldest. The blocking tail only triggers when the
-    /// holder was preempted mid-drain; the holder never does IO under the
-    /// lock, so it still resolves in microseconds in practice.
+    /// Queue `line`. Returns how many lines were evicted to make room.
     fn push(&self, line: Line) -> u64 {
-        let mut q = match self.lines.try_lock() {
-            Ok(q) => q,
-            Err(TryLockError::Poisoned(p)) => p.into_inner(),
-            Err(TryLockError::WouldBlock) => {
-                let deadline = Instant::now() + PUSH_RETRY;
-                loop {
-                    match self.lines.try_lock() {
-                        Ok(q) => break q,
-                        Err(TryLockError::Poisoned(p)) => break p.into_inner(),
-                        Err(TryLockError::WouldBlock) => {
-                            if Instant::now() >= deadline {
-                                break lock(&self.lines);
-                            }
-                            std::hint::spin_loop();
-                        }
+        let mut dropped = 0;
+        let mut pending = line;
+        loop {
+            match self.lines.push(pending) {
+                Ok(()) => {
+                    self.ready.notify_one();
+                    return dropped;
+                }
+                Err(line) => {
+                    pending = line;
+                    if let Some(oldest) = self.lines.pop() {
+                        drop(oldest);
+                        dropped += 1;
                     }
                 }
             }
-        };
-        let mut dropped = 0;
-        if q.len() >= LOG_QUEUE {
-            q.pop_front();
-            dropped = 1;
         }
-        let wake = q.is_empty();
-        q.push_back(line);
-        drop(q);
-        if wake {
-            self.ready.notify_one();
-        }
-        dropped
     }
 
     /// Up to `max` lines, waiting at most `wait` for the first one. The
@@ -310,25 +280,32 @@ impl Queue {
     /// while producers may be waiting on the lock.
     fn take(&self, max: usize, wait: Duration) -> Vec<Line> {
         let mut out = Vec::with_capacity(max.min(LOG_QUEUE));
-        let mut q = lock(&self.lines);
-        if q.is_empty() && !wait.is_zero() {
-            q = match self.ready.wait_timeout(q, wait) {
-                Ok((g, _)) => g,
-                Err(e) => e.into_inner().0,
-            };
+        if self.lines.is_empty() && !wait.is_zero() {
+            let guard = self.ready_lock();
+            if self.lines.is_empty() {
+                let _ = self.ready.wait_timeout(guard, wait);
+            }
         }
-        let n = q.len().min(max);
-        out.extend(q.drain(..n));
-        drop(q);
+        for _ in 0..max {
+            let Some(line) = self.lines.pop() else { break };
+            out.push(line);
+        }
         out
     }
 
     /// Throw away everything queued; returns how many lines that was.
     fn discard_all(&self) -> u64 {
-        let mut q = lock(&self.lines);
-        let n = q.len() as u64;
-        q.clear();
+        let mut n = 0;
+        while self.lines.pop().is_some() {
+            n += 1;
+        }
         n
+    }
+
+    fn ready_lock(&self) -> MutexGuard<'_, ()> {
+        self.wait_lock
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
