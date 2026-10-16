@@ -10,6 +10,10 @@ tree under another (see ECO-79).
 `scripts/ci-checkout.sh <repo-url> <sha> <dest>` clones into `<dest>`, detaches
 at `<sha>`, verifies `HEAD`, and removes `<dest>` on failure. `<dest>` must be
 an absolute path that does not exist yet. The URL must carry no userinfo.
+Git prompting is disabled for the clone. SSH uses batch mode, ignores user SSH
+configuration, requires known host keys, and has a five-second connect limit.
+The clone has a 300-second timeout by default; callers may set
+`BREAD_CI_CLONE_TIMEOUT` to another positive integer number of seconds.
 
 ## Acquiring the helper before the checkout
 
@@ -39,4 +43,7 @@ last, so no step loses its tree.
 `scripts/test-ci-checkout.sh` covers exact-SHA checkout after the branch
 advances, two concurrent jobs on different branches, a control that reproduces
 the old shared-path race, failure cleanup, userinfo rejection before network
-access, and input validation.
+access, rejection of relative/root/parent-traversal and dangling-symlink
+destinations, and a deterministic mock scp-style SSH invocation with tests for
+both prompt completion and clone timeout. The check job also has a finite
+workflow timeout so a regression cannot occupy the runner indefinitely.

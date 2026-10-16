@@ -49,7 +49,7 @@ if [[ "${DEST}" != /* ]] || [[ "${DEST}" == *"/../"* ]] || [[ "${DEST}" == */.. 
     exit 2
 fi
 
-if [ -e "${DEST}" ]; then
+if [ -e "${DEST}" ] || [ -L "${DEST}" ]; then
     echo "ci-checkout.sh: ${DEST} already exists; refusing to reuse it" >&2
     exit 2
 fi
@@ -67,7 +67,14 @@ cleanup_on_failure() {
 trap cleanup_on_failure EXIT
 CREATED=1
 
-git clone --quiet --no-checkout -- "${REPO_URL}" "${DEST}"
+SSH_COMMAND="${BREAD_CI_SSH_COMMAND:-ssh -F /dev/null -oBatchMode=yes -oConnectTimeout=5 -oStrictHostKeyChecking=yes}"
+CLONE_TIMEOUT="${BREAD_CI_CLONE_TIMEOUT:-300}"
+if ! [[ "${CLONE_TIMEOUT}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ci-checkout.sh: clone timeout must be a positive integer number of seconds" >&2
+    exit 2
+fi
+timeout "${CLONE_TIMEOUT}s" env GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${SSH_COMMAND}" \
+    git clone --quiet --no-checkout -- "${REPO_URL}" "${DEST}"
 git -C "${DEST}" -c advice.detachedHead=false checkout --quiet --detach "${SHA}"
 
 actual="$(git -C "${DEST}" rev-parse HEAD)"

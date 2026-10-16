@@ -11,6 +11,8 @@ CHECKOUT="$HERE/ci-checkout.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+TIMEOUT="${TIMEOUT:-timeout}"
+command -v "$TIMEOUT" >/dev/null 2>&1 || fail "timeout command is required"
 
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
@@ -111,9 +113,17 @@ expect_rc() {
 }
 expect_rc 2 "short sha" "$CHECKOUT" "$URL" "abc1234" "$WORK/job-short"
 [ ! -e "$WORK/job-short" ] || fail "short sha created a directory"
+expect_rc 2 "relative dest" "$CHECKOUT" "$URL" "$WITH_SHA" "relative-checkout"
+expect_rc 2 "parent traversal dest" "$CHECKOUT" "$URL" "$WITH_SHA" "$WORK/../outside-checkout"
+expect_rc 2 "root dest" "$CHECKOUT" "$URL" "$WITH_SHA" "/"
+[ ! -e "$WORK/../outside-checkout" ] || fail "parent traversal created an outside directory"
 mkdir "$WORK/job-exists"
 expect_rc 2 "existing destination" "$CHECKOUT" "$URL" "$WITH_SHA" "$WORK/job-exists"
 rmdir "$WORK/job-exists"
+ln -s "$WORK/not-created" "$WORK/job-dangling-link"
+expect_rc 2 "dangling symlink destination" "$CHECKOUT" "$URL" "$WITH_SHA" "$WORK/job-dangling-link"
+[ -L "$WORK/job-dangling-link" ] || fail "existing dangling symlink was altered"
+rm "$WORK/job-dangling-link"
 
 # Userinfo is rejected before any network access. Token-only, user-only, and
 # user:password forms are all refused. The secret strings are fake fixtures.
@@ -128,12 +138,40 @@ for bad in \
     [ ! -e "$WORK/job-cred" ] || fail "userinfo rejection created a directory"
 done
 
-# scp-style SSH (host:path) carries no userinfo and must pass the URL check.
-# It exits with a non-validation code because the host is unreachable; the
-# assertion is that it is not 2, the input-rejection code.
+# scp-style SSH carries no URL userinfo and must pass URL validation. Do not
+# contact a real host: a deterministic mock records git's SSH argv and exits
+# promptly. GIT_SSH overrides user SSH config, and the timeout bounds failures.
+MOCK_SSH="$WORK/mock-ssh"
+SSH_ARGS="$WORK/ssh-args"
+cat > "$MOCK_SSH" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "$SSH_ARGS_FILE"
+exit 0
+MOCK
+chmod +x "$MOCK_SSH"
 rc=0
-"$CHECKOUT" "git@127.0.0.1:1/none.git" "$WITH_SHA" "$WORK/job-ssh" >/dev/null 2>&1 || rc=$?
+env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
+    BREAD_CI_SSH_COMMAND="$MOCK_SSH" SSH_ARGS_FILE="$SSH_ARGS" \
+    "$TIMEOUT" 5s "$CHECKOUT" "git@example.invalid:repo.git" "$WITH_SHA" "$WORK/job-ssh" >/dev/null 2>&1 || rc=$?
 [ "$rc" -ne 2 ] || fail "scp-style ssh URL was rejected as invalid input"
+[ "$rc" -ne 124 ] || fail "mocked scp-style ssh checkout exceeded its timeout"
+[ -s "$SSH_ARGS" ] || fail "scp-style ssh URL was rejected before invoking mock ssh"
+grep -q 'example.invalid' "$SSH_ARGS" || fail "mock ssh did not receive the expected host"
 [ ! -e "$WORK/job-ssh" ] || fail "failed ssh attempt left its directory behind"
+
+# The helper's own clone timeout is honored independently of the test runner's
+# outer timeout. This mock blocks until killed by timeout, without networking.
+cat > "$MOCK_SSH" <<'MOCK'
+#!/usr/bin/env bash
+sleep 10
+MOCK
+chmod +x "$MOCK_SSH"
+rc=0
+env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
+    BREAD_CI_CLONE_TIMEOUT=1 BREAD_CI_SSH_COMMAND="$MOCK_SSH" \
+    "$TIMEOUT" 5s "$CHECKOUT" "git@example.invalid:repo.git" "$WITH_SHA" "$WORK/job-ssh-timeout" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 124 ] || fail "blocked mock ssh should time out with exit 124, got $rc"
+[ ! -e "$WORK/job-ssh-timeout" ] || fail "timed-out clone left its directory behind"
 
 echo "ci-checkout.sh: exact-sha, concurrent, advance, cleanup, and validation tests passed"
