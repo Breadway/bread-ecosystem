@@ -36,15 +36,6 @@ jobs:
           git clone --no-checkout "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" "$checkout"
           git -C "$checkout" checkout --detach "$GITHUB_SHA"
 
-      - name: clean owned checkout
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${ECO_CHECK_SRC:-}" == "${RUNNER_TEMP:-/tmp}"/ecosystem-check.* && -d "$ECO_CHECK_SRC" ]]; then
-            rm -rf -- "$ECO_CHECK_SRC"
-          fi
-
       - name: lint git.breadway.dev dependency pins
         run: cd "$ECO_CHECK_SRC" && bash scripts/lint-pins.sh
 
@@ -77,3 +68,12 @@ jobs:
 
       - name: build --locked (extract)
         run: cd "$ECO_CHECK_SRC" && cargo build --workspace --locked --features extract
+
+      - name: clean owned checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${ECO_CHECK_SRC:-}" == "${RUNNER_TEMP:-/tmp}"/ecosystem-check.* && -d "$ECO_CHECK_SRC" ]]; then
+            rm -rf -- "$ECO_CHECK_SRC"
+          fi
