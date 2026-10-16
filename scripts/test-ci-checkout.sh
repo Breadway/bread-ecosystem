@@ -164,7 +164,7 @@ grep -q 'example.invalid' "$SSH_ARGS" || fail "mock ssh did not receive the expe
 # outer timeout. This mock blocks until killed by timeout, without networking.
 cat > "$MOCK_SSH" <<'MOCK'
 #!/usr/bin/env bash
-sleep 10
+exec sleep 10
 MOCK
 chmod +x "$MOCK_SSH"
 rc=0
