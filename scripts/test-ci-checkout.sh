@@ -102,19 +102,38 @@ if "$CHECKOUT" "$URL" "0000000000000000000000000000000000000001" "$BAD_DEST" 2>/
 fi
 [ ! -e "$BAD_DEST" ] || fail "failed checkout left its directory behind"
 
-# Input validation: short sha, existing destination, embedded password.
-if "$CHECKOUT" "$URL" "abc1234" "$WORK/job-short" 2>/dev/null; then fail "short sha accepted"; fi
+# Input validation: short sha, existing destination.
+expect_rc() {
+    local want="$1" label="$2"; shift 2
+    local rc=0
+    "$@" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq "$want" ] || fail "$label: expected exit $want, got $rc"
+}
+expect_rc 2 "short sha" "$CHECKOUT" "$URL" "abc1234" "$WORK/job-short"
+[ ! -e "$WORK/job-short" ] || fail "short sha created a directory"
 mkdir "$WORK/job-exists"
-if "$CHECKOUT" "$URL" "$WITH_SHA" "$WORK/job-exists" 2>/dev/null; then fail "existing destination accepted"; fi
+expect_rc 2 "existing destination" "$CHECKOUT" "$URL" "$WITH_SHA" "$WORK/job-exists"
 rmdir "$WORK/job-exists"
-if "$CHECKOUT" "https://user:secret@git.example.invalid/x.git" "$WITH_SHA" "$WORK/job-cred" 2>/dev/null; then
-    fail "URL with embedded password accepted"
-fi
-[ ! -e "$WORK/job-cred" ] || fail "credential rejection created a directory"
 
-# SSH form without a password must still be accepted by the URL check.
-if ! "$CHECKOUT" "ssh://git@127.0.0.1:1/none.git" "$WITH_SHA" "$WORK/job-ssh" 2>/dev/null; then
-    [ ! -e "$WORK/job-ssh" ] || fail "failed ssh attempt left its directory behind"
-fi
+# Userinfo is rejected before any network access. Token-only, user-only, and
+# user:password forms are all refused. The secret strings are fake fixtures.
+# This runs with an unreachable host, so a rejection that happened after the
+# network would fail for the wrong reason and exit with another code.
+for bad in \
+    "https://FAKE-TOKEN-ONLY@127.0.0.1:1/x.git" \
+    "https://FAKEUSER@127.0.0.1:1/x.git" \
+    "https://FAKEUSER:FAKEPASS@127.0.0.1:1/x.git" \
+    "ssh://git@127.0.0.1:1/x.git"; do
+    expect_rc 2 "userinfo ${bad%%@*}@... rejected" "$CHECKOUT" "$bad" "$WITH_SHA" "$WORK/job-cred"
+    [ ! -e "$WORK/job-cred" ] || fail "userinfo rejection created a directory"
+done
+
+# scp-style SSH (host:path) carries no userinfo and must pass the URL check.
+# It exits with a non-validation code because the host is unreachable; the
+# assertion is that it is not 2, the input-rejection code.
+rc=0
+"$CHECKOUT" "git@127.0.0.1:1/none.git" "$WITH_SHA" "$WORK/job-ssh" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 2 ] || fail "scp-style ssh URL was rejected as invalid input"
+[ ! -e "$WORK/job-ssh" ] || fail "failed ssh attempt left its directory behind"
 
 echo "ci-checkout.sh: exact-sha, concurrent, advance, cleanup, and validation tests passed"

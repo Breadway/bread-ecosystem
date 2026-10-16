@@ -3,17 +3,20 @@
 # a directory this job owns.
 #
 # Consumer check/release workflows used to run `rm -rf src && git clone
-# --branch "$GITHUB_REF_NAME" src`. Every job on a self-hosted runner clones
-# into the same relative path, so a second job could replace the tree while
-# the first job's build was still reading it (ECO-79). This helper fixes both
-# halves: the directory is unique per job, and the tree is pinned to the event
-# SHA instead of whatever the branch points to when the step runs.
+# --branch "$GITHUB_REF_NAME" src`. Jobs on the same self-hosted runner then
+# share one relative path. The local control in test-ci-checkout.sh shows a
+# second clone into that path replacing a tree another job is still reading
+# (ECO-79). The runner's own workspace was not inspected, so this is the
+# mechanism the logs and the control support, not a directly observed
+# interleaving. This helper gives each job a unique directory and pins the
+# tree to the event SHA instead of whatever the branch points to at run time.
 #
 # Usage:
 #   scripts/ci-checkout.sh <repo-url> <sha> <dest>
 #
-# <repo-url> is a plain https or ssh URL. Credentials must not be embedded in
-# it; authenticate through the runner's credential helper or SSH key.
+# <repo-url> must carry no userinfo: no token, user, or password before the
+# host. Use a plain https URL with the runner's credential helper, or the
+# scp-style git@host:path form, which authenticates with an SSH key.
 # <dest> must not exist yet; the caller creates it with mktemp -d so the
 # directory is owned by this job.
 #
@@ -31,8 +34,8 @@ REPO_URL="$1"
 SHA="$2"
 DEST="$3"
 
-if [[ "${REPO_URL}" =~ ^[a-zA-Z+.-]+://[^/@]*:[^/@]*@ ]]; then
-    echo "ci-checkout.sh: refusing a repo URL with an embedded password" >&2
+if [[ "${REPO_URL}" =~ ^[a-zA-Z+.-]+://[^/]*@ ]]; then
+    echo "ci-checkout.sh: refusing a repo URL with userinfo; use SSH keys or a credential helper" >&2
     exit 2
 fi
 
@@ -41,19 +44,28 @@ if ! [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]]; then
     exit 2
 fi
 
+if [[ "${DEST}" != /* ]] || [[ "${DEST}" == *"/../"* ]] || [[ "${DEST}" == */.. ]] || [ "${DEST}" = / ]; then
+    echo "ci-checkout.sh: dest must be an absolute path without .. segments" >&2
+    exit 2
+fi
+
 if [ -e "${DEST}" ]; then
     echo "ci-checkout.sh: ${DEST} already exists; refusing to reuse it" >&2
     exit 2
 fi
 
+# Only remove a directory this run created: we verified it did not exist above,
+# so anything present at cleanup time was made by the clone below.
+CREATED=0
 cleanup_on_failure() {
     rc=$?
-    if [ "${rc}" -ne 0 ] && [ -d "${DEST}" ]; then
+    if [ "${rc}" -ne 0 ] && [ "${CREATED}" -eq 1 ] && [ -d "${DEST}" ]; then
         rm -rf -- "${DEST}"
     fi
     exit "${rc}"
 }
 trap cleanup_on_failure EXIT
+CREATED=1
 
 git clone --quiet --no-checkout -- "${REPO_URL}" "${DEST}"
 git -C "${DEST}" -c advice.detachedHead=false checkout --quiet --detach "${SHA}"

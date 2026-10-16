@@ -31,13 +31,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Bootstrap: scripts/ci-checkout.sh lives in the tree being fetched, so
+          # it cannot run before this clone. This inline copy must match it.
+          # Consumers that adopt the shared helper should fetch a pinned copy
+          # first (see docs/ci-checkout.md) and drop this block.
+          if ! [[ "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "checkout: GITHUB_SHA is not a full commit id" >&2
+              exit 1
+          fi
           checkout=$(mktemp -d "${RUNNER_TEMP:-/tmp}/ecosystem-check.XXXXXX")
           printf 'ECO_CHECK_SRC=%s\n' "$checkout" >> "$GITHUB_ENV"
           git clone --no-checkout "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" "$checkout"
-          git -C "$checkout" checkout --detach "$GITHUB_SHA"
+          git -C "$checkout" -c advice.detachedHead=false checkout --quiet --detach "$GITHUB_SHA"
+          actual="$(git -C "$checkout" rev-parse HEAD)"
+          if [ "$actual" != "$GITHUB_SHA" ]; then
+              echo "checkout: HEAD is $actual, expected $GITHUB_SHA" >&2
+              exit 1
+          fi
 
       - name: lint git.breadway.dev dependency pins
         run: cd "$ECO_CHECK_SRC" && bash scripts/lint-pins.sh
+
+      - name: ci checkout helper regression
+        run: cd "$ECO_CHECK_SRC" && bash scripts/test-ci-checkout.sh
 
       - name: shared CI target cache locking
         run: cd "$ECO_CHECK_SRC" && bash ci/test-build-lock.sh
