@@ -28,41 +28,52 @@ jobs:
     runs-on: [self-hosted]
     steps:
       - name: checkout
+        shell: bash
         run: |
           set -euo pipefail
-          rm -rf src && mkdir src
-          git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
-            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+          checkout=$(mktemp -d "${RUNNER_TEMP:-/tmp}/ecosystem-check.XXXXXX")
+          printf 'ECO_CHECK_SRC=%s\n' "$checkout" >> "$GITHUB_ENV"
+          git clone --no-checkout "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" "$checkout"
+          git -C "$checkout" checkout --detach "$GITHUB_SHA"
+
+      - name: clean owned checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${ECO_CHECK_SRC:-}" == "${RUNNER_TEMP:-/tmp}"/ecosystem-check.* && -d "$ECO_CHECK_SRC" ]]; then
+            rm -rf -- "$ECO_CHECK_SRC"
+          fi
 
       - name: lint git.breadway.dev dependency pins
-        run: cd src && bash scripts/lint-pins.sh
+        run: cd "$ECO_CHECK_SRC" && bash scripts/lint-pins.sh
 
       - name: shared CI target cache locking
-        run: cd src && bash ci/test-build-lock.sh
+        run: cd "$ECO_CHECK_SRC" && bash ci/test-build-lock.sh
 
       - name: breadbug symbol publisher
-        run: cd src && bash scripts/test-publish-symbols.sh
+        run: cd "$ECO_CHECK_SRC" && bash scripts/test-publish-symbols.sh
 
       - name: fmt
-        run: cd src && cargo fmt --all -- --check
+        run: cd "$ECO_CHECK_SRC" && cargo fmt --all -- --check
 
       - name: clippy
-        run: cd src && cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cd "$ECO_CHECK_SRC" && cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: clippy (gtk)
-        run: cd src && cargo clippy --workspace --all-targets --locked --features gtk -- -D warnings
+        run: cd "$ECO_CHECK_SRC" && cargo clippy --workspace --all-targets --locked --features gtk -- -D warnings
 
       - name: clippy (extract)
-        run: cd src && cargo clippy --workspace --all-targets --locked --features extract -- -D warnings
+        run: cd "$ECO_CHECK_SRC" && cargo clippy --workspace --all-targets --locked --features extract -- -D warnings
 
       - name: test
-        run: cd src && cargo test --workspace --locked
+        run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked
 
       - name: test (gtk)
-        run: cd src && cargo test --workspace --locked --features gtk
+        run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked --features gtk
 
       - name: test (extract)
-        run: cd src && cargo test --workspace --locked --features extract
+        run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked --features extract
 
       - name: build --locked (extract)
-        run: cd src && cargo build --workspace --locked --features extract
+        run: cd "$ECO_CHECK_SRC" && cargo build --workspace --locked --features extract
