@@ -25,6 +25,7 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadpad` | Quick-capture scratchpad and note viewer with AI classification |
 | `breadpaper` | Wallpaper manager for the bread desktop |
 | `breadsearch` | Semantic system-wide search for BOS |
+| `breadram` | Memory management daemon and CLI for the bread desktop (Bakery product; not included in the BOS ISO) |
 | `breadclip` | Wayland clipboard history manager for Hyprland |
 | `breadshot` | Screenshot utility for the bread ecosystem |
 | `bos-settings` | System settings app for Bread OS |

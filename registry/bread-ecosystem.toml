@@ -53,6 +53,12 @@ repo = "Breadway/breadsearch"
 description = "Semantic system-wide search for BOS"
 
 [[products]]
+name = "breadram"
+repo = "Breadway/breadram"
+description = "Memory management daemon and CLI for the bread desktop"
+notes = "Bakery product; not included in the BOS ISO"
+
+[[products]]
 name = "breadclip"
 repo = "Breadway/breadclip"
 description = "Wayland clipboard history manager for Hyprland"
