@@ -56,6 +56,9 @@ jobs:
       - name: ci checkout helper regression
         run: cd "$ECO_CHECK_SRC" && bash scripts/test-ci-checkout.sh
 
+      - name: main-trigger checkout workflow regression
+        run: cd "$ECO_CHECK_SRC" && bash scripts/test-main-checkout-workflows.sh
+
       - name: shared CI target cache locking
         run: cd "$ECO_CHECK_SRC" && bash ci/test-build-lock.sh
 

@@ -24,8 +24,13 @@ jobs:
           pacman -Syu --noconfirm base-devel git rust cargo
           useradd -m builder
           git config --global --add safe.directory '*'
-          git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
-            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" /home/builder/src
+          helper_commit=c6442cabb6c02acd1380dcd0d17189c4e22def03
+          helper_sha256=39d07ff4efe2336fe5eac1f1099590d5427e04111e0f51fc3f905df2cfbd205f
+          helper=$(mktemp "${RUNNER_TEMP:-/tmp}/ci-checkout.XXXXXX")
+          trap 'rm -f -- "$helper"' EXIT
+          curl -fsSL "https://git.breadway.dev/Breadway/bread-ecosystem/raw/commit/${helper_commit}/scripts/ci-checkout.sh" -o "$helper"
+          printf '%s  %s\n' "$helper_sha256" "$helper" | sha256sum --check
+          bash "$helper" "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA" /home/builder/src
           cd /home/builder/src
           git archive --format=tar.gz --prefix="bakery-${VERSION}/" HEAD \
             > packaging/arch/bakery-${VERSION}.tar.gz
