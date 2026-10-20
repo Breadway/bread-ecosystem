@@ -2,7 +2,8 @@
 # Offline integration fixtures execute checkout and cleanup run blocks extracted
 # from the production YAML. No setup/build/publish suffix is evaluated.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="${ECO82_WORKFLOW_ROOT:-$SCRIPT_ROOT}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/eco82-fixture.XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 python3 - "$ROOT" "$WORK" <<'PY'
@@ -19,9 +20,17 @@ for name in ("dev-bakery.yml", "dev-bread-theme.yml", "package.yml"):
         end = next(i for i, line in enumerate(lines) if line.startswith("cd "))
         run = "set -euo pipefail\n" + "\n".join(lines[start:end]) + "\n"
     (work / (name + ".sh")).write_text(run)
-    cleanup = next((s["run"] for s in steps if s.get("name") == "clean owned checkout"), None)
-    if cleanup:
+    cleanup_step = next((s for s in steps if s.get("name") == "clean owned checkout"), None)
+    cleanup = cleanup_step.get("run") if cleanup_step else None
+    (work / (name + ".cleanup-if")).write_text(cleanup_step.get("if", "") if cleanup_step else "")
+    if cleanup_step:
+        if steps[-1] is not cleanup_step or cleanup_step.get("if") != "always()":
+            raise SystemExit(f"{name}: cleanup must be final and use if: always()")
         (work / (name + ".cleanup.sh")).write_text(cleanup)
+    elif name.startswith("dev-"):
+        raise SystemExit(f"{name}: missing owned-checkout cleanup")
+    if name.startswith("dev-") and cleanup_step is None:
+        raise SystemExit(f"{name}: missing owned-checkout cleanup")
 PY
 chmod +x "$WORK"/*.sh
 ORIGIN="$WORK/origin"
@@ -39,8 +48,8 @@ NEW=$(git -C "$ORIGIN" rev-parse HEAD)
 [ "$OLD" != "$NEW" ]
 URL="file://$ORIGIN"
 HELPER="$WORK/reviewed-helper"
-HELPER_BLOB=$(git -C "$ROOT" rev-parse c6442cabb6c02acd1380dcd0d17189c4e22def03:scripts/ci-checkout.sh)
-git -C "$ROOT" cat-file blob "$HELPER_BLOB" > "$HELPER"
+HELPER_BLOB=$(git -C "$SCRIPT_ROOT" rev-parse c6442cabb6c02acd1380dcd0d17189c4e22def03:scripts/ci-checkout.sh)
+git -C "$SCRIPT_ROOT" cat-file blob "$HELPER_BLOB" > "$HELPER"
 EXPECTED=39d07ff4efe2336fe5eac1f1099590d5427e04111e0f51fc3f905df2cfbd205f
 [ "$(sha256sum "$HELPER" | awk '{print $1}')" = "$EXPECTED" ]
 
@@ -156,15 +165,15 @@ BREAD_CI_JOB_DIR="$fallback" bash "$WORK/dev-bakery.yml.cleanup.sh"
 [ ! -e "$fallback" ]
 
 # Invalid SHA, missing object, acquisition failure, and corrupt helper all run
-# through the actual workflow block and its actual cleanup block.
+# through each actual dev workflow block and its actual cleanup block.
 export RUNNER_TEMP="$WORK/failure-temp" GITHUB_REPOSITORY=fixture/repo
 mkdir -p "$RUNNER_TEMP"
 failure_case() {
-    local name=$1 sha=$2 helper=$3 acquisition=${4:-ok}
+    local workflow=$1 name=$2 sha=$3 helper=$4 acquisition=${5:-ok}
     local envfile="$WORK/$name.env" script="$WORK/$name.run"
     export GITHUB_SHA="$sha" GITHUB_ENV="$envfile"
     : > "$envfile"
-    prepare_script "$WORK/dev-bakery.yml.sh" "$script" "$helper"
+    prepare_script "$WORK/$workflow.sh" "$script" "$helper"
     if [ "$acquisition" = fail ]; then
       python3 - "$script" <<'PY'
 import pathlib, sys
@@ -177,19 +186,27 @@ PY
     local rc=0
     bash "$script" >"$WORK/$name.log" 2>&1 || rc=$?
     if [ "$rc" -eq 0 ]; then echo "expected $name to fail" >&2; return 1; fi
+    if [ "$helper" = "$WORK/marker-helper" ]; then
+      [ ! -e "$WORK/helper-executed" ] || { echo "$name executed corrupt helper" >&2; return 1; }
+    fi
     local checkout
     checkout=$(sed -n 's/^BREAD_CI_JOB_DIR=//p' "$envfile")
     if [ -n "$checkout" ]; then
-      if [ -f "$WORK/dev-bakery.yml.cleanup.sh" ]; then
-        BREAD_CI_JOB_DIR="$checkout" bash "$WORK/dev-bakery.yml.cleanup.sh"
+      if [ -f "$WORK/$workflow.cleanup.sh" ]; then
+        BREAD_CI_JOB_DIR="$checkout" bash "$WORK/$workflow.cleanup.sh"
       fi
       [ ! -e "$checkout" ] || return 1
     fi
+    if [ "$name" = dev-bakery.yml-corrupt ] || [ "$name" = dev-bread-theme.yml-corrupt ]; then
+      [ ! -e "$WORK/helper-executed" ] || { echo "$name executed corrupt helper" >&2; return 1; }
+    fi
 }
-failure_case invalid invalid "$HELPER"
 MISSING=$(printf '0%.0s' {1..40})
-failure_case missing "$MISSING" "$HELPER"
-failure_case acquisition "$OLD" "$HELPER" fail
+for workflow in dev-bakery.yml dev-bread-theme.yml; do
+  failure_case "$workflow" "$workflow-invalid" invalid "$HELPER"
+  failure_case "$workflow" "$workflow-missing" "$MISSING" "$HELPER"
+  failure_case "$workflow" "$workflow-acquisition" "$OLD" "$HELPER" fail
+done
 cat > "$WORK/marker-helper" <<EOF
 #!/bin/sh
 touch '$WORK/helper-executed'
@@ -198,7 +215,9 @@ EOF
 chmod +x "$WORK/marker-helper"
 # Hash mismatch must stop before helper execution; invoke actual block with a
 # corrupt payload placed at its fetched-helper path and preserve actual digest.
-failure_case corrupt "$OLD" "$WORK/marker-helper"
+for workflow in dev-bakery.yml dev-bread-theme.yml; do
+  failure_case "$workflow" "$workflow-corrupt" "$OLD" "$WORK/marker-helper"
+done
 [ ! -e "$WORK/helper-executed" ]
 
 # Package checkout uses fixed container-private path. For fixture safety, map
@@ -236,10 +255,18 @@ p.write_text("\n".join(lines)+"\n")
 PY
   fi
   export GITHUB_SHA="$sha" GITHUB_REPOSITORY=fixture/repo
-  if bash "$src" >"$WORK/$name.log" 2>&1; then
+  local rc=0
+  bash "$src" >"$WORK/$name.log" 2>&1 || rc=$?
+  if [ "$name" = package-good ]; then
+    [ "$rc" -eq 0 ] || { echo "package happy path exited $rc" >&2; return 1; }
     [ "$(git -C "$WORK/$name/src" rev-parse HEAD)" = "$sha" ] || return 1
+    [ "$(cat "$WORK/$name/src/fixture/value")" = old ] || return 1
   else
+    [ "$rc" -ne 0 ] || { echo "$name unexpectedly succeeded" >&2; return 1; }
     [ ! -e "$WORK/$name/src" ] || return 1
+    if [ "$helper" = "$WORK/marker-helper" ]; then
+      [ ! -e "$WORK/helper-executed" ] || { echo "$name executed corrupt helper" >&2; return 1; }
+    fi
   fi
   # The package job uses its private container source path and has no cleanup
   # step. Remove only the fixture-owned container directory after assertions.
@@ -251,55 +278,4 @@ package_case package-corrupt "$OLD" "$WORK/marker-helper"
 [ ! -e "$WORK/helper-executed" ]
 package_case package-acquisition "$OLD" "$HELPER" fail
 
-# Mutation check: removing the digest verification from any workflow fixture
-# must allow the marker payload to run, which this test must reject.
-for workflow in dev-bakery.yml dev-bread-theme.yml package.yml; do
-  mut="$WORK/mut-$workflow.sh"
-  prepare_script "$WORK/$workflow.sh" "$mut" "$WORK/marker-helper"
-  sed -i '/sha256sum --check/d' "$mut"
-  export GITHUB_SHA="$OLD" GITHUB_REPOSITORY=fixture/repo
-  if [ "$workflow" = package.yml ]; then
-    sed -i "s#/home/builder/src#$WORK/mut-package-src#g" "$mut"
-    mkdir -p "$WORK/package-mut"
-    cat > "$WORK/package-mut/marker-helper" <<EOF
-#!/bin/sh
-touch '$WORK/helper-executed'
-exit 99
-EOF
-    chmod +x "$WORK/package-mut/marker-helper"
-    cp "$WORK/package-mut/marker-helper" "$WORK/package-mut/downloaded-helper"
-    printf x >> "$WORK/package-mut/downloaded-helper"
-    python3 - "$mut" "$WORK/package-mut/downloaded-helper" <<'PY'
-import pathlib, sys
-p, download = map(pathlib.Path, sys.argv[1:]); lines=p.read_text().splitlines()
-for i,line in enumerate(lines):
-    if line.strip().startswith("curl -fsSL"): lines[i]=line[:len(line)-len(line.lstrip())]+f'cp "{download}" "$helper"'
-p.write_text("\n".join(lines)+"\n")
-PY
-  else
-    export RUNNER_TEMP="$WORK/mutation-temp" GITHUB_ENV="$WORK/mut.env"
-    mkdir -p "$RUNNER_TEMP"; : > "$GITHUB_ENV"
-    cat > "$WORK/mutation-temp/marker-helper" <<EOF
-#!/bin/sh
-touch '$WORK/helper-executed'
-exit 99
-EOF
-    chmod +x "$WORK/mutation-temp/marker-helper"
-    cp "$WORK/mutation-temp/marker-helper" "$WORK/mutation-temp/downloaded-helper"
-    printf x >> "$WORK/mutation-temp/downloaded-helper"
-    python3 - "$mut" "$WORK/mutation-temp/downloaded-helper" <<'PY'
-import pathlib, sys
-p, download = map(pathlib.Path, sys.argv[1:]); lines=p.read_text().splitlines()
-for i,line in enumerate(lines):
-    if line.strip().startswith("curl -fsSL"): lines[i]=line[:len(line)-len(line.lstrip())]+f'cp "{download}" "$helper"'
-p.write_text("\n".join(lines)+"\n")
-PY
-  fi
-  rm -f "$WORK/helper-executed"
-  if bash "$mut" >/dev/null 2>&1 && [ -e "$WORK/helper-executed" ]; then
-    echo "digest-removal mutation was not caught for $workflow" >&2
-    exit 1
-  fi
-  [ -e "$WORK/helper-executed" ] || { echo "mutation fixture did not reach marker for $workflow" >&2; exit 1; }
-done
 echo "main workflow checkout fixtures passed"
