@@ -85,7 +85,7 @@ printf x >> "$WORK/corrupt"
 printf '%s  %s\n' 39d07ff4efe2336fe5eac1f1099590d5427e04111e0f51fc3f905df2cfbd205f "$WORK/corrupt" | sha256sum --check --status && exit 1 || :
 # Acquisition failure must stop the real checkout run block before creating a
 # checkout directory. Simulate curl failing at the acquisition line.
-sed 's#curl -fsSL .* -o "\$helper"#false#' "$WORK/dev-bakery.yml.sh" > "$WORK/acquire-fails.sh"
+sed "s#cp '$HELPER' \"\$helper\"#false#" "$WORK/dev-bakery.yml.sh" > "$WORK/acquire-fails.sh"
 if bash "$WORK/acquire-fails.sh" >/dev/null 2>&1; then exit 1; fi
 # The helper rejects an unknown commit and removes its partially-created tree.
 MISSING=$(printf '0%.0s' {1..40})
