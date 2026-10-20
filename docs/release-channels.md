@@ -41,6 +41,7 @@ only if:
 A repo can be on **both** channels, **bakery only** (bread, breadbar,
 breadbox, breadcrumbs, breadpad, breadpaper, breadclip,
 breadsearch, breadshot, breadhelp, bos-settings, bread-theme, breadcast,
+breadram,
 breadarr, bakery itself), **pacman only** (breadlock, installs a
 root-owned `/etc/pam.d/breadlock` PAM service file with no per-user
 equivalent, so it can never move to bakery), or **neither** (dev-only /
@@ -359,7 +360,7 @@ first (see above) before assuming the wiring is wrong.
 | bread-ecosystem (bakery product) | yes | leftover `package.yml` | stable, beta, dev | bakery-channel (`curl -fsSL https://get.breadway.dev \| sh`) is the supported install; `package.yml` + `packaging/arch/PKGBUILD` remain from when bakery was also published to `[breadway]` |
 | bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | single-trunk model |
 | bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | no | stable, beta, dev | pacman packaging (PKGBUILD + `package.yml`) dropped: bakery-only, single-trunk model |
-| breadclip, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
+| breadclip, breadsearch, breadshot, breadram | yes | no | stable, beta, dev | single-trunk model |
 | breadmon | no | no | n/a | deprecated; source and historical releases remain available, but it is no longer in the registry or BOS image |
 | breadhelp, bos-settings | yes | no | stable, beta, dev | bakery-channel desktop/settings apps; not pacman |
 | breadlock | no | yes | n/a | deliberate, permanent exception: installs a root-owned `/etc/pam.d/breadlock` PAM service file with no per-user equivalent, so it can never move to bakery |
