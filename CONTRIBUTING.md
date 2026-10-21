@@ -44,77 +44,13 @@ just **tags** on `main`, not branches that need to be kept in sync:
    candidate: `git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1` (push to
    both remotes). That tag alone triggers a beta-track build —
    "freezing" is just pausing pushes to `main` while you test it, not a
-   branch operation. Cut `-rc.2`, `-rc.3`, etc. for further fixes.
-3. Once an RC has gone without issues, tag the real release:
-   `git tag vX.Y.Z && git push origin vX.Y.Z` — that's what triggers the
-   signed stable release build.
-
-**Version honesty**: bakery's compiled `--version` is
-`[workspace.package] version` in the root `Cargo.toml`. The bakery
-package version in the index (what `bakery list` shows) is the git tag.
-Those must match at tag time — bump `workspace.package.version` to
-`X.Y.Z` *before* pushing `vX.Y.Z` or `vX.Y.Z-rc.N`. Never jump a tag
-(e.g. `v0.3.1` → `v0.7.1`) without that Cargo.toml bump; the resulting
-binary will report the old workspace version while the index claims the
-new tag.
-
-**Note**: `bakery` and `bread-theme` share the same `v*` tag pattern
-(both `release-bakery.yml` and `release-bread-theme.yml` trigger on
-`tags: ['v*']`, pre-existing behavior this doc isn't changing) — a single
-tag push builds and publishes a release for *both* products at once. If
-you ever need to release one independently of the other, that's a real gap
-worth fixing in the workflow files themselves, not something to work around
-by hand.
-
-## Tracks, from a user's perspective
-
-```
-bakery track show              # what you're currently on (defaults to stable)
-bakery track set dev           # or beta, or stable
-bakery update --all            # pull the latest build on your current track
-```
-
-| Track  | What it is | Published from |
-|--------|-----------|-----------------|
-| `stable` | The last tagged release | a `vX.Y.Z` tag |
-| `beta` | Latest release candidate | a `vX.Y.Z-rc.N` tag |
-| `dev` | Bleeding edge | `main`, on every push |
-
-Dev versions are auto-computed (`X.Y.Z-dev.<timestamp>+<sha>`) from the
-latest published stable tag, so they always sort as newer than what you
-have installed — no manual version bumping needed. Beta versions are just
-the RC tag itself (already valid semver, already sorts below the real
-release it's a candidate for).
-
-## Local development
-
-```sh
-cargo build --release -p bakery
-cargo test --release -p bakery
-```
-
-`bakery`, `bread-theme`, `bread-utils`, `bread-app`, `bread-polkit`,
-`bread-onnx`, `bread-screenshots`, and `bread-capture` are all workspace
-members. Run the same commands with `-p bread-theme --bin bread-theme`
-for that crate, `-p bread-utils --features bread-client` for the IPC
-client, or `-p bread-app --features bread-client` for the GTK bootstrap
-helpers.
-
-## CI
-
-- `dev-bakery.yml` / `dev-bread-theme.yml` — triggered on push to `main`.
-- `rc-bakery.yml` / `rc-bread-theme.yml` — triggered on any `vX.Y.Z-rc.N`
-  tag push.
-- `release-bakery.yml` / `release-bread-theme.yml` — triggered on any other
-  `v*` tag push, cuts the actual stable release.
-- `package.yml` — publishes `bakery` to the `[breadway]` pacman repo, also
-  tag-triggered.
-
-All CI runs on a self-hosted runner; nothing runs automatically on plain
-commits or PRs beyond the track builds above. See
-[`docs/release-channels.md`](docs/release-channels.md) for the full policy,
-including how a new product gets wired onto these tracks.
-
-## Questions
-
-Open an issue on this repo's Forgejo tracker.
+   branch operation. Install the beta build (`bakery track set beta &&
+   bakery update --all`) and use it for at least 3 days. Cut `-rc.2`,
+   `-rc.3`, etc. for further fixes from the new commit.
+3. Once an RC has finished soaking with no open issues, tag the real
+   release on the **same commit** as that RC:
+   `git tag vX.Y.Z <rc-commit> && git push origin vX.Y.Z`: that's what
+   triggers the signed stable release build. Its first step is the beta
+   promotion gate, which rejects a stable tag that has no RC on the same
+   commit or whose RC was published to beta less than 3 days earlier. See
+   `docs/release-channels.md` ("Beta promotion gate").

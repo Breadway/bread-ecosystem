@@ -66,8 +66,8 @@ not *which branch you push to*:
 
 | Track  | Index URL | Artifact root | Trigger |
 |---|---|---|---|
-| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `vX.Y.Z` |
-| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `vX.Y.Z-rc.N` |
+| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `vX.Y.Z`, only once the beta gate passes |
+| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `vX.Y.Z-rc.N` (mandatory stage) |
 | dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `main` |
 
 `scripts/gen-index.sh` takes a `TRACK` env var (default `stable`) to select
@@ -88,105 +88,98 @@ the tag itself pointed at fresh code. Collapsing everything onto one
 branch removes the class of bug entirely — there's nothing left to fall
 out of sync.
 
-**The full lifecycle** (see also `CONTRIBUTING.md`): day-to-day work lands
-on `feature/<name>` or `fix/<issue>` branches, merged into `main`. `main`
-publishes a fresh dev-track build on every push — this is the "test for a
-while, fix forward with another push" loop. When you want to stabilize
-before a real release, tag a release candidate directly off whatever
-commit on `main` you're happy with: `git tag vX.Y.Z-rc.1 && git push
-origin vX.Y.Z-rc.1` (both remotes). "Freezing" is just pausing pushes to
-`main` while the RC gets tested, not a branch operation — cut `-rc.2`,
-`-rc.3`, etc. for further fixes without needing to touch any branch. Once
-an RC has gone without issues, tag the real release the same way, dropping
-the `-rc.N` suffix (`vX.Y.Z`) — that's what fires `release.yml`.
+**The promotion ladder** (see also `CONTRIBUTING.md`): day-to-day work
+lands on `feature/<name>` or `fix/<issue>` branches, merged into `main`.
+Every push to `main` publishes a fresh dev-track build. That is the "test
+for a while, fix forward with another push" loop, not a release.
 
-Auto-versioning: `dev` computes its build version from the latest published
-*stable* `vX.Y.Z` tag (via `git ls-remote --tags`, filtered to exclude any
-tag containing a `-`, not `Cargo.toml` — `Cargo.toml` can drift stale
-relative to the actual last release) plus a `-dev.<timestamp>+<sha>`
-suffix. `beta` needs no computation at all — the RC tag itself
-(`X.Y.Z-rc.N`) is already valid semver and is used as the version verbatim.
-`bakery`'s semver check (`is_newer`), backed by the real `semver` crate,
-already orders these correctly with zero special-casing: a prerelease
-identifier sorts below the same version without one, and `dev` < `rc`
-alphabetically, giving `X.Y.Z-dev... < X.Y.Z-rc.N < X.Y.Z` for the same
-base version.
+A stable release is a three-stage promotion. No stage can be skipped:
 
-**Bakery package version honesty**: `bakery --version` is compiled from
-this repo's `[workspace.package] version` (`CARGO_PKG_VERSION`); `bakery
-list` reports the *tagged* package version from the index. Those two must
-match at tag time — set `workspace.package.version` to `X.Y.Z` *before*
-pushing `vX.Y.Z` or `vX.Y.Z-rc.N`, and never jump a git tag without that
-Cargo.toml bump. The `v0.3.1` → `v0.7.1` tag jump that left Cargo.toml at
-`0.3.1` is the bug this rule exists to prevent. Dev-track auto-versioning
-keys off the latest stable tag rather than Cargo.toml so a stale
-workspace version cannot publish a dev build that sorts *older* than
-installed bakery; that fallback is not permission to leave the workspace
-version stale.
+1. **dev**. The change is merged to `main` and has a dev build. Switch to
+   it with `bakery track set dev && bakery update --all` if you want it
+   before a release.
+2. **beta**. Tag an RC on the exact `main` commit you intend to ship:
+   `git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1` (both remotes).
+   `rc-release.yml` publishes it to `dl.breadway.dev/beta`. Install it with
+   `bakery track set beta && bakery update --all`, run it as the real
+   build for at least **3 days**, and fix problems by cutting `-rc.2`,
+   `-rc.3`, and so on from the new commit. Do not tag stable while an RC
+   is still under test.
+3. **stable**. Tag `vX.Y.Z` on the **same commit** as the RC that finished
+   soaking:
+   `git tag vX.Y.Z <commit> && git push origin vX.Y.Z`. That is what fires
+   `release.yml` and republishes the tested source state to the stable
+   track.
 
-Adding dev/beta to a bakery-channel repo: copy `dev-bakery.yml` /
-`rc-bakery.yml` (or `bread`'s `dev-release.yml` / `rc-release.yml` if the
-repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
-the repo/binary names the same way the checklist below describes for
-`release.yml`. No branch setup needed beyond the repo's single `main`. Not
-every bakery-channel repo needs beta/dev on day one — `gen-index.sh`
-silently skips any product with no release dir under a given track's tree,
-same as it already does for an unreleased product on stable.
+"Freezing" is pausing pushes to `main` while an RC is tested, not a branch
+operation. If a fix lands after the RC, it needs a new RC. Stable is never
+allowed to contain code that beta never saw.
 
-Client side: `bakery track show` / `bakery track set <stable|beta|dev>`
-remembers a global track preference (`~/.local/state/bakery/installed.json`)
-and validates the target track's index is reachable and signed before
-switching — it never auto-reinstalls on switch, run `bakery update --all`
-afterwards.
+### Beta promotion gate (enforced)
 
-## mirror.yml is not part of this policy
+Every bakery-channel `release.yml` runs
+`scripts/check-promotion.sh REPO PKG TAG COMMIT` after checkout and before
+it builds anything. The gate requires both:
 
-Every repo previously carried its own `.forgejo/workflows/mirror.yml` doing
-a `git clone --mirror` + push to GitHub with a per-repo `MIRROR_TOKEN`
-secret. That pattern is being replaced ecosystem-wide by Forgejo's native
-Push Mirror feature, provisioned centrally by
-`bread-ecosystem/scripts/setup-push-mirrors.sh` against the live repo list
-— see that script and `scripts/cleanup-old-mirror-workflows.sh`. Once the
-migration is confirmed working, no repo should have a `mirror.yml` and this
-document doesn't require one. Don't add `mirror.yml` to a repo that's
-missing it; that gap is intentional and about to be moot everywhere.
+- a `vX.Y.Z-rc.N` tag pointing at the exact commit being tagged stable, and
+- a beta artifact directory for that RC at
+  `/srv/breadway-dl/beta/<pkg>/<rc-version>/`, published at least 3 days
+  ago, containing `bakery.toml` and at least one checksummed binary.
 
-## Checklist for adding a repo to a channel
+If either is missing, the release fails before a single artifact is built
+or published, and names the RC command to run next. There is no bypass
+flag. A release candidate that only exists as a tag (never published to
+beta), or a stable tag cut from a newer commit than its RC, is rejected.
 
-- **Bakery**: write `bakery.toml`, add a `[[products]]` entry to
-  `bread-ecosystem/registry/bread-ecosystem.toml`, copy a sibling's
-  `dev-release.yml` / `rc-release.yml` / `release.yml` trio (prefer one with
-  the same shape: single binary vs. binary + systemd service — compare
-  against `bread`'s if there's a service to install, `breadmon`'s if not)
-  and swap the repo name / binary name / `PKG_DIR`. No branch setup beyond
-  the repo's single `main`.
-- **Pacman**: write `packaging/PKGBUILD` (or `packaging/arch/PKGBUILD`),
-  copy a sibling's `package.yml` and swap the repo/package name and
-  `system_deps`→`pacman -Syu` package list.
-- Never add either file type "just in case." An unused `bakery.toml` or
-  `PKGBUILD` is exactly the kind of drift this document exists to prevent
-  (see the breadlock/breadarr/bos-settings history in the audit that
-  produced this doc — two of those had a stray `bakery.toml` nothing
-  served, one was missing the registry entry + release.yml that would have
-  made an existing `bakery.toml` real).
+The gate is time-based on purpose, but a timestamp is not the whole test:
+re-running an RC publish resets that version directory's time, so a rebuilt
+RC starts its soak over. The 3 day floor is the minimum, not a target;
+letting an RC sit until the next release is actually needed is normal.
 
-## Current state (as of this pass)
+**Hotfixes**: there is no emergency shortcut through the gate. Cut
+`vX.Y.Z-rc.N` from the fix, publish it to beta, and promote after the soak.
+If a situation genuinely cannot wait 3 days, that is an explicit process
+decision for a human to make and record, not something CI should allow
+silently.
 
-| Repo | bakery | pacman | tracks | notes |
-|---|---|---|---|---|
-| bread-ecosystem (bakery product) | yes | leftover `package.yml` | stable, beta, dev | bakery-channel (`curl -fsSL https://get.breadway.dev \| sh`) is the supported install; `package.yml` + `packaging/arch/PKGBUILD` remain from when bakery was also published to `[breadway]` |
-| bread-ecosystem (bread-theme product) | yes | no | stable, beta, dev | single-trunk model |
-| bread, breadbar, breadbox, breadcrumbs, breadpad, breadpaper | yes | no | stable, beta, dev | pacman packaging (PKGBUILD + `package.yml`) dropped — bakery-only, single-trunk model |
-| breadclip, breadmon, breadsearch, breadshot | yes | no | stable, beta, dev | single-trunk model |
-| breadhelp, bos-settings | yes | no | stable, beta, dev | bakery-channel desktop/settings apps; not pacman |
-| breadlock | no | yes | n/a | deliberate, permanent exception — installs a root-owned `/etc/pam.d/breadlock` PAM service file with no per-user equivalent, so it can never move to bakery |
-| bos | no | no | n/a | ISO-only via `release-iso.yml`; ships via a manual local build (`build-local.sh`), not a CI track — see its own branch note below |
-| breadcast | yes | no | stable, beta, dev | bakery product; not included in the BOS ISO |
-| breadarr | yes | no | stable, beta, dev | bakery product; homelab, not shipped on BOS |
+**What counts as testing**: the beta stage exists so the build runs on a
+real machine doing real work, not so `cargo test` has another audience.
+Install the RC on the machine that would use the stable release, exercise
+the changed behavior, and file anything broken as a breadboard issue
+against the repo. An RC that was never installed has not been through beta,
+even if 3 days passed.
 
-`bos` doesn't follow the tracks table above (it has no `dev`/`beta`/`stable`
-publish cadence — ISO builds are deliberate and manual) but does share the
-single-`main`-branch model for the same rot-avoidance reason. It additionally
-carries a `stable` branch that CI fast-forwards to whatever commit the latest
-`vX.Y.Z` tag points at — a marker only, never merged into by hand, so it
-can't drift the way a manually-promoted branch did before.
+## Stale dev-track warnings
+
+The breadboard sweeper can report a bakery-channel repo when its oldest
+unpromoted commit is at least 14 days old, or when its dev track is at least
+20 commits ahead of its latest beta or stable promotion.
+`scripts/check-stale-tracks.py` checks repos with a `dev-*.yml` workflow under
+a directory of local checkouts (by default `~/Projects`). It compares each
+`origin/main` with the nearest reachable version tag matching `vX.Y.Z` or
+`vX.Y.Z-rc.N`. If there is no promotion tag, it measures age and commit count
+from the repository's first commit. Fetch each repo, including tags, before
+running the check so its refs are current.
+
+The check is read-only. It prints warnings for maintainers to review; it does
+not create tags, publish artifacts, or change repositories. A stale warning is
+a prompt to decide whether to promote, not a release action.
+
+### Breadboard sweeper integration
+
+At the end of each normal ecosystem sweep, after fetching the repositories,
+run the checker against the local checkout directory:
+
+```sh
+python3 ~/Projects/bread-ecosystem/scripts/check-stale-tracks.py ~/Projects
+```
+
+Copy any output into a separate **stale-track warnings** section of the sweep
+report, including the repository, promotion tag, age, commit count, and the
+threshold reached. Keep these warnings report-only: do not file backlog issues,
+create tags, or publish artifacts. If there are no warnings, report that no
+stale dev tracks were found.
+
+```sh
+python3 -m unittest scripts/test_check_stale_tracks.py
+```
