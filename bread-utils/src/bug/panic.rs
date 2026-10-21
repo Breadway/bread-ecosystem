@@ -108,6 +108,11 @@ fn depth_of_probe(ips: &[u64]) -> Option<usize> {
 }
 
 fn measure_depth() -> usize {
+    // catch_unwind cannot recover an abort-strategy panic. Keep the full
+    // stack in those consumers rather than crashing during hook setup.
+    if cfg!(panic = "abort") {
+        return 0;
+    }
     PROBE.with(|p| p.set(Some(0)));
     let _ = std::panic::catch_unwind(probe_site);
     let measured = PROBE.with(|p| p.take()).filter(|d| *d != 0);
