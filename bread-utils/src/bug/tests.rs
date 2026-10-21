@@ -85,11 +85,15 @@ fn ticks_gate_heartbeats_so_a_frozen_loop_goes_quiet() {
     assert!(r.methods("bug.heartbeat").is_empty());
 
     // ticking: heartbeats flow with pid and interval
-    for _ in 0..12 {
+    // Keep the loop alive until the asynchronous worker has delivered two
+    // beats. Waiting after a fixed tick window lets those ticks go stale
+    // on a busy runner, so no further heartbeat can satisfy the assertion.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while r.methods("bug.heartbeat").len() < 2 && Instant::now() < deadline {
         guard.tick();
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(25));
     }
-    let beats = r.wait_for("bug.heartbeat", 2);
+    let beats = r.methods("bug.heartbeat");
     assert!(beats.len() >= 2, "{beats:?}");
     assert_eq!(beats[0]["params"]["app"], "clip");
     assert_eq!(beats[0]["params"]["pid"], std::process::id());
