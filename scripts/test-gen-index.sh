@@ -19,6 +19,9 @@ printf 'fake-binary-content' > "${PKG_VER_DIR}/fakepkg-x86_64"
 sha256sum "${PKG_VER_DIR}/fakepkg-x86_64" | awk '{print $1}' \
     > "${PKG_VER_DIR}/fakepkg-x86_64.sha256"
 printf '[Unit]\nDescription=fakepkg\n' > "${PKG_VER_DIR}/fakepkg.service"
+# Unit files that are not .service must not be swept up as binaries either.
+# bread ships breadbug-status.timer this way (ECO-87).
+printf '[Unit]\nDescription=fakepkg timer\n' > "${PKG_VER_DIR}/fakepkg-status.timer"
 printf '# example config\n' > "${PKG_VER_DIR}/fakepkg.example.toml"
 
 cat > "${PKG_VER_DIR}/bakery.toml" <<'TOML'
@@ -117,5 +120,20 @@ check "services[0].sha256" \
 check "config.example_sha256" \
     "$(sha256sum "${PKG_VER_DIR}/fakepkg.example.toml" | awk '{print $1}')" \
     "$(jq -r '.packages.fakepkg.config.example_sha256' "${OUT}")"
+
+# A unit file in the version directory must not be published as a binary, and
+# no binary may be published without a checksum: bakery refuses to install a
+# package whose artifact has no sha256 (ECO-87).
+check "unit file is not a binary" \
+    "null" \
+    "$(jq -r '.packages.fakepkg.binaries | map(.name) | map(select(. == "fakepkg-status.timer")) | first' "${OUT}")"
+
+check "binary count" \
+    "1" \
+    "$(jq -r '.packages.fakepkg.binaries | length' "${OUT}")"
+
+check "no binary lacks a sha256" \
+    "0" \
+    "$(jq -r '[.packages[].binaries[] | select((.sha256 // "") == "")] | length' "${OUT}")"
 
 echo "OK: all gen-index assertions passed"
