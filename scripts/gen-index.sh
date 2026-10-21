@@ -132,11 +132,22 @@ print(d.get('data_archive', ''))
         [[ -f "${bin_path}" ]] || continue
         local bin_name
         bin_name="$(basename "${bin_path}")"
+
+        # A file without a .sha256 sidecar is not a shipped binary: it is a
+        # sidecar (config .toml.example, LICENSE, dev-deps.lock.txt, ...) that
+        # no exclusion rule above knows by name. Treat it as one rather than
+        # letting it leak into the binaries list with an empty sha256 -
+        # install.rs refuses unverified downloads, so such an entry breaks
+        # every client at install time (breadram's dev index shipped both its
+        # config example and its LICENSE as "binaries" this way, and
+        # `bakery install breadram` failed with "index entry has no sha256").
         local sha256_path="${bin_path}.sha256"
-        local sha256=""
-        if [[ -f "${sha256_path}" ]]; then
-            sha256="$(awk '{print $1}' "${sha256_path}")"
+        if [[ ! -f "${sha256_path}" ]]; then
+            echo "  warning: skipped '${bin_name}' in ${version_dir}: no .sha256 sidecar (treated as sidecar, not binary)" >&2
+            continue
         fi
+        local sha256
+        sha256="$(awk '{print $1}' "${sha256_path}")"
         local dl_url="${URL_ROOT}/${name}/${version}/${bin_name}"
         # dev/beta builds never get a real GitHub Release (see the dev/beta
         # CI workflows, that step is intentionally skipped for those
