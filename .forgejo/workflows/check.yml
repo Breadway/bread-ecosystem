@@ -80,6 +80,9 @@ jobs:
       - name: test
         run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked
 
+      - name: panic abort consumer regression
+        run: cd "$ECO_CHECK_SRC" && python3 bread-utils/tests/panic_abort.py
+
       - name: test (gtk)
         run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked --features gtk
 
