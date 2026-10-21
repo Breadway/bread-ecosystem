@@ -1,8 +1,9 @@
 //! Just enough ELF reading to find a module's GNU build-id and whether it is
 //! position independent. Pure `std`; never panics on malformed input.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 const PT_NOTE: u32 = 4;
@@ -56,8 +57,26 @@ pub fn build_id_from_notes(mut notes: &[u8]) -> Option<String> {
 
 /// Read build-id and type from an ELF file; `None` if it is not a
 /// little-endian 64-bit ELF.
+///
+/// Only regular files are opened. `/proc/self/maps` also lists device
+/// mappings, and a GPU process maps its DRM render node
+/// (`/dev/dri/renderD128`): `read()` on that blocks waiting for GPU events
+/// and never returns, which froze every GTK/WebKit app that started
+/// reporting from its main thread (breadhelp's window never mapped). The
+/// open is non-blocking too, so a path that changes type between the check
+/// and the open (a FIFO swapped in) cannot hang either.
 pub fn read(path: &Path) -> Option<ElfInfo> {
-    let mut f = File::open(path).ok()?;
+    if !std::fs::metadata(path).ok()?.is_file() {
+        return None;
+    }
+    let mut f: File = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+        .ok()?;
+    if !f.metadata().ok()?.is_file() {
+        return None;
+    }
     let mut hdr = [0u8; 64];
     f.read_exact(&mut hdr).ok()?;
     if &hdr[0..4] != b"\x7fELF" || hdr[4] != 2 || hdr[5] != 1 {
@@ -151,6 +170,27 @@ mod tests {
         if let Some(id) = info.build_id {
             assert!(id.len() >= 16 && id.bytes().all(|b| b.is_ascii_hexdigit()));
         }
+    }
+
+    #[test]
+    fn device_and_fifo_paths_are_skipped_without_blocking() {
+        // A FIFO with no writer blocks a plain open/read forever, the same
+        // way the DRM render node blocks a read.
+        let dir = std::env::temp_dir().join(format!("elf-fifo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fifo = dir.join("pipe");
+        let made = std::process::Command::new("mkfifo").arg(&fifo).status().map(|s| s.success()).unwrap_or(false);
+        if made {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let p = fifo.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(read(&p));
+            });
+            let got = rx.recv_timeout(std::time::Duration::from_secs(2)).expect("read() on a FIFO must not block");
+            assert!(got.is_none());
+        }
+        assert!(read(Path::new("/dev/null")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
