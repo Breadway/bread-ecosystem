@@ -49,12 +49,14 @@ copyback.
 
 ## Copyback and release workflows
 
-`build.sh` still copies `/cargo-target/.` back into the checkout's `target/`
-inside the same container run and before the lease is released. Workflows that
-copy `src/target/release` therefore keep working; the off-root directory is the
-source of truth and the copyback is the release artifact path. Do not configure
-a release workflow to read `$BREAD_CI_HOST_CACHE` directly, because the key is
-an implementation detail.
+`build.sh` copies only the workflow artifacts out of `/cargo-target` back into
+the checkout's `target/` (see `copy-artifacts.sh`: each profile's top-level
+files plus `release/build/*/out`) inside the same container run and before the
+lease is released. Workflows that copy `src/target/release` therefore keep
+working; the off-root directory is the source of truth and the copyback is the
+release artifact path. `BREAD_CI_COPY_TARGET=all` restores the old full copy.
+Do not configure a release workflow to read `$BREAD_CI_HOST_CACHE` directly,
+because the key is an implementation detail.
 
 ## Retention
 
