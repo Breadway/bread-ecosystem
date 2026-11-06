@@ -1,4 +1,4 @@
-//! bread-polkit — themed PolicyKit authentication agent.
+//! bread-polkit: themed PolicyKit authentication agent.
 //!
 //! Registers on the `org.freedesktop.PolicyKit1.AuthenticationAgent`
 //! interface and shows a bread-theme GTK4 password prompt. This is an
@@ -80,7 +80,7 @@ fn main() {
 fn print_help() {
     print!(
         "\
-bread-polkit — themed PolicyKit authentication agent
+bread-polkit: themed PolicyKit authentication agent
 
 Usage:
   bread-polkit

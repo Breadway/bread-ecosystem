@@ -12,11 +12,11 @@ use crate::state::{InstalledPackage, State};
 use crate::track::Track;
 use crate::ui;
 
-/// Rejects a filename that isn't a safe single path component — no `/`,
+/// Rejects a filename that isn't a safe single path component: no `/`,
 /// `\`, empty, `.`, or `..`. `bin.name`/`svc.unit`/`cfg.example`/`pkg.name`/
 /// `license_file`/`desktop_file`/`data_archive` all come from the
 /// minisign-verified index, so this is defense in depth (not exploitable
-/// without a compromised signing key) rather than the primary guard — but
+/// without a compromised signing key) rather than the primary guard, but
 /// closing the path-traversal class is cheap enough to do anyway before any
 /// of these are joined onto a fixed base directory.
 fn ensure_safe_component(name: &str, what: &str) -> Result<()> {
@@ -27,7 +27,7 @@ fn ensure_safe_component(name: &str, what: &str) -> Result<()> {
 }
 
 /// Whether stdin should be treated as an interactive terminal. Always
-/// `false` in test builds regardless of the real process stdin — running
+/// `false` in test builds regardless of the real process stdin: running
 /// `cargo test` from an actual interactive shell (not CI, not piped) gives
 /// the test binary a real tty, which previously made `confirm` block on a
 /// `read_line` nobody was there to answer.
@@ -63,7 +63,7 @@ fn confirm(prompt: &str, assume_yes: bool) -> bool {
 
 /// Installs `pkg`. `previous` is the package's current `InstalledPackage`
 /// record when this is an update (looked up by the caller before starting,
-/// since it's already loaded elsewhere in the call chain) — `None` for a
+/// since it's already loaded elsewhere in the call chain); `None` for a
 /// fresh first-time install. Threading it in rather than reloading `State`
 /// here avoids a second load, and lets step 1 tell "update" from "fresh
 /// install" for the pre-overwrite backup below.
@@ -78,8 +78,8 @@ pub fn install_package(
     ensure_safe_component(&pkg.name, "package name")?;
 
     // 1. Download and verify all binaries. On an update (not a fresh
-    // install), back up the current binary first — best-effort, feeding
-    // `bakery rollback` — before it's overwritten below. Backups stay
+    // install), back up the current binary first (best-effort, feeding
+    // `bakery rollback`) before it's overwritten below. Backups stay
     // per-user under ~/.local/state even when the live binary is in
     // /usr/local/bin, so a snapper snapshot of `@` plus this local copy
     // is enough to roll back; no second snapshot system.
@@ -99,7 +99,7 @@ pub fn install_package(
     }
 
     // 2. Scaffold config dir + download example file. Config stays
-    // per-user (~/.config) regardless of prefix — it's authored content,
+    // per-user (~/.config) regardless of prefix: it's authored content,
     // not bakery-placed bits.
     if let Some(cfg) = &pkg.config {
         scaffold_config(cfg, pkg)?;
@@ -127,7 +127,7 @@ pub fn install_package(
         service_names.push(svc.unit.clone());
     }
 
-    // 7. Run post_install hooks — arbitrary `sh -c` on index-controlled
+    // 7. Run post_install hooks: arbitrary `sh -c` on index-controlled
     // strings, so this is gated behind --no-hooks and an interactive
     // confirmation rather than running unconditionally.
     if !pkg.post_install.is_empty() {
@@ -184,14 +184,14 @@ pub fn install_package(
 }
 
 /// Best-effort copy of the on-disk binary into `backup_dir` before it's
-/// overwritten by an update — feeds `bakery rollback`. `backup_dir` is
+/// overwritten by an update; feeds `bakery rollback`. `backup_dir` is
 /// deliberately a local path (ultimately under `~/.local/state/bakery/
 /// backups/<pkg>/<old-version>/`, see `state::backup_dir`) rather than
 /// `bakery rollback` re-fetching the old version from `dl.breadway.dev`:
 /// `index.json`'s minisign signature only covers the *current* published
 /// version's checksums, so verifying an old version pulled fresh from the
 /// server would only be checkable against its unsigned per-version
-/// `.sha256` sidecar — a materially weaker guarantee than bakery's normal
+/// `.sha256` sidecar: a materially weaker guarantee than bakery's normal
 /// trust model. A local pre-update snapshot sidesteps that gap entirely.
 fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Path) {
     if !current_path.exists() {
@@ -201,7 +201,7 @@ fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Pa
         eprintln!(
             "  {}",
             ui::warn(&format!(
-                "could not create backup dir {} ({e}) — rollback won't be available for this update",
+                "could not create backup dir {} ({e}), rollback won't be available for this update",
                 backup_dir.display()
             ))
         );
@@ -211,7 +211,7 @@ fn backup_current_binary(backup_dir: &Path, binary_name: &str, current_path: &Pa
         eprintln!(
             "  {}",
             ui::warn(&format!(
-                "could not back up {binary_name} before update ({e}) — rollback won't be available for this update"
+                "could not back up {binary_name} before update ({e}), rollback won't be available for this update"
             ))
         );
     }
@@ -222,8 +222,16 @@ pub fn remove_package(
     layout: &Layout,
     assume_yes: bool,
     purge: bool,
+    no_hooks: bool,
+    dry_run: bool,
 ) -> Result<()> {
-    let installed = State::with_lock(|state| Ok(state.remove(pkg_name)))?;
+    // A dry run must not enter the write transaction: with_lock persists the
+    // state even when its callback only reads it.
+    let installed = if dry_run {
+        State::load()?.packages.get(pkg_name).cloned()
+    } else {
+        State::with_lock(|state| Ok(state.remove(pkg_name)))?
+    };
     let installed = match installed {
         Some(p) => p,
         None => {
@@ -232,7 +240,64 @@ pub fn remove_package(
         }
     };
     ui::action("Removing", pkg_name, Some(&installed.version));
-    // State is already committed by with_lock above — everything from here
+    if dry_run {
+        for bin in &installed.binaries {
+            ui::step(
+                "would remove",
+                &layout.bin_dir.join(bin).display().to_string(),
+            );
+        }
+        for unit in &installed.services {
+            ui::step(
+                "would remove",
+                &format!("unit {}", layout.systemd_user_dir.join(unit).display()),
+            );
+            if !no_hooks {
+                ui::step(
+                    "would run",
+                    &format!("systemctl --user disable --now {unit}"),
+                );
+                ui::step("would run", "systemctl --user daemon-reload");
+            }
+        }
+        if purge {
+            let share_dir = &layout.share_dir;
+            ui::step(
+                "would remove",
+                &share_dir
+                    .join("licenses")
+                    .join(pkg_name)
+                    .display()
+                    .to_string(),
+            );
+            ui::step(
+                "would remove",
+                &share_dir
+                    .join("applications")
+                    .join(format!("{pkg_name}.desktop"))
+                    .display()
+                    .to_string(),
+            );
+            ui::step(
+                "would remove",
+                &share_dir.join(pkg_name).display().to_string(),
+            );
+        } else {
+            ui::step(
+                "would preserve",
+                &format!("data  {}", layout.share_dir.join(pkg_name).display()),
+            );
+        }
+        if let Some(cfg_dir) = guess_config_dir(pkg_name) {
+            ui::step("would preserve", &format!("config  {}", cfg_dir.display()));
+        }
+        ui::step(
+            "would remove",
+            &format!("installed.json entry for {pkg_name}"),
+        );
+        return Ok(());
+    }
+    // State is already committed by with_lock above; everything from here
     // is best-effort file cleanup, and must all run even if part of it fails.
 
     // Remove binaries. Collect failures instead of aborting on the first one
@@ -255,15 +320,19 @@ pub fn remove_package(
         for unit in &installed.services {
             let unit_path = service_dir.join(unit);
             if confirm_remove_unit(unit, assume_yes) {
-                let _ = Command::new("systemctl")
-                    .args(["--user", "disable", "--now", unit])
-                    .status();
+                if !no_hooks {
+                    let _ = Command::new("systemctl")
+                        .args(["--user", "disable", "--now", unit])
+                        .status();
+                }
                 if unit_path.exists() {
                     let _ = prefix::remove_file(&unit_path);
                 }
-                let _ = Command::new("systemctl")
-                    .args(["--user", "daemon-reload"])
-                    .status();
+                if !no_hooks {
+                    let _ = Command::new("systemctl")
+                        .args(["--user", "daemon-reload"])
+                        .status();
+                }
                 ui::step("removed", &format!("unit {unit}"));
             }
         }
@@ -272,7 +341,7 @@ pub fn remove_package(
     // Config is never touched, even with --purge: unlike the license/desktop
     // /data paths below (all bakery-downloaded or -extracted content,
     // reproducible from source), the config dir holds user-authored/edited
-    // content bakery never wrote — silently destroying it would be a bad
+    // content bakery never wrote; silently destroying it would be a bad
     // surprise no flag should cause.
     if let Some(cfg_dir) = guess_config_dir(pkg_name) {
         if cfg_dir.exists() {
@@ -319,7 +388,7 @@ pub fn remove_package(
 }
 
 /// Confirms (via `confirm`, so `--yes` and non-tty stdin behave the same as
-/// every other destructive prompt in this file) and removes `path` — a
+/// every other destructive prompt in this file) and removes `path`: a
 /// directory when `recursive`, otherwise a single file. Declining leaves it
 /// in place and prints the same "preserved at" wording the non-purge path
 /// already uses. Shared by `remove_package`'s three `--purge` targets
@@ -373,7 +442,7 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
                                 eprintln!(
                                     "  {}",
                                     ui::warn(&format!(
-                                        "checksum mismatch for example config {example}: {e} — not installed"
+                                        "checksum mismatch for example config {example}: {e}, not installed"
                                     ))
                                 );
                                 ui::step("config", &dir.display().to_string());
@@ -384,7 +453,7 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
                                 "  {}",
                                 ui::warn(&format!(
                                     "index.json has no sha256 for example config \
-                                     {example} — refusing to install an unverified download"
+                                     {example}, refusing to install an unverified download"
                                 ))
                             );
                             ui::step("config", &dir.display().to_string());
@@ -416,7 +485,7 @@ fn scaffold_config(cfg: &crate::manifest::ConfigScaffold, pkg: &Package) -> Resu
 /// Download `filename` from `pkg`'s release dir, verify it against `sha256`
 /// (refusing an unverified download the same way `scaffold_config` does),
 /// and write it to `dest`. Shared by `install_license`/`install_desktop_file`
-/// since both are "fetch one small artifact, verify, place" — unlike a config
+/// since both are "fetch one small artifact, verify, place"; unlike a config
 /// example, these aren't user-editable, so they're always refreshed rather
 /// than skipped when already present.
 fn fetch_verify_write(
@@ -447,7 +516,7 @@ fn fetch_verify_write(
         eprintln!(
             "  {}",
             ui::warn(&format!(
-                "index.json has no sha256 for {label} {filename} — \
+                "index.json has no sha256 for {label} {filename}, \
                  refusing to install an unverified download"
             ))
         );
@@ -457,7 +526,7 @@ fn fetch_verify_write(
         eprintln!(
             "  {}",
             ui::warn(&format!(
-                "checksum mismatch for {label} {filename}: {e} — not installed"
+                "checksum mismatch for {label} {filename}: {e}, not installed"
             ))
         );
         return Ok(());
@@ -501,7 +570,7 @@ fn install_data_archive(pkg: &Package, filename: &str, layout: &Layout) -> Resul
 
 /// Downloads + verifies a `.tar.gz` artifact, then extracts it into
 /// `dest_dir`. Shells out to `tar` rather than adding an archive-extraction
-/// crate dependency — `tar` is universally present on Linux and this file
+/// crate dependency: `tar` is universally present on Linux and this file
 /// already shells out to `systemctl` for the same "trust the base system
 /// has this" reason. Split from `install_data_archive` (which just supplies
 /// the real `$prefix/share/<name>` destination) so tests can extract into
@@ -512,7 +581,7 @@ fn fetch_extract_archive(
     sha256: &Option<String>,
     dest_dir: &Path,
 ) -> Result<()> {
-    // A securely-named, process-unique temp file — the old
+    // A securely-named, process-unique temp file: the old
     // `std::env::temp_dir().join(format!("bakery-{name}-{filename}"))` was a
     // predictable path on a shared /tmp, so another local user could
     // pre-plant a symlink there for `fetch_verify_write`'s write to follow.
@@ -524,7 +593,7 @@ fn fetch_extract_archive(
 
     fetch_verify_write(pkg, filename, sha256, &tmp_archive, "data archive")?;
     // `fetch_verify_write` treats a download/checksum/missing-sha failure
-    // as a soft warning and returns `Ok` *without writing* — but the
+    // as a soft warning and returns `Ok` *without writing*, but the
     // `NamedTempFile` above is already created (0 bytes), so gating on
     // mere `exists()` would let an empty file through to `tar tvf`, which
     // then bails with a confusing "not in gzip format" error that masks
@@ -559,7 +628,7 @@ fn fetch_extract_archive(
 /// outright (no extraction) if any entry is a symlink or has an unsafe path
 /// (`..` component, or absolute). `--no-same-owner --no-same-permissions` on
 /// the actual extraction covers ownership/permission escalation, but not a
-/// symlink or `../` entry walking the extraction outside `dest_dir` — this
+/// symlink or `../` entry walking the extraction outside `dest_dir`; this
 /// closes that gap before `tar` ever touches disk.
 fn verify_archive_paths(archive_path: &Path) -> Result<()> {
     let output = Command::new("tar")
@@ -569,7 +638,7 @@ fn verify_archive_paths(archive_path: &Path) -> Result<()> {
         .context("listing archive contents")?;
     if !output.status.success() {
         bail!(
-            "tar tvf exited with {} listing archive contents — refusing to extract",
+            "tar tvf exited with {} listing archive contents, refusing to extract",
             output.status
         );
     }
@@ -622,7 +691,7 @@ fn install_service(svc: &Service, layout: &Layout, pkg: &Package) -> Result<()> 
     let unit_path = service_dir.join(&svc.unit);
     let had_existing = unit_path.exists();
 
-    // Always re-fetch and overwrite — the old `if !unit_path.exists()` gate
+    // Always re-fetch and overwrite: the old `if !unit_path.exists()` gate
     // meant `Environment=`/`Restart=`/etc changes in a new release never
     // applied after the first install, unlike binaries (which always
     // re-fetch via `fetch_and_place` on every install/update). If the fetch
@@ -643,7 +712,7 @@ fn install_service(svc: &Service, layout: &Layout, pkg: &Package) -> Result<()> 
                 eprintln!(
                     "  {}",
                     ui::warn(&format!(
-                        "could not refresh unit {} ({e}) — keeping existing copy",
+                        "could not refresh unit {} ({e}), keeping existing copy",
                         svc.unit
                     ))
                 );
@@ -652,7 +721,7 @@ fn install_service(svc: &Service, layout: &Layout, pkg: &Package) -> Result<()> 
                 eprintln!(
                     "  {}",
                     ui::warn(&format!(
-                        "unit file {} not found ({e}) — skipping service setup",
+                        "unit file {} not found ({e}), skipping service setup",
                         svc.unit
                     ))
                 );
@@ -789,7 +858,7 @@ fn warn_path_if_needed(bin_dir: &Path) {
         eprintln!(
             "  {}",
             ui::note(&format!(
-                "{bin_str} is not in PATH — add to your shell profile:"
+                "{bin_str} is not in PATH, add to your shell profile:"
             ))
         );
         println!("    export PATH=\"{bin_str}:$PATH\"");
@@ -807,7 +876,7 @@ mod tests {
     use tempfile::tempdir;
 
     /// Serves `body` for exactly one HTTP/1.0 request on an ephemeral local
-    /// port, then stops. Real network I/O over loopback — exercises
+    /// port, then stops. Real network I/O over loopback: exercises
     /// `fetch_verify_write`'s actual `fetch_binary` call, not just its
     /// surrounding logic, without any new test dependency.
     fn serve_once(body: &'static [u8]) -> String {
@@ -935,7 +1004,7 @@ mod tests {
         .unwrap();
 
         // Refused, not erred (matches scaffold_config's warn-and-continue
-        // posture) — the file must not have been written.
+        // posture); the file must not have been written.
         assert!(!dest.exists());
     }
 
@@ -954,7 +1023,7 @@ mod tests {
 
     #[test]
     fn fetch_extract_archive_extracts_tar_gz_contents() {
-        // Build a real tar.gz fixture via the actual `tar` binary — matches
+        // Build a real tar.gz fixture via the actual `tar` binary; matches
         // exactly what CI produces, rather than hand-rolling gzip framing.
         let src = tempdir().unwrap();
         fs::create_dir_all(src.path().join("content/tours")).unwrap();
@@ -1016,7 +1085,7 @@ mod tests {
     #[test]
     fn fetch_extract_archive_rejects_parent_traversal_entries() {
         // tar happily stores a `../`-prefixed member name if asked with -P
-        // (disable the security checks that would otherwise strip it) —
+        // (disable the security checks that would otherwise strip it);
         // this is the shape of archive our own pre-extraction check has to
         // catch, since `--no-same-owner`/`--no-same-permissions` alone don't.
         let src = tempdir().unwrap();
@@ -1174,7 +1243,7 @@ mod tests {
 
     #[test]
     fn backup_current_binary_skips_missing_source_without_erroring() {
-        // The "fresh install, nothing to back up yet" case — must not create
+        // The "fresh install, nothing to back up yet" case: must not create
         // an empty backup dir or panic.
         let dir = tempdir().unwrap();
         let current = dir.path().join("does-not-exist");
@@ -1207,7 +1276,7 @@ mod tests {
         let mut failures = Vec::new();
 
         // assume_yes=false and a non-tty stdin (the test harness) means
-        // `confirm` answers "no" — same as `confirm_returns_false_when_not_
+        // `confirm` answers "no", same as `confirm_returns_false_when_not_
         // assume_yes_and_stdin_not_a_tty` above.
         remove_purged_path(&target, "desktop entry", false, false, &mut failures);
 

@@ -8,7 +8,7 @@
 #   <!-- gen-readme-products:end -->
 #
 # Optional per-product `notes` in the registry is appended to the
-# description after an em-dash (used for "homelab, not BOS" / "not in ISO").
+# description in parentheses (used for "homelab, not BOS" / "not in ISO").
 #
 # Usage: scripts/gen-readme-products.sh
 set -euo pipefail
@@ -34,7 +34,7 @@ from pathlib import Path
 
 try:
     import tomllib
-except ImportError:  # pragma: no cover — 3.11+ is required
+except ImportError:  # pragma: no cover; 3.11+ is required
     import tomli as tomllib  # type: ignore
 
 registry_path, readme_path, start, end = sys.argv[1:]
@@ -53,7 +53,7 @@ for product in products:
     desc = str(product.get("description") or "").replace("|", "\\|")
     notes = str(product.get("notes") or "").replace("|", "\\|")
     if notes:
-        desc = f"{desc} — {notes}"
+        desc = f"{desc} ({notes})"
     lines.append(f"| `{name}` | {desc} |")
 table = "\n".join(lines)
 

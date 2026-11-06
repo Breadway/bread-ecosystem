@@ -18,7 +18,7 @@ bread-utils = { path = "../bread-utils" }
 # ones). Cargo's feature unification means this crate's minimal declaration
 # just rides along with whatever the consuming app already selected.
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "tracing"] }
-# Default features left on (unlike `ort` above) — breadarr and breadmill
+# Default features left on (unlike `ort` above): breadarr and breadmill
 # both already build against plain default-featured tokenizers; only
 # breadpad customizes this (http, fancy-regex), and Cargo's feature
 # unification only ever adds features on top of this minimal baseline, so
@@ -34,7 +34,7 @@ anyhow = { workspace = true }
 tempfile = "3"
 # Dev-dependency features unify into this crate's own test/bench builds
 # only, never into downstream consumers (they aren't part of the dependency
-# graph a consuming app resolves) — so this doesn't compromise the
+# graph a consuming app resolves), so this doesn't compromise the
 # consumer-chooses-the-backend policy above. Without it, `cargo test` here
 # fails at link time (undefined OrtGetApiBase) because nothing in this
 # workspace supplies a backend; none of bread-onnx's own unit tests open a

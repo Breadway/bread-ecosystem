@@ -7,7 +7,7 @@ Add a maintainable, automated system to generate high-quality screenshots/render
 
 **In Scope:**
 - Automated screenshot generation for all major GUI components
-- Support for different themes (pywal accents, light/dark if added later)
+- Support for different themes (native wallpaper accents, light/dark if added later)
 - Consistent naming and output structure
 - Easy-to-run command (`bread capture --all` or similar)
 - Integration with development workflow and CI (optional)

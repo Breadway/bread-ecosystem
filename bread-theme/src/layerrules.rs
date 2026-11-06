@@ -2,12 +2,12 @@
 //! `[compositor]` table (`THEME_SYSTEM_PLAN.md` §9). `scripts/ui/rules.lua`
 //! reads this file and emits `hl.layer_rule` calls from it, keeping its own
 //! hardcoded rules as a pcall-guarded fallback for when this file is missing
-//! or malformed — so generation here never has to be perfect, only present.
+//! or malformed, so generation here never has to be perfect, only present.
 //!
 //! Scope (plan §9's appearance/placement boundary): a theme's `[compositor]`
-//! table owns per-namespace *appearance* only — blur, ignore_alpha,
+//! table owns per-namespace *appearance* only: blur, ignore_alpha,
 //! blur_popups, animation, no_anim (the [`crate::shell::LayerRule`] field
-//! set). It never owns placement, workspace-assignment, or focus rules —
+//! set). It never owns placement, workspace-assignment, or focus rules;
 //! those stay Lua-side user policy (`rules.lua`'s `hl.window_rule` calls)
 //! that this generator does not touch.
 
@@ -29,7 +29,7 @@ fn config_home() -> PathBuf {
         .join(".config")
 }
 
-/// `~/.config/hypr/layerrules.json` (or under `$XDG_CONFIG_HOME` if set) —
+/// `~/.config/hypr/layerrules.json` (or under `$XDG_CONFIG_HOME` if set):
 /// alongside `binds.json`, `settings.json`, `monitors.json`, and
 /// `autostart.json`, the established flat-JSON-under-`hypr/` convention
 /// those files already use (see `~/.config/hypr/scripts/input/binds.lua` for
@@ -60,7 +60,7 @@ pub fn write_layerrules(theme: &ShellTheme) -> std::io::Result<PathBuf> {
 }
 
 /// [`write_layerrules`] from the active theme ([`crate::shell::load`], which
-/// never fails — a broken active theme falls back to the builtin). Used by
+/// never fails: a broken active theme falls back to the builtin). Used by
 /// the `bread-theme layerrules` CLI subcommand.
 pub fn write_layerrules_active() -> std::io::Result<PathBuf> {
     write_layerrules(&crate::shell::load())
@@ -73,7 +73,7 @@ mod tests {
 
     fn lock_xdg() -> std::sync::MutexGuard<'static, ()> {
         // Shared with `shell::tests::isolated_xdg`, which also mutates
-        // XDG_CONFIG_HOME — must be the *same* lock, not a look-alike one,
+        // XDG_CONFIG_HOME; must be the *same* lock, not a look-alike one,
         // or the two modules' parallel tests race each other's env var
         // reads (see `crate::test_support`'s doc comment).
         crate::test_support::XDG_CONFIG_HOME_LOCK
@@ -140,7 +140,7 @@ mod tests {
     }
 
     /// `load_named("liquid-motion")` resolves through discovery (user dir,
-    /// then system dir, then the compiled-in builtin) — isolate
+    /// then system dir, then the compiled-in builtin); isolate
     /// `XDG_CONFIG_HOME` to an empty dir so this can't pick up a real
     /// `~/.config/bread/themes/liquid-motion/theme.toml` override and land
     /// on a different `[compositor]` table than the builtin's.
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(bar["blur_popups"], true);
         assert_eq!(bar["animation"], "slide top");
         // no_anim is a plain bool (not Option), so it's always present, even
-        // when false — unlike ignore_alpha/animation which are omitted.
+        // when false, unlike ignore_alpha/animation which are omitted.
         assert_eq!(bar["no_anim"], false);
 
         let dismiss = &value["breadbar-dismiss"];
@@ -201,7 +201,7 @@ mod tests {
             let value: serde_json::Value = serde_json::from_str(&contents).unwrap();
             assert!(value.as_object().unwrap().contains_key("breadbox"));
 
-            // Rewriting (theme switch, pywal hook, etc.) must not fail or
+            // Rewriting (theme switch, palette regenerate, etc.) must not fail or
             // leave a stale temp file behind.
             let path2 = write_layerrules_active().unwrap();
             assert_eq!(path, path2);

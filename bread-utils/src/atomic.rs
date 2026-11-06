@@ -4,15 +4,15 @@
 //!
 //! Two flavors, both extracted from real (and identical) duplication:
 //!
-//! - [`write_atomic`] — temp-then-rename, with an optional Unix `mode` set
+//! - [`write_atomic`]: temp-then-rename, with an optional Unix `mode` set
 //!   up front (so secrets never exist world-readable even briefly). This is
 //!   `breadcrumbs/src/util.rs::write_atomic`, promoted verbatim.
-//! - [`write_atomic_backed_up`] — temp-then-rename *plus* a best-effort
+//! - [`write_atomic_backed_up`]: temp-then-rename *plus* a best-effort
 //!   `<path>.bak` copy of whatever was there before, so a successful-but-wrong
 //!   write is always recoverable. This is `bos-settings/src/config/mod.rs`'s
 //!   `atomic_write`, which `breadhelp/src/config.rs` re-implemented
 //!   byte-for-byte in the same fix pass that introduced it (its own doc
-//!   comment says "same discipline as bos-settings/src/config/mod.rs") —
+//!   comment says "same discipline as bos-settings/src/config/mod.rs"),
 //!   exactly the kind of fresh duplication this crate exists to remove.
 
 use std::fs;
@@ -27,7 +27,7 @@ pub fn write_atomic(path: &Path, contents: &str, mode: Option<u32>) -> io::Resul
 }
 
 /// Byte-oriented sibling of [`write_atomic`], for binary payloads (e.g. a
-/// downloaded ONNX model file — see `bread-onnx`'s downloader).
+/// downloaded ONNX model file, see `bread-onnx`'s downloader).
 pub fn write_atomic_bytes(path: &Path, contents: &[u8], mode: Option<u32>) -> io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(dir)?;
@@ -57,7 +57,7 @@ pub fn write_atomic_bytes(path: &Path, contents: &[u8], mode: Option<u32>) -> io
 }
 
 /// Like [`write_atomic`] (no `mode`), but first best-effort copies whatever
-/// is currently at `path` to `<path>.bak`. The backup is best-effort — a
+/// is currently at `path` to `<path>.bak`. The backup is best-effort: a
 /// failure to back up (e.g. read-only source, first-ever write) does not
 /// block the write itself.
 pub fn write_atomic_backed_up(path: &Path, contents: &str) -> io::Result<()> {
@@ -80,7 +80,7 @@ fn backup_path(path: &Path) -> PathBuf {
     backup_path_for(path)
 }
 
-/// `<path>.bak` — shared with [`crate::tomlcfg`] so its own backup-before-
+/// `<path>.bak`: shared with [`crate::tomlcfg`] so its own backup-before-
 /// falling-back-to-defaults logging points at the same file this module
 /// would have backed up to on a write.
 pub(crate) fn backup_path_for(path: &Path) -> PathBuf {
@@ -93,7 +93,10 @@ mod tests {
     use std::io::Read;
 
     fn tmp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("bread-utils-atomic-test-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bread-utils-atomic-test-{name}-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -143,7 +146,10 @@ mod tests {
 
         write_atomic_backed_up(&path, "first").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "first");
-        assert!(!backup.exists(), "no backup should exist before the first overwrite");
+        assert!(
+            !backup.exists(),
+            "no backup should exist before the first overwrite"
+        );
 
         write_atomic_backed_up(&path, "second").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "second");
@@ -178,7 +184,10 @@ mod tests {
         write_atomic(&path, "aaaaaaaaaa", None).unwrap();
         write_atomic(&path, "b", None).unwrap();
         let mut s = String::new();
-        fs::File::open(&path).unwrap().read_to_string(&mut s).unwrap();
+        fs::File::open(&path)
+            .unwrap()
+            .read_to_string(&mut s)
+            .unwrap();
         assert_eq!(s, "b");
         let _ = fs::remove_dir_all(&dir);
     }

@@ -17,7 +17,7 @@
 //! for execution providers that pad the output sequence dimension), and
 //! L2-normalize with the same `1e-10` epsilon. `breadmill`'s only real
 //! difference is prepending a document/query prefix string before
-//! tokenizing, which stays the caller's responsibility here — pass the
+//! tokenizing, which stays the caller's responsibility here: pass the
 //! already-prefixed text to [`EmbeddingSession::embed`].
 
 use std::path::Path;
@@ -40,7 +40,7 @@ pub struct EmbeddingSession {
 impl EmbeddingSession {
     /// Load a BERT-family embedding model + tokenizer, selecting execution
     /// providers via [`build_session`]. `dim` is the output embedding
-    /// dimension (results are truncated/zero-padded to it — matches how
+    /// dimension (results are truncated/zero-padded to it, matches how
     /// both original implementations handled a model whose `dim` config
     /// might not exactly match `last_hidden_state`'s actual width). `max_seq_len`
     /// caps tokenized input length before inference (truncating, not
@@ -55,7 +55,12 @@ impl EmbeddingSession {
         let session = build_session(model_path, GraphOptimizationLevel::Level3, providers)?;
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("failed to load tokenizer: {e}"))?;
-        Ok(Self { session, tokenizer, dim, max_seq_len })
+        Ok(Self {
+            session,
+            tokenizer,
+            dim,
+            max_seq_len,
+        })
     }
 
     /// Embed `text` (already prefixed by the caller, if the model expects a
@@ -68,7 +73,11 @@ impl EmbeddingSession {
             .map_err(|e| anyhow::anyhow!("tokenization failed: {e}"))?;
 
         let mut ids: Vec<i64> = encoding.get_ids().iter().map(|&x| x as i64).collect();
-        let mut mask: Vec<i64> = encoding.get_attention_mask().iter().map(|&x| x as i64).collect();
+        let mut mask: Vec<i64> = encoding
+            .get_attention_mask()
+            .iter()
+            .map(|&x| x as i64)
+            .collect();
         let mut type_ids: Vec<i64> = encoding.get_type_ids().iter().map(|&x| x as i64).collect();
 
         ids.truncate(self.max_seq_len);
@@ -99,7 +108,9 @@ impl EmbeddingSession {
         let actual_seq = shape[1] as usize;
         let actual_dim = shape[2] as usize;
 
-        Ok(mean_pool_normalize(data, &mask, actual_seq, actual_dim, self.dim))
+        Ok(mean_pool_normalize(
+            data, &mask, actual_seq, actual_dim, self.dim,
+        ))
     }
 }
 
@@ -109,7 +120,13 @@ impl EmbeddingSession {
 /// against execution providers (MIGraphX observed doing this) that pad the
 /// output sequence dimension for kernel efficiency, making `actual_seq`
 /// exceed the caller's own `mask` length.
-fn mean_pool_normalize(data: &[f32], mask: &[i64], actual_seq: usize, actual_dim: usize, target_dim: usize) -> Vec<f32> {
+fn mean_pool_normalize(
+    data: &[f32],
+    mask: &[i64],
+    actual_seq: usize,
+    actual_dim: usize,
+    target_dim: usize,
+) -> Vec<f32> {
     let mut result = vec![0.0f32; actual_dim];
     let mut count = 0usize;
     for t in 0..actual_seq.min(mask.len()) {
@@ -201,7 +218,7 @@ mod tests {
     fn mean_pool_clamps_actual_seq_to_mask_len_for_padded_ep_output() {
         // Regression guard for the MIGraphX-padded-output-sequence case both
         // original implementations independently guarded against: actual_seq
-        // (4) exceeds mask.len() (2) — must not index out of the mask.
+        // (4) exceeds mask.len() (2); must not index out of the mask.
         let data = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
         let mask = vec![1, 1];
         let pooled = mean_pool_normalize(&data, &mask, 4, 2, 2);

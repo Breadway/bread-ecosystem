@@ -25,9 +25,9 @@ impl LaunchHistory {
         *self.counts.entry(name.to_string()).or_insert(0) += 1;
     }
 
-    /// Writes `counts` to `path` as JSON. Best-effort — a broken cache dir
+    /// Writes `counts` to `path` as JSON. Best-effort: a broken cache dir
     /// (missing parent, full disk, permissions) must not stop the caller
-    /// from launching anything, so this never returns an error — but it now
+    /// from launching anything, so this never returns an error, but it now
     /// logs one on failure rather than swallowing it silently. Shared by two
     /// hosts (breadbox's overlay and breadbar's embedded capsule, both keyed
     /// under [`crate::LAUNCHER_APP`]), so a save failure here silently stops
@@ -48,7 +48,7 @@ impl LaunchHistory {
         }
     }
 
-    /// In-memory history with no backing file — [`save`](Self::save) fails
+    /// In-memory history with no backing file: [`save`](Self::save) fails
     /// (an empty `path` is not writable) and now logs that failure to
     /// stderr rather than swallowing it, same as any other broken-path
     /// case. Lets a test (or a future in-memory host) control counts
@@ -107,7 +107,7 @@ mod tests {
     }
 
     /// `save()` on an unwritable path (e.g. the parent directory doesn't
-    /// exist, or `path` is empty) must not panic — it's best-effort, called
+    /// exist, or `path` is empty) must not panic; it's best-effort, called
     /// from a launcher's shutdown path where a hard failure would be worse
     /// than a lost history entry. This exercises exactly the failure branch
     /// the `eprintln!` above was added for; there is no return value to

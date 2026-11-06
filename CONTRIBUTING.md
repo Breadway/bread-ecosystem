@@ -2,11 +2,11 @@
 
 This repo is a Cargo workspace. Bakery-channel products shipped from here
 are `bakery` (the ecosystem package manager) and `bread-theme` (the shared
-theming crate). Shared crates that sibling apps pin — not bakery packages
-of their own — are `bread-utils`, `bread-app`, `bread-onnx`,
+theming crate). Shared crates that sibling apps pin, not bakery packages
+of their own, are `bread-utils`, `bread-app`, `bread-onnx`,
 `bread-screenshots`, and `bread-capture`. `bread-polkit` is an in-tree
 session agent: it has `bread-polkit/bakery.toml` so it *can* be published,
-but it is not in `registry/bread-ecosystem.toml` (unpublished — not on
+but it is not in `registry/bread-ecosystem.toml` (unpublished, not on
 the bakery index, not on the BOS ISO). Other ecosystem products
 (`bread`, `breadbar`, `breadbox`, …) live in their own repos under
 `Breadway/` but follow the same workflow described here. The product list
@@ -17,10 +17,10 @@ is `registry/bread-ecosystem.toml`. New GTK tools should depend on
 
 There is one long-lived branch: **`main`**. All day-to-day work lands here.
 Every push to `main` automatically builds and publishes a **dev-track**
-build for both products (see Tracks below) — use this to test your change
+build for both products (see Tracks below); use this to test your change
 in a real install before cutting anything more formal.
 
-New work — features and bug fixes alike — goes on a short-lived branch:
+New work, features and bug fixes alike, goes on a short-lived branch:
 
 ```
 feature/<short-name>
@@ -28,31 +28,37 @@ fix/<issue-number-or-short-name>
 ```
 
 Branch off `main`, open a PR/push back into `main` when ready. Short-lived
-branches get deleted on merge — they never accumulate the kind of drift a
+branches get deleted on merge; they never accumulate the kind of drift a
 second long-lived branch does.
 
 ## The release cycle
 
-There's no separate `beta` or release branch — "stable" and "beta" are both
+There's no separate `beta` or release branch: "stable" and "beta" are both
 just **tags** on `main`, not branches that need to be kept in sync:
 
 1. Work accumulates on `main` via `feature/x` / `fix/x` branches. Each push
-   auto-publishes a dev build for both `bakery` and `bread-theme` — install
+   auto-publishes a dev build for both `bakery` and `bread-theme`; install
    with `bakery track set dev` and `bakery update --all`, then fix anything
    broken with another push.
 2. When you want to stabilize before a real release, tag a release
    candidate: `git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1` (push to
-   both remotes). That tag alone triggers a beta-track build —
+   both remotes). That tag alone triggers a beta-track build:
    "freezing" is just pausing pushes to `main` while you test it, not a
-   branch operation. Cut `-rc.2`, `-rc.3`, etc. for further fixes.
-3. Once an RC has gone without issues, tag the real release:
-   `git tag vX.Y.Z && git push origin vX.Y.Z` — that's what triggers the
-   signed stable release build.
+   branch operation. Install the beta build (`bakery track set beta &&
+   bakery update --all`) and use it for at least 3 days. Cut `-rc.2`,
+   `-rc.3`, etc. for further fixes from the new commit.
+3. Once an RC has finished soaking with no open issues, tag the real
+   release on the **same commit** as that RC:
+   `git tag vX.Y.Z <rc-commit> && git push origin vX.Y.Z`: that's what
+   triggers the signed stable release build. Its first step is the beta
+   promotion gate, which rejects a stable tag that has no RC on the same
+   commit or whose RC was published to beta less than 3 days earlier. See
+   `docs/release-channels.md` ("Beta promotion gate").
 
 **Version honesty**: bakery's compiled `--version` is
 `[workspace.package] version` in the root `Cargo.toml`. The bakery
 package version in the index (what `bakery list` shows) is the git tag.
-Those must match at tag time — bump `workspace.package.version` to
+Those must match at tag time: bump `workspace.package.version` to
 `X.Y.Z` *before* pushing `vX.Y.Z` or `vX.Y.Z-rc.N`. Never jump a tag
 (e.g. `v0.3.1` → `v0.7.1`) without that Cargo.toml bump; the resulting
 binary will report the old workspace version while the index claims the
@@ -60,7 +66,7 @@ new tag.
 
 **Note**: `bakery` and `bread-theme` share the same `v*` tag pattern
 (both `release-bakery.yml` and `release-bread-theme.yml` trigger on
-`tags: ['v*']`, pre-existing behavior this doc isn't changing) — a single
+`tags: ['v*']`, pre-existing behavior this doc isn't changing): a single
 tag push builds and publishes a release for *both* products at once. If
 you ever need to release one independently of the other, that's a real gap
 worth fixing in the workflow files themselves, not something to work around
@@ -82,7 +88,7 @@ bakery update --all            # pull the latest build on your current track
 
 Dev versions are auto-computed (`X.Y.Z-dev.<timestamp>+<sha>`) from the
 latest published stable tag, so they always sort as newer than what you
-have installed — no manual version bumping needed. Beta versions are just
+have installed; no manual version bumping needed. Beta versions are just
 the RC tag itself (already valid semver, already sorts below the real
 release it's a candidate for).
 
@@ -102,18 +108,25 @@ helpers.
 
 ## CI
 
-- `dev-bakery.yml` / `dev-bread-theme.yml` — triggered on push to `main`.
-- `rc-bakery.yml` / `rc-bread-theme.yml` — triggered on any `vX.Y.Z-rc.N`
+- `check.yml`: triggered on push to `feature/**`/`fix/**`/`main`. Lints
+  `git.breadway.dev` dependency pins (`scripts/lint-pins.sh`; this repo's
+  own cross-repo dependency is `bread-utils` -> `bread-shared` from
+  `Breadway/bread`), then fmt/clippy/test.
+- `dev-bakery.yml` / `dev-bread-theme.yml`: triggered on push to `main`.
+- `rc-bakery.yml` / `rc-bread-theme.yml`: triggered on any `vX.Y.Z-rc.N`
   tag push.
-- `release-bakery.yml` / `release-bread-theme.yml` — triggered on any other
+- `release-bakery.yml` / `release-bread-theme.yml`: triggered on any other
   `v*` tag push, cuts the actual stable release.
-- `package.yml` — publishes `bakery` to the `[breadway]` pacman repo, also
+- `package.yml`: publishes `bakery` to the `[breadway]` pacman repo, also
   tag-triggered.
 
-All CI runs on a self-hosted runner; nothing runs automatically on plain
-commits or PRs beyond the track builds above. See
+All CI runs on a self-hosted runner. See
 [`docs/release-channels.md`](docs/release-channels.md) for the full policy,
-including how a new product gets wired onto these tracks.
+including how a new product gets wired onto these tracks, and its
+"Cross-repo dependency resolution" section for `scripts/dev-deps.sh` and
+`scripts/lint-pins.sh`, the shared scripts every consumer repo (breadbar,
+breadbox, ...) uses to build against dependency `main` branches on its own
+dev track and PR checks while keeping Cargo.toml itself tag-pinned.
 
 ## Questions
 

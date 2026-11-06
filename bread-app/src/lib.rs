@@ -9,15 +9,15 @@
 //!
 //! The pieces every bread GTK binary already copies:
 //!
-//! - [`application_id`] / [`parse_app_name`] — reverse-DNS id
+//! - [`application_id`] / [`parse_app_name`]: reverse-DNS id
 //!   (`com.breadway.breadbox`) and the same name used for the singleton
 //!   pid file.
-//! - [`try_acquire`] / [`toggle_or_kill`] — [`bread_utils::singleton`]
+//! - [`try_acquire`] / [`toggle_or_kill`]: [`bread_utils::singleton`]
 //!   wrappers that reject an invalid name before touching the lock.
-//! - feature `gtk` — re-exports [`gtk_popup`] (`bread_utils::gtk_popup`)
+//! - feature `gtk`: re-exports [`gtk_popup`] (`bread_utils::gtk_popup`)
 //!   for the full-screen overlay breadbox / breadclip / breadcast start
 //!   from.
-//! - feature `bread-client` — [`listen_commands`] plus [`command_verb`] /
+//! - feature `bread-client`: [`listen_commands`] plus [`command_verb`] /
 //!   [`command_pattern`] so a tool can honor `bread.command.<app>.**`
 //!   without re-deriving the prefix strip.
 //!

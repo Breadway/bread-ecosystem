@@ -3,9 +3,9 @@ use anyhow::Result;
 use std::process::Command;
 
 pub struct DepReport {
-    /// Required deps that are not present — blocks install.
+    /// Required deps that are not present; blocks install.
     pub missing: Vec<String>,
-    /// Optional deps that are not present — advisory only, never blocks.
+    /// Optional deps that are not present: advisory only, never blocks.
     pub warnings: Vec<String>,
 }
 
@@ -29,9 +29,8 @@ pub fn check_deps(required: &[String], optional: &[String]) -> Result<DepReport>
 /// with either package (so `path_has` can't bridge the gap the way it
 /// already does for e.g. `ffmpeg`/`openssl`, whose package name matches
 /// their own binary name on both distros). `system_deps` in `bakery.toml`
-/// is always written as the Arch name — this is what makes that same
-/// declaration also resolve correctly on a Debian-family bakery host like
-/// hestia.
+/// is always written as the Arch name; this is what makes that same
+/// declaration also resolve correctly on a Debian-family bakery host.
 const ARCH_TO_DEBIAN_PKG: &[(&str, &str)] = &[("mkvtoolnix-cli", "mkvtoolnix")];
 
 fn debian_name(pkg: &str) -> &str {
@@ -43,7 +42,7 @@ fn debian_name(pkg: &str) -> &str {
 }
 
 fn dep_present(pkg: &str) -> bool {
-    // Primary: `pacman -Q` uses the exact Arch package name — no name mapping needed.
+    // Primary: `pacman -Q` uses the exact Arch package name, no name mapping needed.
     if pacman_installed(pkg) {
         return true;
     }
@@ -92,8 +91,8 @@ fn pkg_config_exists(lib: &str) -> bool {
 
 /// Builds the "install with: ..." hint for a list of missing Arch package
 /// names, picking the command for whichever package manager is actually on
-/// this host — `sudo pacman -S ...` is meaningless advice on a Debian-family
-/// bakery host like hestia, which has neither `pacman` nor the Arch names.
+/// this host: `sudo pacman -S ...` is meaningless advice on a Debian-family
+/// bakery host, which has neither `pacman` nor the Arch names.
 pub fn install_hint(missing: &[String]) -> String {
     if path_has("pacman") {
         format!("sudo pacman -S {}", missing.join(" "))

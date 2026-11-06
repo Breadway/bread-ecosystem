@@ -1,6 +1,6 @@
 name: dev bakery
 
-# Publishes a dev-track build on every push to `main` (the trunk branch —
+# Publishes a dev-track build on every push to `main` (the trunk branch;
 # there is no separate `dev` branch). See docs/release-channels.md for the
 # release-track policy this is part of.
 on:
@@ -15,32 +15,41 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, hestia]
+    runs-on: [self-hosted]
     steps:
       - name: checkout
+        shell: bash
         run: |
           set -euo pipefail
-          rm -rf src && mkdir src
-          git clone --branch main --depth 1 \
-            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+          # Fetch the reviewed helper at an immutable merged revision and
+          # verify its committed digest before executing it.
+          helper_commit=c6442cabb6c02acd1380dcd0d17189c4e22def03
+          helper_sha256=39d07ff4efe2336fe5eac1f1099590d5427e04111e0f51fc3f905df2cfbd205f
+          helper=$(mktemp "${RUNNER_TEMP:-/tmp}/ci-checkout.XXXXXX")
+          trap 'rm -f -- "$helper"' EXIT
+          curl -fsSL "https://git.breadway.dev/Breadway/bread-ecosystem/raw/commit/${helper_commit}/scripts/ci-checkout.sh" -o "$helper"
+          printf '%s  %s\n' "$helper_sha256" "$helper" | sha256sum --check
+          checkout=$(mktemp -d "${RUNNER_TEMP:-/tmp}/bread-ci.XXXXXX")
+          printf 'BREAD_CI_JOB_DIR=%s\n' "$checkout" >> "$GITHUB_ENV"
+          bash "$helper" "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" "$GITHUB_SHA" "$checkout/src"
 
       - name: build
-        run: cd src && cargo build --release --locked -p bakery
+        run: cd "$BREAD_CI_JOB_DIR/src" && cargo build --release --locked -p bakery
 
       - name: test
-        run: cd src && cargo test --release --locked -p bakery
+        run: cd "$BREAD_CI_JOB_DIR/src" && cargo test --release --locked -p bakery
 
       # Auto-bumps the patch version from Cargo.toml and appends a
-      # timestamp+sha dev suffix — no developer discipline required, and the
+      # timestamp+sha dev suffix: no developer discipline required, and the
       # result is visibly "ahead of" the last stable patch release while
       # staying valid semver (comparable within the dev track by bakery's
       # `is_newer`).
       - name: compute dev version
         run: |
           set -euo pipefail
-          cd src
+          cd "$BREAD_CI_JOB_DIR/src"
           # Base the dev version off the latest published stable tag,
-          # not Cargo.toml — Cargo.toml can go stale relative to the last
+          # not Cargo.toml: Cargo.toml can go stale relative to the last
           # real release (seen in practice: breadbox/breadpad/breadcrumbs/
           # breadpaper), which would make a dev build sort as OLDER than
           # what's already installed and bakery would correctly refuse it.
@@ -62,11 +71,11 @@ jobs:
           set -euo pipefail
           PKG_DIR="/srv/breadway-dl/dev/bakery/${VERSION}"
           mkdir -p "${PKG_DIR}"
-          cp "src/target/release/bakery" "${PKG_DIR}/bakery-x86_64"
+          cp "$BREAD_CI_JOB_DIR/src/target/release/bakery" "${PKG_DIR}/bakery-x86_64"
           strip "${PKG_DIR}/bakery-x86_64"
           sha256sum "${PKG_DIR}/bakery-x86_64" | awk '{print $1}' \
             > "${PKG_DIR}/bakery-x86_64.sha256"
-          cp src/bakery.toml "${PKG_DIR}/bakery.toml"
+          cp "$BREAD_CI_JOB_DIR/src/bakery.toml" "${PKG_DIR}/bakery.toml"
           ln -sfn "${VERSION}" "/srv/breadway-dl/dev/bakery/latest"
 
       - name: sign dev binary
@@ -80,10 +89,10 @@ jobs:
               -x "${PKG_DIR}/bakery-x86_64.minisig" </dev/null
             echo "signed bakery-x86_64"
           else
-            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set — shipping bakery-x86_64 UNSIGNED"
+            echo "::warning::BAKERY_MINISIGN_SEC_KEY_PATH not set: shipping bakery-x86_64 UNSIGNED"
           fi
 
-      # No GitHub Release upload step here, unlike release-bakery.yml — dev
+      # No GitHub Release upload step here, unlike release-bakery.yml: dev
       # builds happen on every push and would spam a release per commit, so
       # dl.breadway.dev/dev/ is the only distribution point for this track.
       - name: regenerate dev index.json
@@ -93,7 +102,18 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
-            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set: refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
             exit 1
           fi
-          cd src && bash scripts/gen-index.sh
+          cd "$BREAD_CI_JOB_DIR/src" && bash scripts/gen-index.sh
+
+      # Runs last so no earlier step loses its tree. Removes only this job's
+      # own checkout directory, and only under RUNNER_TEMP.
+      - name: clean owned checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${BREAD_CI_JOB_DIR:-}" == "${RUNNER_TEMP:-/tmp}"/bread-ci.* && -d "$BREAD_CI_JOB_DIR" ]]; then
+            rm -rf -- "$BREAD_CI_JOB_DIR"
+          fi

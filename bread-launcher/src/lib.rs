@@ -1,5 +1,5 @@
-//! Headless app-launcher core — desktop-entry discovery, fuzzy matching and
-//! ranking, launch history, and process launching — plus an optional GTK4
+//! Headless app-launcher core: desktop-entry discovery, fuzzy matching and
+//! ranking, launch history, and process launching; plus an optional GTK4
 //! results-list widget behind the `gtk` feature.
 //!
 //! Lives in `bread-ecosystem`, not an app repo, so breadbar (which must not
@@ -9,9 +9,9 @@
 //!
 //! Every path/cache/history entry point here takes an explicit `app: &str`
 //! rather than hardcoding an app name, so more than one host can use this
-//! crate without colliding — see [`cache_dir`]/[`config_dir`]. [`LAUNCHER_APP`]
+//! crate without colliding: see [`cache_dir`]/[`config_dir`]. [`LAUNCHER_APP`]
 //! is the one identity every *launcher* host (as opposed to some unrelated
-//! future consumer of `cache_dir`/`config_dir`) should actually pass — see
+//! future consumer of `cache_dir`/`config_dir`) should actually pass; see
 //! its own doc comment for why.
 
 mod desktop;
@@ -33,11 +33,13 @@ pub use matching::{
     fuzzy_matches, fuzzy_score, load_sorted_entries, matches_term, priority_rank, split_sections,
 };
 pub use paths::{app_dirs, cache_dir, config_dir, home_dir};
-pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Command, ParsedQuery, QueryKind};
+pub use query::{
+    builtin_commands, eval_calc, filter_commands, parse_query, Command, ParsedQuery, QueryKind,
+};
 
 /// The launcher's one shared identity, passed to [`cache_dir`]/[`config_dir`]/
 /// [`IconCache::new`]/[`LaunchHistory::load`] by every host that embeds this
-/// crate — breadbox's overlay window AND breadbar's embedded capsule
+/// crate: breadbox's overlay window AND breadbar's embedded capsule
 /// (theme 04/spotlight) alike.
 ///
 /// This is deliberate, not a leftover of breadbox being first: theme 04's
@@ -45,12 +47,12 @@ pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Comma
 /// different shell, not a second launcher with its own history
 /// (`THEME_SYSTEM_PLAN.md` §7). If each host passed its own binary name here,
 /// the same physical launcher would rank a user's apps differently
-/// depending on which theme happened to be active — the icon cache and
+/// depending on which theme happened to be active: the icon cache and
 /// "most launched" ordering would silently fork in two. Sharing this
 /// constant is what keeps them one launcher.
 ///
 /// Do not pass a bare `"breadbox"` string literal at a call site instead of
-/// this constant — that reads exactly like an unfixed bug (breadbar naming
+/// this constant: that reads exactly like an unfixed bug (breadbar naming
 /// another app's identity) and invites a later "fix" that would quietly
 /// break the shared history this constant exists to guarantee.
 ///
@@ -58,6 +60,6 @@ pub use query::{builtin_commands, eval_calc, filter_commands, parse_query, Comma
 /// bread-bus events, which must be namespaced under the caller's *own*
 /// identity (breadbox's is `"box"`, not `"breadbox"`) or
 /// `BreadClient::emit`'s namespace check silently drops them. This constant
-/// is scoped to the cache/history path family only — see [`do_launch`]'s
+/// is scoped to the cache/history path family only; see [`do_launch`]'s
 /// doc comment for the concrete failure mode if the two get swapped.
 pub const LAUNCHER_APP: &str = "breadbox";

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# cleanup-old-mirror-workflows.sh — retire the per-repo GitHub mirroring
+# cleanup-old-mirror-workflows.sh: retire the per-repo GitHub mirroring
 # pattern now that Forgejo native Push Mirrors (see setup-push-mirrors.sh)
 # do the same job centrally.
 #
 # THIS SCRIPT IS DESTRUCTIVE AND TOUCHES LIVE, RUNNING INFRASTRUCTURE:
 #   1. Deletes .forgejo/workflows/mirror.yml from the DEFAULT BRANCH of every
-#      repo returned by the Forgejo API that has one (via the contents API —
+#      repo returned by the Forgejo API that has one (via the contents API;
 #      this is a real commit to each repo's default branch, not a local/
 #      worktree change).
 #   2. Deletes the MIRROR_TOKEN Actions secret from every repo that has one.
@@ -36,7 +36,7 @@
 #   --dry-run                             print what would be deleted, make
 #                                          no changes (combine with the
 #                                          confirmation flag or this refuses
-#                                          to run at all — even dry-run mode
+#                                          to run at all, even dry-run mode
 #                                          is gated, so nobody can quietly
 #                                          drop the guardrail out of the
 #                                          invocation by force of habit)

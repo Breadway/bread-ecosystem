@@ -1,15 +1,15 @@
 //! Install prefix: default `~/.local`, or a system root for BOS.
 //!
-//! Hermes and `get.sh` keep the user-local default. BOS sets
+//! Plain `get.sh` installs keep the user-local default. BOS sets
 //! `prefix = "/usr/local"` in `/etc/bakery/config.toml` (or `BAKERY_PREFIX`)
 //! so bakery-managed desktop apps live on the `@` root subvolume and ride
 //! along with snapper/grub-btrfs snapshots. Per-user state stays under
-//! `~/.local/state/bakery` either way — bakery still records what *this*
+//! `~/.local/state/bakery` either way: bakery still records what *this*
 //! user asked for; the prefix only changes where bits land on disk.
 //!
 //! Writes that hit `EACCES` use `sudo -n` first, then `pkexec` if a
 //! graphical session is available. Interactive `sudo` (password on stdin)
-//! is never used — a GUI hook must not block on a TTY prompt.
+//! is never used: a GUI hook must not block on a TTY prompt.
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
@@ -68,7 +68,7 @@ impl Layout {
 
     /// Historical default: `~/.local` bins, XDG data dir for share,
     /// `~/.config/systemd/user` for units. Used when neither `BAKERY_PREFIX`
-    /// nor `/etc/bakery/config.toml` sets a prefix — hermes / get.sh.
+    /// nor `/etc/bakery/config.toml` sets a prefix: plain `get.sh` installs.
     pub fn user_default(bin_override: Option<PathBuf>) -> Self {
         let prefix = default_user_prefix();
         let bin_dir = bin_override.unwrap_or_else(|| prefix.join("bin"));
@@ -121,7 +121,7 @@ struct BakeryConfig {
 
 /// Reads `prefix = "..."` from a bakery config file. Missing file or empty
 /// key → `None` (caller falls back to the user-local default). A file that
-/// exists but fails to parse is warned about, not treated as fatal — a typo
+/// exists but fails to parse is warned about, not treated as fatal: a typo
 /// in `/etc/bakery/config.toml` must not take down `bakery list`.
 pub fn load_config_prefix(path: &Path) -> Option<PathBuf> {
     if !path.exists() {
@@ -205,7 +205,7 @@ fn is_permission_denied(err: &io::Error) -> bool {
 
 pub fn privilege_denied_msg(dest: &Path) -> String {
     format!(
-        "permission denied writing {} — need root for this prefix. \
+        "permission denied writing {}: need root for this prefix. \
          bakery tried `sudo -n` then `pkexec`; neither succeeded. \
          Run from a root shell, grant passwordless sudo -n for install/rm/tar, \
          or install a polkit rule. bakery will not prompt for a sudo password.",
@@ -291,7 +291,7 @@ pub fn remove_dir_all(path: &Path) -> Result<()> {
 }
 
 /// Extract `archive` (a `.tar.gz`) into `dest_dir`. Escalates the `tar`
-/// invocation when `dest_dir` is not writable by this user — typical for
+/// invocation when `dest_dir` is not writable by this user, typical for
 /// `$prefix/share/<pkg>` under `/usr/local`.
 pub fn extract_tar_gz(archive: &Path, dest_dir: &Path) -> Result<()> {
     create_dir_all(dest_dir)?;
@@ -346,7 +346,7 @@ fn run_privileged(program: &Path, args: &[&OsStr], dest: &Path) -> Result<()> {
         return Ok(());
     }
 
-    // pkexec pops a polkit dialog — only useful with a display, and the
+    // pkexec pops a polkit dialog: only useful with a display, and the
     // one acceptable password prompt (GUI, not a stolen sudo TTY).
     if has_graphical_session() {
         let pk = Command::new("pkexec").arg(program).args(args).status();
@@ -411,7 +411,7 @@ mod tests {
         let layout = Layout::from_prefix(dir.path(), None);
         assert_eq!(layout.bin_dir, dir.path().join("bin"));
         assert_eq!(layout.share_dir, dir.path().join("share"));
-        // /tmp is not under $HOME, so this is a system-shaped prefix —
+        // /tmp is not under $HOME, so this is a system-shaped prefix;
         // units would go to /usr/lib/systemd/user. Writes still try
         // unprivileged first, so tests can use a temp prefix without sudo.
         assert!(layout.is_system);

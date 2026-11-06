@@ -92,7 +92,7 @@ fn reload_app() {
 /// `bread-theme` writes the file with write-tmp-then-rename (atomic), which
 /// *replaces the inode*. A monitor on the file itself dies after the first
 /// replace (inotify reports DELETE_SELF and never re-arms), so we monitor the
-/// parent *directory* and filter for the stylesheet's filename — that fires
+/// parent *directory* and filter for the stylesheet's filename; that fires
 /// reliably on every reload. Returns the monitor (keep it alive to stay armed).
 fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
     let target = crate::shared_css_path();
@@ -117,8 +117,9 @@ fn watch_theme_file(reload: fn()) -> Option<gio::FileMonitor> {
 /// Apply an app's *own* stylesheet and keep it live across palette changes.
 ///
 /// `build` is called now to produce the app-specific CSS, and again every time
-/// the shared theme file is rewritten — i.e. whenever `bread-theme reload` (or
-/// `generate`) runs after pywal changes. The app recolours in place, no restart.
+/// the shared theme file is rewritten, i.e. whenever `bread-theme reload` (or
+/// `generate`) runs after the palette changes. The app recolours in place, no
+/// restart.
 ///
 /// This is the counterpart to [`apply_shared`]: that hot-reloads the *shared*
 /// component sheet; this hot-reloads the app's *own* rules (which are built from
@@ -137,7 +138,7 @@ pub fn apply_app_css<F: Fn() -> String + 'static>(build: F) {
 /// Load the ecosystem's shared stylesheet (the file written by
 /// `bread-theme generate`, or a freshly rendered fallback if absent) at
 /// APPLICATION priority, and watch the file so the whole UI recolours live when
-/// the palette changes — no app rebuild or restart needed.
+/// the palette changes: no app rebuild or restart needed.
 ///
 /// Call once at startup; then add the app's own CSS provider *after* this so
 /// app-specific rules win on equal specificity.
@@ -169,7 +170,7 @@ pub fn apply_css(css: &str, provider: &RefCell<Option<CssProvider>>) {
 
 /// A filter/tag chip using the shared `.chip` stylesheet rule (an
 /// `@overlay`-filled pill, `@accent`-filled when the `active` CSS class is
-/// set) instead of a fresh literal color — this is the fix for the same
+/// set) instead of a fresh literal color: this is the fix for the same
 /// component drifting to three different fills across breadclip (grey),
 /// breadpad, and breadman (both cream), none of which agreed with each
 /// other or with the shared token.
@@ -180,7 +181,7 @@ pub fn chip(label: &str) -> gtk4::Button {
         .build()
 }
 
-/// Toggles a chip's (or any widget's) `active` CSS class — the `.chip.active`
+/// Toggles a chip's (or any widget's) `active` CSS class: the `.chip.active`
 /// stylesheet rule fills it with the accent instead of the neutral overlay.
 /// Wiring *when* a chip becomes active (single-select filter, multi-select
 /// tags, etc.) is genuinely per-app, so that stays the caller's job; this is
@@ -204,9 +205,29 @@ pub fn output_for_widget(widget: &impl IsA<gtk4::Widget>) -> Option<String> {
 
 /// Every `observe_children` model in a bound widget's current subtree, kept
 /// alive together (drop them all when the bind is forgotten). Shared so the
-/// recursive [`hook_subtree`] can push newly-discovered descendant containers
-/// in from inside an `items-changed` closure.
-type SubtreeWatches = Rc<RefCell<Vec<gio::ListModel>>>;
+/// recursive [`hook_subtree`] can register newly discovered widgets after a
+/// coalesced `items-changed` notification.
+type SubtreeWatches = Rc<SubtreeWatchRegistry>;
+
+#[derive(Default)]
+struct SubtreeWatchRegistry {
+    models: RefCell<HashMap<usize, SubtreeWatch>>,
+    pending: Cell<bool>,
+}
+
+struct SubtreeWatch {
+    widget: glib::WeakRef<gtk4::Widget>,
+    model: gio::ListModel,
+    changed_handler: Option<glib::SignalHandlerId>,
+}
+
+impl Drop for SubtreeWatch {
+    fn drop(&mut self) {
+        if let Some(handler) = self.changed_handler.take() {
+            self.model.disconnect(handler);
+        }
+    }
+}
 
 struct WidgetBind {
     output: String,
@@ -227,7 +248,7 @@ thread_local! {
     static AUTO_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     static MAP_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     /// Surfaces whose `enter-monitor` we've already hooked, keyed by
-    /// `GdkSurface` pointer (not widget pointer — a widget can be re-realized
+    /// `GdkSurface` pointer (not widget pointer: a widget can be re-realized
     /// onto a fresh surface).
     static ENTER_HOOKED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
     /// widget pointer -> the surface pointer currently in [`ENTER_HOOKED`] for
@@ -309,14 +330,34 @@ fn reload_stem_for_event(path: &Path, want_ext: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn arm_dir_reload_watch(dir: std::path::PathBuf, want_ext: &'static str) -> Option<gio::FileMonitor> {
+/// Choose which path a `FileMonitor::connect_changed` event refers to.
+///
+/// With `GFileMonitorFlags::WATCH_MOVES` set (as `arm_dir_reload_watch`
+/// requests), a rename lands as a single event where `file` is the *source*
+/// path and `other` is the *destination*: this is what `atomic_write`
+/// (`output.rs`) produces on every reload: write to a `.{name}.tmp.{pid}`
+/// sibling, then `rename()` it onto the real `.css`/`.json` target. `other`
+/// is therefore the only field that can carry the right extension for a
+/// rename and takes priority; `file` is the fallback for a direct
+/// CREATE/CHANGED event (e.g. a non-atomic editor write with no rename).
+fn reload_event_path(file: &gio::File, other: Option<&gio::File>) -> Option<std::path::PathBuf> {
+    other.and_then(|f| f.path()).or_else(|| file.path())
+}
+
+fn arm_dir_reload_watch(
+    dir: std::path::PathBuf,
+    want_ext: &'static str,
+) -> Option<gio::FileMonitor> {
     let _ = std::fs::create_dir_all(&dir);
     let monitor = gio::File::for_path(&dir)
         .monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
         .ok()?;
     monitor.connect_changed(move |_, file, other, _event| {
-        let path = file.path().or_else(|| other.and_then(|f| f.path()));
-        let Some(stem) = path.as_deref().and_then(|p| reload_stem_for_event(p, want_ext)) else {
+        let path = reload_event_path(file, other);
+        let Some(stem) = path
+            .as_deref()
+            .and_then(|p| reload_stem_for_event(p, want_ext))
+        else {
             return;
         };
         reload_binds_for_sanitized(&stem);
@@ -328,7 +369,7 @@ fn try_arm_themes_watch() -> Option<gio::FileMonitor> {
     arm_dir_reload_watch(crate::themes_dir(), "css")
 }
 
-/// Watch `themes/<output>.css` so a per-output pywal regenerate recolours every
+/// Watch `themes/<output>.css` so a per-output palette regenerate recolours every
 /// window bound to that output in place. Bounded lazy retry: a transient
 /// `monitor_directory` failure no longer kills per-monitor reload for the
 /// session (findings #5).
@@ -342,7 +383,7 @@ fn try_arm_palettes_watch() -> Option<gio::FileMonitor> {
 
 /// Also watch `palettes/<output>.json` (finding #6): the CLI writes the `.json`
 /// and the `.css` together, but third-party tooling that only rewrites the
-/// palette JSON would otherwise leave every bound window stale — the reload
+/// palette JSON would otherwise leave every bound window stale; the reload
 /// path re-reads the JSON via `load_palette_for` regardless, so reacting to
 /// either file is correct (a paired write just reloads twice, harmlessly).
 fn ensure_palettes_watch() {
@@ -350,6 +391,7 @@ fn ensure_palettes_watch() {
 }
 
 fn reload_binds_for_sanitized(sanitized: &str) {
+    let ty = crate::Typography::active();
     BINDS.with(|binds| {
         for bind in binds.borrow_mut().values_mut() {
             if crate::sanitize_output(&bind.output) != sanitized {
@@ -357,7 +399,7 @@ fn reload_binds_for_sanitized(sanitized: &str) {
             }
             let palette = crate::load_palette_for(&bind.output);
             bind.theme
-                .load_from_string(&crate::stylesheet_resolved(&palette));
+                .load_from_string(&crate::stylesheet_resolved(&ty, &palette));
             if let (Some(build), Some(provider)) = (&bind.app_build, &bind.app) {
                 provider.load_from_string(&crate::resolve_color_names(&build(&palette), &palette));
             }
@@ -377,33 +419,73 @@ fn reattach_bound_tree(root: &gtk4::Widget) {
 
 /// Recursively hook `observe_children` on `widget` *and every current
 /// descendant container*, so a subtree added lazily at **any** depth after the
-/// bind — a popover's contents, menu items, rows appended into an existing box
-/// — gets the per-output provider too (finding #3).
+/// bind (a popover's contents, menu items, rows appended into an existing box)
+/// gets the per-output provider too (finding #3).
 ///
 /// The pre-fix code only watched the root's *direct* children, so anything
 /// deeper than one level that appeared after bind/map silently rendered with
 /// the display-wide shared sheet (the wrong monitor's colours). Every model is
 /// parked in `watches` (which the `WidgetBind` owns) so the whole set is
-/// dropped together when the bind is forgotten; newly-appeared containers are
-/// hooked in from inside the `items-changed` closure.
-fn hook_subtree(widget: &gtk4::Widget, root: &glib::WeakRef<gtk4::Widget>, watches: &SubtreeWatches) {
-    let model = widget.observe_children();
-    {
-        let root = root.clone();
-        let watches = watches.clone();
-        model.connect_items_changed(move |model, pos, _removed, added| {
-            let Some(root_w) = root.upgrade() else {
-                return;
-            };
-            reattach_bound_tree(&root_w);
-            for i in pos..pos + added {
-                if let Some(child) = model.item(i).and_downcast::<gtk4::Widget>() {
-                    hook_subtree(&child, &root, &watches);
+/// dropped together when the bind is forgotten. Child changes schedule one
+/// reconciliation after the widget tree settles; sorting existing rows never
+/// registers the same widget twice.
+fn hook_subtree(
+    widget: &gtk4::Widget,
+    root: &glib::WeakRef<gtk4::Widget>,
+    watches: &SubtreeWatches,
+) {
+    let key = widget_key(widget);
+    let already_registered = {
+        let registered = watches.models.borrow();
+        registered
+            .get(&key)
+            .is_some_and(|watch| watch.widget.upgrade().is_some())
+    };
+    if !already_registered {
+        watches.models.borrow_mut().remove(&key);
+        let model = widget.observe_children();
+        let changed_handler = {
+            let root = root.clone();
+            // The registry owns the models, so their callbacks must not own the
+            // registry. Otherwise forgetting a bind leaves the entire cycle alive.
+            let watches = Rc::downgrade(watches);
+            model.connect_items_changed(move |_, _, _, _| {
+                let Some(watches) = watches.upgrade() else {
+                    return;
+                };
+                if watches.pending.replace(true) {
+                    return;
                 }
-            }
-        });
+                let watches = Rc::downgrade(&watches);
+                let root = root.clone();
+                // ListBox sorting exposes intermediate child-model contents during
+                // items-changed. Walk the settled widget tree once on the next
+                // main-loop turn, rather than reading model items during a sort.
+                glib::idle_add_local_once(move || {
+                    let Some(watches) = watches.upgrade() else {
+                        return;
+                    };
+                    if let Some(root_w) = root.upgrade() {
+                        watches
+                            .models
+                            .borrow_mut()
+                            .retain(|_, watch| watch.widget.upgrade().is_some());
+                        reattach_bound_tree(&root_w);
+                        hook_subtree(&root_w, &root, &watches);
+                    }
+                    watches.pending.set(false);
+                });
+            })
+        };
+        watches.models.borrow_mut().insert(
+            key,
+            SubtreeWatch {
+                widget: widget.downgrade(),
+                model,
+                changed_handler: Some(changed_handler),
+            },
+        );
     }
-    watches.borrow_mut().push(model);
     let mut child = widget.first_child();
     while let Some(c) = child {
         hook_subtree(&c, root, watches);
@@ -412,19 +494,15 @@ fn hook_subtree(widget: &gtk4::Widget, root: &glib::WeakRef<gtk4::Widget>, watch
 }
 
 fn watch_subtree(widget: &gtk4::Widget) -> SubtreeWatches {
-    let watches: SubtreeWatches = Rc::new(RefCell::new(Vec::new()));
+    let watches: SubtreeWatches = Rc::new(SubtreeWatchRegistry::default());
     hook_subtree(widget, &widget.downgrade(), &watches);
     watches
 }
 
-fn bind_window_inner(
-    widget: &gtk4::Widget,
-    output: &str,
-    app_build: Option<AppCssBuilder>,
-) {
+fn bind_window_inner(widget: &gtk4::Widget, output: &str, app_build: Option<AppCssBuilder>) {
     let key = widget_key(widget);
     let palette = crate::load_palette_for(output);
-    let theme_css = crate::stylesheet_resolved(&palette);
+    let theme_css = crate::stylesheet_resolved(&crate::Typography::active(), &palette);
     let app_css = app_build
         .as_ref()
         .map(|build| crate::resolve_color_names(&build(&palette), &palette));
@@ -483,7 +561,7 @@ fn bind_window_inner(
 }
 
 fn ensure_map_reattach(widget: &gtk4::Widget) {
-    // `connect_map` once per widget — re-bind already lives in BINDS. Covers the
+    // `connect_map` once per widget; re-bind already lives in BINDS. Covers the
     // whole-window-remapped case; `watch_subtree` covers lazily-grown subtrees.
     // `MAP_HOOKED` is cleared by `forget_bind` on destroy.
     let key = widget_key(widget);
@@ -656,6 +734,28 @@ mod tests {
     }
 
     #[test]
+    fn reload_event_path_prefers_the_rename_destination_over_the_tmp_source() {
+        // Regression for ECO-14: on a `RENAMED` event (what `atomic_write`'s
+        // write-tmp-then-rename produces under `WATCH_MOVES`), `file` is the
+        // tmp source and `other` is the real destination: only `other`
+        // carries the right extension, so it must win.
+        let tmp = gio::File::for_path("/x/themes/.eDP-1.css.tmp.42");
+        let dest = gio::File::for_path("/x/themes/eDP-1.css");
+        assert_eq!(
+            reload_event_path(&tmp, Some(&dest)).as_deref(),
+            Some(Path::new("/x/themes/eDP-1.css")),
+            "a rename event must resolve to the destination path, not the tmp source"
+        );
+
+        // A direct CREATE/CHANGED event (no rename, e.g. a non-atomic editor
+        // write) carries no `other`; fall back to `file`.
+        assert_eq!(
+            reload_event_path(&dest, None).as_deref(),
+            Some(Path::new("/x/themes/eDP-1.css"))
+        );
+    }
+
+    #[test]
     fn forget_bind_clears_every_record_including_the_surface_keyed_enter_hook() {
         // Regression for finding #2: `ENTER_HOOKED` is keyed by surface pointer,
         // the rest by widget pointer. A destroyed window used to leave its
@@ -699,7 +799,8 @@ mod tests {
         let _lock = crate::output::XDG_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("bt-gtk-watch-{}-{}", std::process::id(), nanos()));
+        let dir =
+            std::env::temp_dir().join(format!("bt-gtk-watch-{}-{}", std::process::id(), nanos()));
         std::fs::create_dir_all(&dir).unwrap();
         let old = std::env::var("XDG_RUNTIME_DIR").ok();
         std::env::set_var("XDG_RUNTIME_DIR", &dir);
@@ -716,15 +817,36 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert!(themes_dir_made && palettes_dir_made, "watch arming must mkdir -p its dir");
-        assert!(themes.is_some(), "themes watch failed to arm in a writable dir");
-        assert!(palettes.is_some(), "palettes watch failed to arm in a writable dir");
+        assert!(
+            themes_dir_made && palettes_dir_made,
+            "watch arming must mkdir -p its dir"
+        );
+        assert!(
+            themes.is_some(),
+            "themes watch failed to arm in a writable dir"
+        );
+        assert!(
+            palettes.is_some(),
+            "palettes watch failed to arm in a writable dir"
+        );
     }
+
+    // A real end-to-end `FileMonitor` + write-then-rename regression test was
+    // tried here and dropped: it pumps the default `glib::MainContext`, same
+    // as `shell::hotreload`'s tests, and the two collide under the default
+    // parallel test runner (`cargo test --workspace --features gtk`, as CI
+    // runs it): a `FileMonitor` created on one test's thread gets its signal
+    // dispatched while another test's thread is mid-iteration on the same
+    // shared context, which glib's thread guard rejects
+    // ("Value accessed from different thread than where it was created"),
+    // aborting the whole test binary. `reload_event_path` above is the pure
+    // seam this bug actually lives in, and is fully covered without touching
+    // the shared context.
 
     // ---- widget lifecycle --------------------------------------------------
     //
     // These need a real GDK display *and* call `gtk4::init()`, which acquires
-    // the thread-default glib main context — running them alongside the rest of
+    // the thread-default glib main context; running them alongside the rest of
     // the suite (where `shell::hotreload` tests pump that context to receive
     // `FileMonitor` events) deadlocks those. So they're `#[ignore]`d by default
     // and the `--features gtk` CI/pre-push command skips them; run them on
@@ -736,7 +858,7 @@ mod tests {
 
     // One test only: `gtk4::init()` binds GTK to the calling thread for the
     // life of the process and panics ("two different threads") if any *other*
-    // test thread calls it afterwards — so all the widget-level assertions
+    // test thread calls it afterwards, so all the widget-level assertions
     // share a single init here.
     #[test]
     #[ignore = "needs a GDK display + exclusive glib main context; run alone (see module note)"]
@@ -752,12 +874,74 @@ mod tests {
         root.append(&mid);
         mid.append(&leaf);
         let watches = watch_subtree(root.upcast_ref());
+        let weak_watches = Rc::downgrade(&watches);
         assert!(
-            watches.borrow().len() >= 3,
+            watches.models.borrow().len() >= 3,
             "expected a child-model per container (root/mid/leaf), got {}",
-            watches.borrow().len()
+            watches.models.borrow().len()
         );
         drop(watches);
+        assert!(
+            weak_watches.upgrade().is_none(),
+            "observer callbacks retained the registry"
+        );
+
+        // BOX-8: ListBox sorting emits items-changed with existing rows in
+        // the added range. Each widget must retain exactly one child observer
+        // rather than multiplying weak references on every query.
+        let list = gtk4::ListBox::new();
+        for i in 0..160 {
+            let row = gtk4::ListBoxRow::new();
+            row.set_widget_name(&format!("row-{i:03}"));
+            row.set_child(Some(&gtk4::Label::new(Some("application"))));
+            list.append(&row);
+        }
+        let reverse = Rc::new(Cell::new(false));
+        list.set_sort_func({
+            let reverse = reverse.clone();
+            move |a, b| {
+                let order = a.widget_name().cmp(&b.widget_name());
+                if reverse.get() {
+                    order.reverse().into()
+                } else {
+                    order.into()
+                }
+            }
+        });
+        let watches = watch_subtree(list.upcast_ref());
+        let baseline = watches.models.borrow().len();
+        for round in 0..200 {
+            reverse.set(round % 2 == 0);
+            list.invalidate_sort();
+            while glib::MainContext::default().pending() {
+                glib::MainContext::default().iteration(false);
+            }
+            assert_eq!(
+                watches.models.borrow().len(),
+                baseline,
+                "sorting duplicated observers"
+            );
+        }
+        let row = list.row_at_index(0).unwrap();
+        list.remove(&row);
+        list.append(&row);
+        while glib::MainContext::default().pending() {
+            glib::MainContext::default().iteration(false);
+        }
+        assert_eq!(
+            watches.models.borrow().len(),
+            baseline,
+            "reparenting duplicated observers"
+        );
+        let model = list.observe_children();
+        let before_drop = model.ref_count();
+        let weak_watches = Rc::downgrade(&watches);
+        drop(watches);
+        assert!(weak_watches.upgrade().is_none());
+        assert!(
+            model.ref_count() < before_drop,
+            "registry did not release its models"
+        );
 
         // Finding #3b: a grandchild appended *after* the bind must trigger the
         // recursive items-changed hook on `mid` and get re-walked.
@@ -768,9 +952,12 @@ mod tests {
         let key = widget_key(root.upcast_ref());
         assert!(BINDS.with(|b| b.borrow().contains_key(&key)));
 
-        let before = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        let before = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.models.borrow().len());
         mid.append(&gtk4::Label::new(Some("added late")));
-        let after = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.borrow().len());
+        while glib::MainContext::default().pending() {
+            glib::MainContext::default().iteration(false);
+        }
+        let after = BINDS.with(|b| b.borrow().get(&key).unwrap()._watch.models.borrow().len());
         assert!(
             after > before,
             "a widget added two levels below the bound root never triggered re-attach ({before} -> {after})"

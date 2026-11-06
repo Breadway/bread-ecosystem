@@ -15,7 +15,7 @@ description = "Bread ecosystem package manager"
 [[products]]
 name = "bread-theme"
 repo = "Breadway/bread-ecosystem"
-description = "Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem"
+description = "Shared native-accent, fixed-dark-base theming CLI for the bread ecosystem"
 
 [[products]]
 name = "bread"
@@ -48,14 +48,15 @@ repo = "Breadway/breadpaper"
 description = "Wallpaper manager for the bread desktop"
 
 [[products]]
-name = "breadmon"
-repo = "Breadway/breadmon"
-description = "Terminal UI monitor manager for Hyprland"
-
-[[products]]
 name = "breadsearch"
 repo = "Breadway/breadsearch"
 description = "Semantic system-wide search for BOS"
+
+[[products]]
+name = "breadram"
+repo = "Breadway/breadram"
+description = "Memory management daemon and CLI for the bread desktop"
+notes = "Bakery product; not included in the BOS ISO"
 
 [[products]]
 name = "breadclip"
@@ -80,11 +81,23 @@ description = "Onboarding and help center for Bread OS"
 [[products]]
 name = "breadcast"
 repo = "Breadway/breadcast"
-description = "Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup"
+description = "Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup"
 notes = "Bakery product; not included in the BOS ISO"
 
 [[products]]
 name = "breadarr"
 repo = "Breadway/breadarr"
-description = "Single-daemon Sonarr+Radarr+Prowlarr replacement — release watching, matching, grabbing, importing, and a terminal UI, no web UI"
+description = "Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI"
 notes = "Homelab, not shipped on BOS"
+
+[[products]]
+name = "breadboard-cli"
+repo = "Breadway/breadboard"
+description = "Command line and terminal UI for breadboard"
+notes = "Client package, not included in the BOS ISO"
+
+[[products]]
+name = "breadboard-desktop"
+repo = "Breadway/breadboard"
+description = "Native desktop shell for breadboard"
+notes = "Client package, not included in the BOS ISO"

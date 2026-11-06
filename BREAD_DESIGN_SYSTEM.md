@@ -6,13 +6,14 @@ bos-settings.
 ## Architecture (single source of truth)
 
 The tokens below are implemented once in the **`bread-theme`** crate as
-`stylesheet(&Palette)` — the full component stylesheet (buttons, entries,
+`stylesheet(&Palette)`: the full component stylesheet (buttons, entries,
 switches, lists/rows/sidebars, cards, chips, scrollbars, headings) over a
 canonical `@define-color` palette (`surface`=color0, `overlay`=color7,
 `accent`=color4).
 
-- The `bread-theme` **CLI** renders it from the live pywal palette to
-  `$XDG_RUNTIME_DIR/bread/theme.css` (run at login and from a pywal hook).
+- The `bread-theme` **CLI** renders it from the live session-global palette
+  to `$XDG_RUNTIME_DIR/bread/theme.css` (run at login and whenever
+  breadpaper writes a new wallpaper-derived palette).
 - Every GUI loads that file via `bread_theme::gtk::apply_shared()` and
   **live-reloads** it, then layers on only its own app-specific rules.
 
@@ -48,25 +49,28 @@ Establish a visual hierarchy with consistent rounding:
 
 ## Color System
 
-All projects use **pywal dynamic theming** for accents, layered on a **fixed BOS
-dark base** — background, surface, overlay, and foreground never come from
-pywal, only the accent slots (color1–6) track the current wallpaper:
+All projects use **dynamic wallpaper-derived accent theming** layered on a
+**fixed BOS dark base**: background, surface, overlay, and foreground never
+come from the wallpaper, only the accent slots (color1–6) track it:
 
 - **Background**: `#0c0c0c` (fixed)
 - **Foreground**: `#e8e8e8` (fixed)
 - **Surface**: `#1a1a1a` (fixed, `color0`)
 - **Overlay**: `#d8d8d8` (fixed, `color7`)
-- **Accent**: Dynamic (from pywal `color4`), with curated bread-toned defaults
-  before any wallpaper has been set
+- **Accent**: Dynamic (from wallpaper `color4`), with curated bread-toned
+  defaults before any wallpaper has been set
 
-Without pinning bg/surface/overlay, a light or muddy-toned wallpaper makes
-pywal hand back a light or off-hue background, and every bread GUI's panels
-inherit it — see `bread-theme/src/palette.rs` for the implementation.
+Without pinning bg/surface/overlay, a light or muddy-toned wallpaper would
+otherwise hand back a light or off-hue background, and every bread GUI's
+panels would inherit it; see `bread-theme/src/palette.rs` for the
+implementation.
 
-Color palette slots (via wal):
-- color0–color7: ANSI colors (0 and 7 fixed, 1–6 pywal-derived)
+Color palette slots (extracted natively from the wallpaper by
+`bread-theme`'s optional `extract` feature, see the `bread-palette-extract`
+crate):
+- color0–color7: ANSI colors (0 and 7 fixed, 1–6 wallpaper-derived)
 - Semantic: red, green, yellow, blue, pink, teal
-- Computed ink: `on-bg`, `on-surface`, `on-accent`, `on-red`, `on-overlay` —
+- Computed ink: `on-bg`, `on-surface`, `on-accent`, `on-red`, `on-overlay`:
   black or white text, whichever is legible against that background (see
   `bread_theme::ink_on`)
 
@@ -106,18 +110,18 @@ Color palette slots (via wal):
 All GUI apps load `bread_theme::stylesheet` (via the generated shared file) and
 add only app-specific rules:
 
-- **breadbar** — shared base + bar window, workspace buttons, stats, notification
+- **breadbar**: shared base + bar window, workspace buttons, stats, notification
   and OSD cards.
-- **breadbox** — shared base + launcher panel, search entry, result rows.
-- **breadpad / breadman** — shared base + capture popup, type chips, note cards,
+- **breadbox**: shared base + launcher panel, search entry, result rows.
+- **breadpad / breadman**: shared base + capture popup, type chips, note cards,
   reminder window, sidebar rows.
-- **bos-settings** — shared base + content padding only (was previously a
+- **bos-settings**: shared base + content padding only (was previously a
   hardcoded Nord palette; migrated to the shared stylesheet).
-- **breadcrumbs** — CLI tool; ANSI colours only, no GUI styling.
+- **breadcrumbs**: CLI tool; ANSI colours only, no GUI styling.
 
 > Palette note: background/surface/overlay/foreground are a fixed BOS dark
-> base, never pywal-derived; only the accent slots (color1–6) track the
-> current wallpaper via pywal.
+> base, never wallpaper-derived; only the accent slots (color1–6) track the
+> current wallpaper, extracted natively by `bread-theme`.
 
 ## Future Consistency Checks
 
@@ -126,5 +130,5 @@ When adding new components or updating existing ones:
 2. Set base font size to 14px (12px for secondary)
 3. Use spacing scale (4px units: 4, 8, 12, 16, 20)
 4. Use border radius from this system (8px default, 6px secondary)
-5. Leverage pywal colors for dynamic theming
+5. Leverage the wallpaper-derived palette for dynamic theming
 6. Keep margins/padding consistent across similar components

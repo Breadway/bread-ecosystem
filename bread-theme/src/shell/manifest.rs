@@ -13,45 +13,27 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::types::*;
 
-/// Module names a slot entry may reference without recompiling anything —
-/// plan §2 tier 1/2 (declarative slots) plus the `widget:*` escape hatch
-/// (tier 3, validated separately since its suffix is open-ended). This is
-/// intentionally the set the *current* theme and the plan's own schema
-/// example use; Phase 3 (breadbar's module registry) is the place a new
-/// built-in module name gets added for real.
-const KNOWN_MODULES: &[&str] = &[
-    "workspaces",
-    "media",
-    "clock",
-    "volume",
-    "wifi",
-    "battery",
-    "control",
-    "launcher_entry",
-    "launcher_results",
-    // `02-glass-workbench` (plan §11 phase 5): plain right-side stat chips,
-    // reusing the same `AppInput::StatsUpdate` data the control panel's
-    // sys-grid already receives — see breadbar's `bar::slots` module docs.
-    "cpu",
-    "ram",
-];
-
 pub(super) fn validate_module_name(theme_id: &str, slot: &str, module: &str) -> anyhow::Result<()> {
-    if module.starts_with("widget:") || KNOWN_MODULES.contains(&module) {
+    if module.starts_with("widget:") || super::modules::is_known(module) {
         return Ok(());
+    }
+    if module == "+" {
+        bail!(
+            "theme '{theme_id}': slot \"{slot}\" uses the \"+\" splice marker but the theme has \
+             no `extends` (or extends a theme with no {slot} slot); nothing to splice in"
+        );
     }
     bail!(
         "theme '{theme_id}': slot \"{slot}\" references unknown module \"{module}\" \
-         (known modules: {}, or widget:<lua-module-name>)",
-        KNOWN_MODULES.join(", ")
+         (known modules: {}, or widget:<lua-module-name>; an app registers its own \
+         modules via bread_theme::shell::modules::register)",
+        super::modules::all().join(", ")
     );
 }
 
 pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Result<()> {
     let Some(bar) = &raw.bar else { return Ok(()) };
-    let Some(slots) = &bar.slots else {
-        return Ok(());
-    };
+    let slots = bar.slots.clone().unwrap_or_default();
     for (slot_name, list) in [
         ("left", &slots.left),
         ("centre", &slots.centre),
@@ -60,6 +42,27 @@ pub(super) fn validate_slots(raw: &RawManifest, theme_id: &str) -> anyhow::Resul
     ] {
         for module in list {
             validate_module_name(theme_id, slot_name, module)?;
+        }
+    }
+    // Every `[[bar.widget]]` must have a `widget:<slot>` render position in
+    // one of the slot lists: the same "no silent drop" policy as a module
+    // name that names nothing.
+    let placed: std::collections::HashSet<&str> =
+        [&slots.left, &slots.centre, &slots.right, &slots.drawer]
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.strip_prefix("widget:"))
+            .collect();
+    for w in &bar.widget {
+        if !placed.contains(w.slot.as_str()) {
+            bail!(
+                "theme '{theme_id}': bar.widget '{}' has slot = \"{}\" but no \
+                 `widget:{}` entry appears in any [bar.slots] list; it would \
+                 never be shown",
+                w.id,
+                w.slot,
+                w.slot
+            );
         }
     }
     Ok(())
@@ -73,7 +76,7 @@ pub(super) struct RawManifest {
     /// Present only so `extends` deserializes as a *known* field (otherwise
     /// `deny_unknown_fields` would reject every theme that sets it). The
     /// value itself is read straight off the raw `toml::Value` in
-    /// `mod.rs::resolve_theme` — before this struct exists — since the
+    /// `mod.rs::resolve_theme`, before this struct exists, since the
     /// merge has to happen ahead of (and separately from) deserialization.
     #[allow(dead_code)]
     pub(super) extends: Option<String>,
@@ -82,19 +85,22 @@ pub(super) struct RawManifest {
     pub(super) bar: Option<RawBar>,
     pub(super) modules: Option<RawModules>,
     pub(super) launcher: Option<RawLauncher>,
+    pub(super) panel: Option<RawPanel>,
+    pub(super) osd: Option<RawOsd>,
+    /// `[notifications]` (BAR-30 phase 4): how an incoming notification is
+    /// presented. `None` for every theme but spotlight, which resolves to
+    /// `Notifications::default()` ("toast", today's behaviour).
+    pub(super) notifications: Option<RawNotifications>,
     pub(super) surfaces: Option<HashMap<String, RawSurface>>,
     pub(super) compositor: Option<HashMap<String, RawLayerRule>>,
-    /// Overlay CSS path, resolved relative to the theme file's own
-    /// directory, appended last by `ShellTheme::css`. Declared-but-not-yet-
-    /// consumed in production: `ShellTheme::css` (the only reader of this
-    /// field's resolved `extra_css`) is not called by breadbar or breadbox
-    /// today — see that method's doc comment. Setting this key is currently
-    /// a no-op for a real running shell (it IS exercised by this crate's own
-    /// tests). (Schema note: plan §4
-    /// shows `css = "extra.css"` textually after the `[compositor]` table
-    /// with no table header of its own between them, which in real TOML
-    /// would nest it *inside* `[compositor]`. Treated here as a top-level
-    /// field per §5's `css()` doc — see this crate's implementation notes.)
+    /// Overlay CSS path, resolved relative to the theme file's own directory.
+    /// Its contents are token-substituted and appended after the base
+    /// template when the theme's CSS is rendered (`RawManifest::resolve` →
+    /// `ShellTheme::css`), which breadbar and breadbox now consume directly.
+    /// (Schema note: plan §4 shows `css = "extra.css"` textually after the
+    /// `[compositor]` table with no header between them, which real TOML
+    /// would nest inside `[compositor]`. Treated here as a top-level field
+    /// per §5's `css()` doc.)
     pub(super) css: Option<String>,
 }
 
@@ -103,6 +109,76 @@ pub(super) struct RawManifest {
 pub(super) struct RawBar {
     pub(super) window: Option<RawWindow>,
     pub(super) slots: Option<RawSlots>,
+    /// `[[bar.widget]]`: theme-declared live bar widgets (a poll + a node
+    /// tree). Rendered by breadbar through the same path as a Lua module's
+    /// `WidgetSpec`.
+    #[serde(default)]
+    pub(super) widget: Vec<RawThemeWidget>,
+    /// `[bar.autohide]` (BAR-27 phase 1): whether the bar tucks itself above
+    /// the top edge when idle. Omitted entirely for every theme but
+    /// spotlight, which is exactly `AutoHide::default()`'s `enabled = false`.
+    pub(super) autohide: Option<RawAutoHide>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawAutoHide {
+    pub(super) enabled: Option<bool>,
+    pub(super) hover_zone_width: Option<i64>,
+    pub(super) hover_zone_height: Option<i64>,
+    pub(super) retuck_delay_ms: Option<i64>,
+    pub(super) notification_peek_ms: Option<i64>,
+    pub(super) level_peek_ms: Option<i64>,
+    pub(super) workspace_peek_ms: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawThemeWidget {
+    pub(super) id: String,
+    /// The `widget:<slot>` key in a `[bar.slots]` list this renders into.
+    pub(super) slot: String,
+    pub(super) order: Option<i64>,
+    pub(super) bind: RawBind,
+    pub(super) node: RawNode,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawBind {
+    /// Shell command; its trimmed stdout replaces `{value}` in the tree.
+    pub(super) cmd: String,
+    /// Poll interval: `"500ms"` / `"5s"` / `"2m"`.
+    pub(super) every: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum RawNode {
+    Box {
+        orientation: Option<String>,
+        spacing: Option<i64>,
+        class: Option<String>,
+        #[serde(default)]
+        children: Vec<RawNode>,
+    },
+    Label {
+        text: String,
+        class: Option<String>,
+        color: Option<String>,
+        weight: Option<String>,
+        size: Option<String>,
+    },
+    Icon {
+        name: Option<String>,
+        path: Option<String>,
+        size: Option<i64>,
+        class: Option<String>,
+    },
+    Progress {
+        value: f64,
+        class: Option<String>,
+    },
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -137,12 +213,12 @@ pub(super) struct RawMargin {
     pub(super) top: i64,
     pub(super) left: i64,
     pub(super) right: i64,
-    /// See [`super::types::Margin::bottom`] — accepted and resolved, but
+    /// See [`super::types::Margin::bottom`]: accepted and resolved, but
     /// breadbar never applies it.
     pub(super) bottom: i64,
 }
 
-#[derive(Debug, Default, serde::Deserialize)]
+#[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub(super) struct RawSlots {
     pub(super) left: Vec<String>,
@@ -163,11 +239,14 @@ pub(super) struct RawModules {
 pub(super) struct RawWorkspacesModule {
     pub(super) style: Option<String>,
     pub(super) show_empty: Option<bool>,
-    /// `[6, 10, 14, 18]`-shaped — see [`DotWidths`]. A length other than 4
+    /// `[6, 10, 14, 18]`-shaped, see [`DotWidths`]. A length other than 4
     /// is a hard error (validated in [`resolve_modules`]) rather than
     /// silently truncated/padded, matching this file's "typo'd key is a
     /// hard error" policy for enum-ish values.
     pub(super) dot_widths: Option<Vec<i64>>,
+    /// See [`super::types::WorkspaceDisplay`]. `None` here (the field unset)
+    /// resolves to `WorkspaceDisplay::All`, not the string `"none"`.
+    pub(super) display: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -204,6 +283,29 @@ pub(super) struct RawLauncher {
     pub(super) search_padding_h: Option<i64>,
     pub(super) panel_alpha: Option<f64>,
     pub(super) selection_alpha: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPanel {
+    pub(super) min_width: Option<i64>,
+    pub(super) sections: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawOsd {
+    pub(super) enabled: Option<Vec<String>>,
+    pub(super) dismiss_ms: Option<i64>,
+    /// BAR-30 phase 4: `"window"` (default) or `"pill"`; see `types::OSD_STYLES`.
+    pub(super) style: Option<String>,
+}
+
+/// `[notifications]` (BAR-30 phase 4); see `types::Notifications`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawNotifications {
+    pub(super) style: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -247,6 +349,209 @@ fn token_value(v: &toml::Value) -> anyhow::Result<TokenValue> {
         toml::Value::Boolean(b) => Ok(TokenValue::Bool(*b)),
         other => Err(anyhow!("must be a string, number, or bool, got {other:?}")),
     }
+}
+
+/// Remove `/* … */` comments from a CSS template. CSS comments do not nest.
+/// Run before token substitution so a `{token}` mentioned in an authoring
+/// comment is neither substituted nor flagged as an unresolved reference, and
+/// so the rendered stylesheet carries no template-authoring prose.
+fn strip_css_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        match rest[start + 2..].find("*/") {
+            Some(end) => rest = &rest[start + 2 + end + 2..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The documented `[tokens]` keys: everything else a theme sets under
+/// `[tokens]` is an "extra", only meaningful for `{name}` substitution in
+/// that theme's own `extra.css` overlay.
+const KNOWN_TOKEN_KEYS: &[&str] = &[
+    "radius_bar",
+    "radius_card",
+    "radius_sm",
+    "radius_pill",
+    "pad",
+    "bg_alpha",
+    "spring",
+    "spring_settle",
+    "accent_from",
+    "accent_to",
+    "accent2",
+    "chip_height",
+    "icon_px",
+    "font_family",
+    "font_fallback",
+    "font_size_base",
+    "font_weight",
+    "light",
+    "bar_border",
+    "ws_gradient_angle",
+    "chip_gap",
+    "sep_style",
+    "bar_shadow",
+    "media_eq_style",
+    "osd_style",
+];
+
+/// Build a fully-resolved, typed [`Tokens`] from the raw `[tokens]` table.
+/// Known keys go to their typed field (leniently coerced: a number written
+/// as a quoted string still parses, matching the pre-typed behaviour);
+/// unknown keys are carried in [`Tokens::extra`] for `extra.css`.
+///
+/// `style` is `modules.workspaces.style`; see the `chip_height_set` note
+/// below for why `resolve_tokens` needs it.
+fn resolve_tokens(
+    theme_id: &str,
+    raw: &HashMap<String, toml::Value>,
+    style: WorkspaceStyle,
+) -> anyhow::Result<Tokens> {
+    let mut t = Tokens::default();
+    let mut accent_to_set = false;
+    let mut accent2_set = false;
+    let mut chip_height_set = false;
+
+    let want_i64 = |v: &toml::Value, key: &str| -> anyhow::Result<i64> {
+        match v {
+            toml::Value::Integer(i) => Ok(*i),
+            toml::Value::Float(f) => Ok(*f as i64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_f64 = |v: &toml::Value, key: &str| -> anyhow::Result<f64> {
+        match v {
+            toml::Value::Float(f) => Ok(*f),
+            toml::Value::Integer(i) => Ok(*i as f64),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not a number")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a number, got {other:?}"
+            )),
+        }
+    };
+    let want_str = |v: &toml::Value, key: &str| -> anyhow::Result<String> {
+        match v {
+            toml::Value::String(s) => Ok(s.clone()),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
+            )),
+        }
+    };
+    let want_enum = |v: &toml::Value, key: &str, allowed: &[&str]| -> anyhow::Result<String> {
+        let s = match v {
+            toml::Value::String(s) => s.clone(),
+            other => {
+                return Err(anyhow!(
+                    "theme '{theme_id}': tokens.{key} must be a string, got {other:?}"
+                ))
+            }
+        };
+        if allowed.contains(&s.as_str()) {
+            Ok(s)
+        } else {
+            Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} = \"{s}\" is not {}",
+                allowed.join("|")
+            ))
+        }
+    };
+    let want_bool = |v: &toml::Value, key: &str| -> anyhow::Result<bool> {
+        match v {
+            toml::Value::Boolean(b) => Ok(*b),
+            toml::Value::String(s) => s.parse().with_context(|| {
+                format!("theme '{theme_id}': tokens.{key} = \"{s}\" is not true/false")
+            }),
+            other => Err(anyhow!(
+                "theme '{theme_id}': tokens.{key} must be a bool, got {other:?}"
+            )),
+        }
+    };
+
+    for (k, v) in raw {
+        match k.as_str() {
+            "radius_bar" => t.radius_bar = want_i64(v, k)?,
+            "radius_card" => t.radius_card = want_i64(v, k)?,
+            "radius_sm" => t.radius_sm = want_i64(v, k)?,
+            "radius_pill" => t.radius_pill = want_i64(v, k)?,
+            "pad" => t.pad = want_i64(v, k)?,
+            "chip_height" => {
+                t.chip_height = want_i64(v, k)?;
+                chip_height_set = true;
+            }
+            "icon_px" => t.icon_px = want_i64(v, k)?,
+            "font_size_base" => t.font_size_base = want_i64(v, k)?,
+            "font_weight" => t.font_weight = want_i64(v, k)?,
+            "ws_gradient_angle" => t.ws_gradient_angle = want_i64(v, k)?,
+            "chip_gap" => t.chip_gap = want_i64(v, k)?,
+            "sep_style" => t.sep_style = want_enum(v, k, &["line", "none", "dot"])?,
+            "bar_shadow" => t.bar_shadow = want_enum(v, k, &["none", "soft", "hard"])?,
+            "media_eq_style" => t.media_eq_style = want_enum(v, k, &["bars", "none"])?,
+            "osd_style" => t.osd_style = want_enum(v, k, &["pill", "bar"])?,
+            "bg_alpha" => t.bg_alpha = want_f64(v, k)?,
+            "spring" => t.spring = want_str(v, k)?,
+            "spring_settle" => t.spring_settle = want_str(v, k)?,
+            "accent_from" => t.accent_from = want_str(v, k)?,
+            "accent_to" => {
+                t.accent_to = want_str(v, k)?;
+                accent_to_set = true;
+            }
+            "accent2" => {
+                t.accent2 = want_str(v, k)?;
+                accent2_set = true;
+            }
+            "font_family" => t.font_family = want_str(v, k)?,
+            "font_fallback" => t.font_fallback = want_str(v, k)?,
+            "light" => t.light = want_bool(v, k)?,
+            "bar_border" => t.bar_border = BarBorder::parse(theme_id, &want_str(v, k)?)?,
+            _ => {
+                debug_assert!(!KNOWN_TOKEN_KEYS.contains(&k.as_str()));
+                t.extra.insert(
+                    k.clone(),
+                    token_value(v).with_context(|| format!("theme '{theme_id}': tokens.{k}"))?,
+                );
+            }
+        }
+    }
+
+    // A theme that omits `accent_to`/`accent2` gets `accent_from`: a flat
+    // fill / a shared second accent, the same fallback the old getters did.
+    if !accent_to_set {
+        t.accent_to = t.accent_from.clone();
+    }
+    if !accent2_set {
+        t.accent2 = t.accent_from.clone();
+    }
+
+    // A theme that omits `chip_height` gets the per-style demo number
+    // instead of `Tokens::default()`'s bare `32`; that default is
+    // breadbar's pre-theme-system stale global constant (see its own doc
+    // comment), never a sensible size for any actual style's chips, so
+    // leaving it in place here left `chip_height` a "restated truth, not a
+    // live input" for every theme that DID set it (every builtin happens to
+    // choose the same number `style::chip_height` already hardcodes, which
+    // is exactly how this went unnoticed) and a real bug for one that
+    // didn't, or set something else: a small custom-font chip label
+    // clipping against a min-height the token was supposed to control.
+    if !chip_height_set {
+        t.chip_height = super::style::chip_height(style);
+    }
+
+    Ok(t)
 }
 
 fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
@@ -320,7 +625,7 @@ fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
         }
     };
 
-    Ok(WindowSpec {
+    let spec = WindowSpec {
         anchors,
         width,
         height,
@@ -328,7 +633,22 @@ fn resolve_window(theme_id: &str, w: &RawWindow) -> anyhow::Result<WindowSpec> {
         exclusive,
         keyboard,
         layer,
-    })
+    };
+
+    // A vertical (side-docked) bar fills its length axis via layer-shell
+    // anchors alone (top + bottom both set): the same mechanism a
+    // horizontal bar already relies on for `width = "fill"` on its own
+    // axis. `width` on a vertical bar means the fixed thickness instead,
+    // so `"fill"` there has no meaning to give it.
+    if spec.orientation() == WindowOrientation::Vertical && spec.width == Width::Fill {
+        bail!(
+            "theme '{theme_id}': bar.window.anchors describes a vertical (left/right) \
+             dock, so bar.window.width must be a fixed pixel thickness, not \"fill\" \
+             (the top+bottom anchors already fill the vertical axis)"
+        );
+    }
+
+    Ok(spec)
 }
 
 fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Modules> {
@@ -343,6 +663,15 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
         ),
     };
     let show_empty = ws.and_then(|w| w.show_empty).unwrap_or(true);
+    let display = match ws.and_then(|w| w.display.as_deref()) {
+        None => WorkspaceDisplay::All,
+        Some("none") => WorkspaceDisplay::None,
+        Some("current") => WorkspaceDisplay::Current,
+        Some("all") => WorkspaceDisplay::All,
+        Some(other) => bail!(
+            "theme '{theme_id}': modules.workspaces.display = \"{other}\" is not none|current|all"
+        ),
+    };
     let dot_widths = match ws.and_then(|w| w.dot_widths.as_ref()) {
         None => DEFAULT_DOT_WIDTHS,
         Some(v) if v.len() == 4 => [v[0] as i32, v[1] as i32, v[2] as i32, v[3] as i32],
@@ -374,6 +703,7 @@ fn resolve_modules(theme_id: &str, m: Option<&RawModules>) -> anyhow::Result<Mod
             style,
             show_empty,
             dot_widths,
+            display,
         },
         clock: ClockModule {
             style: cstyle,
@@ -416,15 +746,21 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
         modes: l
             .and_then(|l| l.modes.clone())
             .unwrap_or_else(|| vec!["apps".to_string()]),
-        // Default to the idle value — a theme that never sets these gets
+        // Default to the idle value: a theme that never sets these gets
         // "no change while searching", not a hardcoded widen/shrink it
         // never asked for (see the field docs on `Launcher`).
-        search_width: l.and_then(|l| l.search_width).map(|v| v as i32).unwrap_or(width),
-        search_radius: l.and_then(|l| l.search_radius).map(|v| v as i32).unwrap_or(radius),
+        search_width: l
+            .and_then(|l| l.search_width)
+            .map(|v| v as i32)
+            .unwrap_or(width),
+        search_radius: l
+            .and_then(|l| l.search_radius)
+            .map(|v| v as i32)
+            .unwrap_or(radius),
         // Defaults below reproduce breadbox's pre-redesign hardcoded CSS
         // literals (`row { padding: 8px 12px; border-radius: 6px; }`,
-        // `listbox { padding: 4px; }`, no icon swatch, a solid — not
-        // alpha-blended — selection fill), so a theme that omits this whole
+        // `listbox { padding: 4px; }`, no icon swatch, a solid, not
+        // alpha-blended, selection fill), so a theme that omits this whole
         // block of new keys (spotlight does; its capsule doesn't read them
         // at all) renders the same as before this change, not a jump to
         // either built-in's specific numbers.
@@ -443,6 +779,253 @@ fn resolve_launcher(theme_id: &str, l: Option<&RawLauncher>) -> anyhow::Result<L
     })
 }
 
+fn resolve_widgets(theme_id: &str, raw: &[RawThemeWidget]) -> anyhow::Result<Vec<ThemeWidget>> {
+    let mut out = Vec::with_capacity(raw.len());
+    for w in raw {
+        let every_ms = parse_duration(&w.bind.every).ok_or_else(|| {
+            anyhow!(
+                "theme '{theme_id}': bar.widget '{}' bind.every = \"{}\" is not a duration \
+                 (use \"500ms\" / \"5s\" / \"2m\")",
+                w.id,
+                w.bind.every
+            )
+        })?;
+        if w.bind.cmd.trim().is_empty() {
+            bail!(
+                "theme '{theme_id}': bar.widget '{}' bind.cmd is empty",
+                w.id
+            );
+        }
+        let mut count = 0usize;
+        let node = resolve_node(theme_id, &w.id, &w.node, 1, &mut count)?;
+        out.push(ThemeWidget {
+            id: w.id.clone(),
+            slot: w.slot.clone(),
+            order: w.order.unwrap_or(0) as i32,
+            bind: Bind {
+                cmd: w.bind.cmd.clone(),
+                every_ms,
+            },
+            node,
+        });
+    }
+    Ok(out)
+}
+
+fn resolve_node(
+    theme_id: &str,
+    widget_id: &str,
+    raw: &RawNode,
+    depth: usize,
+    count: &mut usize,
+) -> anyhow::Result<ThemeNode> {
+    *count += 1;
+    if depth > super::types::WIDGET_MAX_DEPTH {
+        bail!(
+            "theme '{theme_id}': bar.widget '{widget_id}' node tree deeper than {}",
+            super::types::WIDGET_MAX_DEPTH
+        );
+    }
+    if *count > super::types::WIDGET_MAX_NODES {
+        bail!(
+            "theme '{theme_id}': bar.widget '{widget_id}' node tree has more than {} nodes",
+            super::types::WIDGET_MAX_NODES
+        );
+    }
+    let check = |v: &Option<String>, allowed: &[&str], field: &str| -> anyhow::Result<()> {
+        if let Some(s) = v {
+            if !allowed.contains(&s.as_str()) {
+                bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' node.{field} = \"{s}\" is not {}",
+                    allowed.join("|")
+                );
+            }
+        }
+        Ok(())
+    };
+    Ok(match raw {
+        RawNode::Box {
+            orientation,
+            spacing,
+            class,
+            children,
+        } => {
+            let orientation = match orientation.as_deref() {
+                None | Some("horizontal") => "horizontal".to_string(),
+                Some("vertical") => "vertical".to_string(),
+                Some(o) => bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' node.orientation = \"{o}\" \
+                     is not horizontal|vertical"
+                ),
+            };
+            let children = children
+                .iter()
+                .map(|c| resolve_node(theme_id, widget_id, c, depth + 1, count))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            ThemeNode::Box {
+                orientation,
+                spacing: *spacing,
+                class: class.clone(),
+                children,
+            }
+        }
+        RawNode::Label {
+            text,
+            class,
+            color,
+            weight,
+            size,
+        } => {
+            check(color, super::types::WIDGET_COLORS, "color")?;
+            check(weight, super::types::WIDGET_WEIGHTS, "weight")?;
+            check(size, super::types::WIDGET_SIZES, "size")?;
+            ThemeNode::Label {
+                text: text.clone(),
+                class: class.clone(),
+                color: color.clone(),
+                weight: weight.clone(),
+                size: size.clone(),
+            }
+        }
+        RawNode::Icon {
+            name,
+            path,
+            size,
+            class,
+        } => {
+            if name.is_none() && path.is_none() {
+                bail!(
+                    "theme '{theme_id}': bar.widget '{widget_id}' icon node has neither name nor path"
+                );
+            }
+            ThemeNode::Icon {
+                name: name.clone(),
+                path: path.clone(),
+                size: *size,
+                class: class.clone(),
+            }
+        }
+        RawNode::Progress { value, class } => ThemeNode::Progress {
+            value: *value,
+            class: class.clone(),
+        },
+    })
+}
+
+fn resolve_panel(theme_id: &str, p: Option<&RawPanel>) -> anyhow::Result<Panel> {
+    let mut out = Panel::default();
+    if let Some(mw) = p.and_then(|p| p.min_width) {
+        out.min_width = mw;
+    }
+    if let Some(sections) = p.and_then(|p| p.sections.clone()) {
+        for s in &sections {
+            if !super::types::PANEL_SECTIONS.contains(&s.as_str()) {
+                bail!(
+                    "theme '{theme_id}': panel.sections has unknown section \"{s}\" \
+                     (valid: {})",
+                    super::types::PANEL_SECTIONS.join("|")
+                );
+            }
+        }
+        out.sections = sections;
+    }
+    Ok(out)
+}
+
+fn resolve_osd(theme_id: &str, o: Option<&RawOsd>) -> anyhow::Result<Osd> {
+    let mut out = Osd::default();
+    if let Some(enabled) = o.and_then(|o| o.enabled.clone()) {
+        for k in &enabled {
+            if !super::types::OSD_KINDS.contains(&k.as_str()) {
+                bail!(
+                    "theme '{theme_id}': osd.enabled has unknown kind \"{k}\" \
+                     (valid: {})",
+                    super::types::OSD_KINDS.join("|")
+                );
+            }
+        }
+        out.enabled = enabled;
+    }
+    if let Some(ms) = o.and_then(|o| o.dismiss_ms) {
+        if ms < 1 {
+            bail!("theme '{theme_id}': osd.dismiss_ms must be >= 1");
+        }
+        out.dismiss_ms = ms;
+    }
+    if let Some(style) = o.and_then(|o| o.style.clone()) {
+        if !super::types::OSD_STYLES.contains(&style.as_str()) {
+            bail!(
+                "theme '{theme_id}': osd.style = \"{style}\" is not one of {}",
+                super::types::OSD_STYLES.join("|")
+            );
+        }
+        out.style = style;
+    }
+    Ok(out)
+}
+
+fn resolve_notifications(
+    theme_id: &str,
+    n: Option<&RawNotifications>,
+) -> anyhow::Result<Notifications> {
+    let mut out = Notifications::default();
+    if let Some(style) = n.and_then(|n| n.style.clone()) {
+        if !super::types::NOTIFICATION_STYLES.contains(&style.as_str()) {
+            bail!(
+                "theme '{theme_id}': notifications.style = \"{style}\" is not one of {}",
+                super::types::NOTIFICATION_STYLES.join("|")
+            );
+        }
+        out.style = style;
+    }
+    Ok(out)
+}
+
+fn resolve_autohide(theme_id: &str, a: Option<&RawAutoHide>) -> anyhow::Result<AutoHide> {
+    let mut out = AutoHide::default();
+    let Some(a) = a else { return Ok(out) };
+    if let Some(v) = a.enabled {
+        out.enabled = v;
+    }
+    if let Some(v) = a.hover_zone_width {
+        if v < 1 {
+            bail!("theme '{theme_id}': bar.autohide.hover_zone_width must be >= 1");
+        }
+        out.hover_zone_width = v;
+    }
+    if let Some(v) = a.hover_zone_height {
+        if v < 1 {
+            bail!("theme '{theme_id}': bar.autohide.hover_zone_height must be >= 1");
+        }
+        out.hover_zone_height = v;
+    }
+    if let Some(v) = a.retuck_delay_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.retuck_delay_ms must be >= 0");
+        }
+        out.retuck_delay_ms = v;
+    }
+    if let Some(v) = a.notification_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.notification_peek_ms must be >= 0");
+        }
+        out.notification_peek_ms = v;
+    }
+    if let Some(v) = a.level_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.level_peek_ms must be >= 0");
+        }
+        out.level_peek_ms = v;
+    }
+    if let Some(v) = a.workspace_peek_ms {
+        if v < 0 {
+            bail!("theme '{theme_id}': bar.autohide.workspace_peek_ms must be >= 0");
+        }
+        out.workspace_peek_ms = v;
+    }
+    Ok(out)
+}
+
 fn resolve_surfaces(
     theme_id: &str,
     raw: Option<&HashMap<String, RawSurface>>,
@@ -455,7 +1038,7 @@ fn resolve_surfaces(
             Some(other) => bail!(
                 "theme '{theme_id}': surfaces.{namespace}.anchor = \"{other}\" is not \
                  top_right|bottom_right|bottom_centre|fill (the only shapes breadbar's \
-                 satellite windows implement — see breadbar/src/surface.rs)"
+                 satellite windows implement, see breadbar/src/surface.rs)"
             ),
             None => bail!(
                 "theme '{theme_id}': surfaces.{namespace} has no anchor set \
@@ -533,12 +1116,11 @@ impl RawManifest {
         let id = self.id.clone().unwrap_or_else(|| requested_id.to_string());
         let name = self.name.clone().unwrap_or_else(|| id.clone());
 
-        let mut tokens_map = BTreeMap::new();
-        for (k, v) in &self.tokens {
-            let tv = token_value(v).with_context(|| format!("theme '{id}': tokens.{k}"))?;
-            tokens_map.insert(k.clone(), tv);
-        }
-        let tokens = Tokens::from_map(tokens_map);
+        // Resolved before `tokens`: `resolve_tokens` needs the workspace
+        // style to fall back to a sensible per-style `chip_height` when a
+        // theme doesn't set one (see its own comment).
+        let modules = resolve_modules(&id, self.modules.as_ref())?;
+        let tokens = resolve_tokens(&id, &self.tokens, modules.workspaces.style)?;
 
         let window = match self.bar.as_ref().and_then(|b| b.window.as_ref()) {
             Some(w) => resolve_window(&id, w)?,
@@ -556,11 +1138,50 @@ impl RawManifest {
                 drawer: s.drawer.clone(),
             })
             .unwrap_or_default();
-
-        let modules = resolve_modules(&id, self.modules.as_ref())?;
         let launcher = resolve_launcher(&id, self.launcher.as_ref())?;
+        let panel = resolve_panel(&id, self.panel.as_ref())?;
+        let osd = resolve_osd(&id, self.osd.as_ref())?;
+        let notifications = resolve_notifications(&id, self.notifications.as_ref())?;
+        let autohide = resolve_autohide(&id, self.bar.as_ref().and_then(|b| b.autohide.as_ref()))?;
+        let widgets = resolve_widgets(
+            &id,
+            self.bar
+                .as_ref()
+                .map(|b| b.widget.as_slice())
+                .unwrap_or(&[]),
+        )?;
         let surfaces = resolve_surfaces(&id, self.surfaces.as_ref())?;
         let compositor = resolve_compositor(self.compositor.as_ref());
+
+        // Render the theme's CSS now, once: strip the template's authoring
+        // comments (a `{light}` written in prose must not be substituted, and
+        // a `{name}` in prose must not trip the unresolved-ref check below),
+        // substitute `[tokens]` *and* the `shell::style` derivations, then
+        // append the optional `extra.css` overlay. A `{name}` that survives
+        // matched none of those: a typo, and a hard error rather than a
+        // literal `{radus_bar}` in the output.
+        let mut pairs = tokens.subst_pairs();
+        pairs.extend(super::style::subst_pairs(
+            &tokens, &modules, &launcher, &panel,
+        ));
+
+        let mut resolved_css = substitute_pairs(&strip_css_comments(&css_template), pairs.clone());
+        if let Some(extra) = &extra_css {
+            let extra = substitute_pairs(&strip_css_comments(extra), pairs.clone());
+            if !resolved_css.is_empty() && !resolved_css.ends_with('\n') {
+                resolved_css.push('\n');
+            }
+            resolved_css.push_str(&extra);
+        }
+        let missing = unresolved_refs(&resolved_css);
+        if !missing.is_empty() {
+            bail!(
+                "theme '{id}': CSS template references unknown name(s): {} \
+                 (not a [tokens] field, not a shell::style derivation, and not \
+                 defined in this theme's extra.css)",
+                missing.join(", ")
+            );
+        }
 
         Ok(super::ShellTheme {
             name,
@@ -570,20 +1191,34 @@ impl RawManifest {
             slots,
             modules,
             launcher,
+            panel,
+            osd,
+            notifications,
+            autohide,
+            widgets,
             surfaces,
             compositor,
-            css_template,
-            extra_css,
+            resolved_css,
         })
     }
 }
 
-/// Deep-merge `over` onto `base`: tables merge key-by-key recursively;
-/// anything else (scalars, arrays — including slot lists) is a full
-/// replacement. This is `extends`'s one-level merge (plan §4/§11):
-/// `mod.rs` calls this exactly once per `load_named`, with the base's own
-/// `extends` key already stripped by the caller so a chain can't go deeper
-/// than one level.
+/// Deep-merge `over` onto `base`: tables merge key-by-key recursively.
+///
+/// Arrays replace wholesale **unless** the `over` array contains the splice
+/// marker `"+"`, in which case each `"+"` is replaced by the base array's
+/// elements in place, so a child theme can add one entry to an inherited
+/// slot list without restating it:
+///
+/// ```toml
+/// extends = "liquid-motion"
+/// [bar.slots]
+/// right = ["+", "widget:my-thing"]   # inherited right slot, then my-thing
+/// ```
+///
+/// This is `extends`'s one-level merge (plan §4/§11): `mod.rs` calls it once
+/// per `load_named`, with the base's own `extends` key already stripped so a
+/// chain can't go deeper than one level.
 pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value {
     match (base, over) {
         (toml::Value::Table(mut base_t), toml::Value::Table(over_t)) => {
@@ -595,6 +1230,19 @@ pub(super) fn merge_values(base: toml::Value, over: toml::Value) -> toml::Value 
                 base_t.insert(k, merged);
             }
             toml::Value::Table(base_t)
+        }
+        (toml::Value::Array(base_a), toml::Value::Array(over_a))
+            if over_a.iter().any(|v| v.as_str() == Some("+")) =>
+        {
+            let mut out = Vec::with_capacity(over_a.len() + base_a.len());
+            for v in over_a {
+                if v.as_str() == Some("+") {
+                    out.extend(base_a.iter().cloned());
+                } else {
+                    out.push(v);
+                }
+            }
+            toml::Value::Array(out)
         }
         (_, over) => over,
     }

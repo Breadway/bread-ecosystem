@@ -7,7 +7,7 @@ pub fn home_dir() -> PathBuf {
 }
 
 /// `$XDG_CACHE_HOME/<app>` (or `~/.cache/<app>`). `app` is the caller's own
-/// name in this scheme — e.g. breadbox passes `"breadbox"` to keep using the
+/// name in this scheme, e.g. breadbox passes `"breadbox"` to keep using the
 /// on-disk layout it always has; a future host picks its own.
 pub fn cache_dir(app: &str) -> PathBuf {
     env::var("XDG_CACHE_HOME")

@@ -1,13 +1,24 @@
 /target/
 
-# minisign secret keys must never be committed — the bakery/index signing
+# minisign secret keys must never be committed: the bakery/index signing
 # key lives outside this repo entirely (see scripts/gen-index.sh /
 # scripts/get.sh for how it's consumed via MINISIGN_SEC_KEY).
 *.minisign-sec
 minisign.key
 
-# Local tool caches — not build output, never belongs in the repo.
+# Local tool caches: not build output, never belongs in the repo.
 # (breadbar already excludes graphify-out; this repo did not, and 111k lines
 # of it were swept in by a `git add -A`.)
 graphify-out/
 .grok/
+.freebuff/
+
+# scripts/dev-deps.sh's own output, if ever run against this repo directly
+# (its usual target is a consumer app, not bread-ecosystem itself).
+.cargo/
+.dev-deps/
+dev-deps.lock.txt
+
+# Python bytecode from ci/ helper tests.
+__pycache__/
+*.pyc

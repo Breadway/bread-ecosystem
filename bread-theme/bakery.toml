@@ -1,9 +1,16 @@
 name = "bread-theme"
-description = "Shared pywal-accented, fixed-dark-base theming CLI for the bread ecosystem — generates the shared GTK4 stylesheet every bread app loads"
+description = "Shared native-accent, fixed-dark-base theming CLI for the bread ecosystem: generates the shared GTK4 stylesheet every bread app loads"
 binaries = ["bread-theme"]
 system_deps = []
-optional_system_deps = ["python-pywal"]
+optional_system_deps = []
 bread_deps = []
+# This channel's release build enables the `extract` feature (see
+# .forgejo/workflows/{dev,rc,release}-bread-theme.yml), so the shipped
+# binary bundles ImageMagick- and libjpeg-turbo/IJG-derived code
+# (bread-palette-extract) alongside bread-theme's own MIT code.
+# bread-theme/LICENSE is the combined text (MIT plus, in full, the
+# third-party terms `bread-theme notice` also prints at any time).
+license_file = "LICENSE"
 
 [install]
 post_install = [

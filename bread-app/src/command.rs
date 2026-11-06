@@ -1,7 +1,7 @@
 //! Command-bus helpers for `bread.command.<app>.**`.
 //!
 //! The `command_id` here is the breadd sibling-app id (`clip`, `box`,
-//! `shot`) — often shorter than the GTK / singleton name (`breadclip`).
+//! `shot`), often shorter than the GTK / singleton name (`breadclip`).
 
 use crate::id::{parse_app_name, InvalidAppId};
 use bread_utils::bread_client::{BreadClient, BreadEvent, Subscription};
@@ -22,7 +22,7 @@ pub fn command_pattern(command_id: &str) -> Result<String, InvalidAppId> {
 /// `command_id` or the verb is missing.
 ///
 /// Extra dotted remainder (`bread.command.clip.stack.clear`) yields the
-/// first remaining segment (`stack`) — a verb is one segment, matching
+/// first remaining segment (`stack`): a verb is one segment, matching
 /// [`BreadClient::command`].
 pub fn command_verb<'a>(event: &'a str, command_id: &str) -> Option<&'a str> {
     if command_id.is_empty() {

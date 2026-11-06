@@ -23,7 +23,7 @@
 
 use std::path::PathBuf;
 
-/// A real, absolute home directory — `dirs::home_dir()`, falling back to
+/// A real, absolute home directory: `dirs::home_dir()`, falling back to
 /// `/root` only if that itself fails (no `HOME` env var *and* no passwd-db
 /// entry, e.g. some minimal container contexts). Never a literal `"~"`.
 pub fn home_dir() -> PathBuf {
@@ -41,7 +41,7 @@ pub fn config_dir(app: &str) -> PathBuf {
 }
 
 /// The bare `$XDG_CONFIG_HOME` (or `~/.config`) directory, with no app name
-/// joined on — for callers that build up multiple sub-paths themselves
+/// joined on, for callers that build up multiple sub-paths themselves
 /// (e.g. `bos-settings`, which joins a different bread* app's name per
 /// config file it edits).
 pub fn config_home() -> PathBuf {
@@ -62,7 +62,7 @@ pub fn cache_dir(app: &str) -> PathBuf {
         .join(app)
 }
 
-/// `$XDG_RUNTIME_DIR`, falling back to `/tmp` — matches the fallback every
+/// `$XDG_RUNTIME_DIR`, falling back to `/tmp`: matches the fallback every
 /// consumer (breadbox, breadclip, breadmon) already used for PID/socket
 /// scratch files, which don't need to survive a reboot.
 pub fn runtime_dir() -> PathBuf {
@@ -115,7 +115,9 @@ mod tests {
 
     #[test]
     fn runtime_dir_falls_back_to_tmp() {
-        let _lock = crate::env_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = crate::env_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // We don't unset XDG_RUNTIME_DIR here (test isolation), just confirm
         // the function returns *something* absolute either way.
         assert!(runtime_dir().is_absolute());

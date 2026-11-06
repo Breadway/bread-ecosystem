@@ -6,7 +6,7 @@
 //! it: `bread-emit` skips holding a connection open at all, which is right
 //! for occasional/hook-style callers (a git hook, a shell prompt) but wrong
 //! for a long-running daemon like breadclipd that wants to publish an
-//! event on every clipboard change and subscribe to a command stream —
+//! event on every clipboard change and subscribe to a command stream;
 //! reconnecting from scratch for every single emit would be wasteful, and
 //! subscribing needs a held-open connection by nature.
 //!
@@ -16,13 +16,13 @@
 //! restarting, or was never installed. Concretely:
 //! - [`BreadClient::emit`] and [`BreadClient::command`] are best-effort,
 //!   fire-and-forget single-shot connections (mirroring `bread-emit`'s
-//!   own stance) — if breadd is unreachable, the event is silently
+//!   own stance): if breadd is unreachable, the event is silently
 //!   dropped, not an error the caller has to handle.
 //! - [`BreadClient::health`] / [`BreadClient::api_version`] return `None`
 //!   when breadd is unreachable or the response is missing fields.
 //!   Long-running daemons SHOULD log a warning in that case and MUST NOT
 //!   crash. [`BreadClient::connect`] never fails just because breadd is
-//!   down — do not change that.
+//!   down; do not change that.
 //! - [`BreadClient::subscribe`] runs its read loop on a background thread
 //!   that reconnects with exponential backoff on any disconnect. The
 //!   caller's callback simply stops being invoked while disconnected; it
@@ -37,7 +37,7 @@
 //!
 //! `command` is the outbound half of the same story: it publishes
 //! `bread.command.<target_app>.<verb>` as an **unsourced** IPC emit
-//! (`params` is `{ event, data }` only — no `source`/`kind`). The
+//! (`params` is `{ event, data }` only, no `source`/`kind`). The
 //! daemon treats unsourced `bread.command.<known_app>.*` as legal so a
 //! sibling can address another app without impersonating that app's
 //! own namespace. Local refusal (eprint + return, same stance as
@@ -78,12 +78,28 @@ pub struct BreadClient {
 }
 
 impl BreadClient {
-    /// Bind a client to `app_id` (e.g. `"clip"`). Does not connect yet —
+    /// Bind a client to `app_id` (e.g. `"clip"`). Does not connect yet;
     /// there is no persistent connection to "fail" at construction time;
     /// `emit` and `subscribe` each connect (or reconnect) as needed. This
     /// is itself part of the graceful-degradation story: constructing a
     /// `BreadClient` can never fail just because breadd isn't running yet.
+    ///
+    /// Also starts breadbug reporting for the process by default (panic hook,
+    /// native crash handlers, log forwarding, heartbeat) unless the app opts
+    /// out with [`BreadClient::connect_without_bug_reporting`] or the user sets
+    /// `BREAD_BUG_REPORTING=0`. See [`crate::bug`].
     pub fn connect(app_id: impl Into<String>) -> Self {
+        let client = Self {
+            app_id: app_id.into(),
+        };
+        crate::bug::start_automatic(client.app_id());
+        client
+    }
+
+    /// Like [`BreadClient::connect`], but starts no breadbug reporting. For
+    /// apps that handle sensitive data (a clipboard manager, a search index).
+    /// They can still opt in later with [`BreadClient::enable_bug_reporting`].
+    pub fn connect_without_bug_reporting(app_id: impl Into<String>) -> Self {
         Self {
             app_id: app_id.into(),
         }
@@ -98,7 +114,7 @@ impl BreadClient {
     /// Fire-and-forget: a single short-lived connection is opened, the
     /// request is written, and the reply is never read (mirroring
     /// `bread-emit`). If breadd is unreachable or slow, this silently does
-    /// nothing — it never blocks or errors the caller.
+    /// nothing; it never blocks or errors the caller.
     pub fn emit(&self, event: &str, data: Value) {
         if !validate_app_namespace(&self.app_id, event) {
             eprintln!(
@@ -121,7 +137,7 @@ impl BreadClient {
     ///
     /// Fire-and-forget: same silent-if-down stance as [`emit`]. Locally
     /// refuses (eprint + return, no socket) if `target_app` or `verb` is
-    /// empty, or if `verb` contains `.` — a verb is one segment
+    /// empty, or if `verb` contains `.`: a verb is one segment
     /// (`clear`, not `history.clear`).
     ///
     /// The wire payload is `{ method: "emit", params: { event, data } }`
@@ -165,14 +181,14 @@ impl BreadClient {
     }
 
     /// Send a one-shot IPC request and return its `result`, or `None` on any
-    /// failure — breadd unreachable, a malformed response, or an `error`
+    /// failure: breadd unreachable, a malformed response, or an `error`
     /// field in the response. Mirrors `emit`'s graceful-degradation stance:
     /// a caller checks for `None` the same way it'd handle "daemon not
     /// installed," not via a `Result` that forces error-path plumbing for
     /// what is, for most callers (a refresh-on-connect read), an expected
     /// possibility rather than an exceptional one.
     ///
-    /// Unlike `emit`, this is not restricted to the client's own namespace —
+    /// Unlike `emit`, this is not restricted to the client's own namespace;
     /// `method`/`params` map directly onto breadd's IPC method table (see
     /// `Documentation.md`'s "Dictionary: IPC protocol"), most of which
     /// (`state.get`, `widgets.list`, ...) are cross-namespace reads by
@@ -216,7 +232,7 @@ impl BreadClient {
     /// Returns a [`Subscription`] handle; drop or call [`Subscription::stop`]
     /// to end it. The background thread reconnects with exponential backoff
     /// (500ms, capped at ~32s) whenever the connection drops, so a restart
-    /// of breadd is transparent to the caller — `on_event` simply pauses
+    /// of breadd is transparent to the caller: `on_event` simply pauses
     /// and resumes.
     pub fn subscribe<F>(&self, pattern: impl Into<String>, on_event: F) -> Subscription
     where
@@ -377,7 +393,7 @@ mod tests {
 
     #[test]
     fn connect_never_fails_even_with_no_daemon_present() {
-        // Constructing a client must not depend on breadd actually running —
+        // Constructing a client must not depend on breadd actually running;
         // that's the whole point of the graceful-degradation design.
         let _client = BreadClient::connect("clip");
     }
@@ -393,12 +409,12 @@ mod tests {
 
     #[test]
     fn emit_refuses_event_outside_own_namespace_without_connecting() {
-        // "pad" events are not this client's to publish — this must be
+        // "pad" events are not this client's to publish; this must be
         // caught locally (and cheaply) rather than round-tripped to a
         // daemon that isn't even running in this test.
         let client = BreadClient::connect("clip");
         client.emit("bread.pad.reminder.due", json!({}));
-        // No assertion beyond "did not panic" — there is no daemon to
+        // No assertion beyond "did not panic": there is no daemon to
         // observe the (correctly suppressed) call against in a unit test;
         // the cross-process behavior is covered by breadd's own
         // integration tests for the IPC-side of namespace validation.
@@ -460,7 +476,7 @@ mod tests {
 
     #[test]
     fn command_refuses_dotted_verb_without_connecting() {
-        // A verb is a single segment — `history.clear` would produce
+        // A verb is a single segment: `history.clear` would produce
         // `bread.command.clip.history.clear`, which is two verb segments.
         let client = BreadClient::connect("clip");
         client.command("clip", "history.clear", json!({}));

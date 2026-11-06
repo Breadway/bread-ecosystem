@@ -4,8 +4,8 @@
 //! [`ort::ep::MIGraphX`](ort::ep::MIGraphX), *not*
 //! [`ort::ep::ROCm`](ort::ep::ROCm), on purpose. `breadpad-shared/src/
 //! classifier.rs::try_load_session` used the classic `ROCMExecutionProvider`
-//! and — per the hard-won lesson recorded in this machine's own operator
-//! notes (`breadsearch-gpu-backends`, from `breadsearch`'s own history) —
+//! and, per the hard-won lesson recorded in this machine's own operator
+//! notes (`breadsearch-gpu-backends`, from `breadsearch`'s own history),
 //! that EP silently no-ops on this class of system and falls back to CPU
 //! with zero visible error: distro ROCm ONNX Runtime builds (e.g. Arch's
 //! `onnxruntime-rocm`) are commonly compiled with `--use_migraphx`, not
@@ -24,14 +24,21 @@ use std::path::PathBuf;
 pub enum Provider {
     Cpu,
     /// AMD iGPU/dGPU via MIGraphX (ROCm-backed onnxruntime builds). See this
-    /// module's doc comment for why this — not `ROCm` — is the correct
+    /// module's doc comment for why this, not `ROCm`, is the correct
     /// choice on this class of system.
-    MiGraphX { device_id: i32 },
+    MiGraphX {
+        device_id: i32,
+    },
     /// NVIDIA GPU via CUDA.
-    Cuda { device_id: i32 },
+    Cuda {
+        device_id: i32,
+    },
     /// Intel iGPU/dGPU (Arc) via OpenVINO. `cache_dir` stores OpenVINO's
     /// compiled-model blobs between runs.
-    OpenVino { device_type: String, cache_dir: PathBuf },
+    OpenVino {
+        device_type: String,
+        cache_dir: PathBuf,
+    },
     /// AMD XDNA NPU via the VitisAI execution provider (Ryzen AI SDK).
     /// `cache_dir` stores the compiled NPU model between runs.
     Vitis {
@@ -54,7 +61,7 @@ impl Provider {
 
     /// The literal execution-provider name ONNX Runtime's own log line
     /// reports on successful registration (e.g. `"Successfully registered
-    /// \`MIGraphXExecutionProvider\`"`) — used to build the loud log hint in
+    /// \`MIGraphXExecutionProvider\`"`); used to build the loud log hint in
     /// [`crate::session::build_session`].
     fn ort_registration_name(&self) -> &'static str {
         match self {
@@ -71,19 +78,28 @@ impl Provider {
             Provider::Cpu => ort::ep::CPU::default().build(),
             Provider::MiGraphX { device_id } => {
                 ensure_migraphx_cache_path_default()?;
-                ort::ep::MIGraphX::default().with_device_id(*device_id).build()
+                ort::ep::MIGraphX::default()
+                    .with_device_id(*device_id)
+                    .build()
             }
             Provider::Cuda { device_id } => {
                 ort::ep::CUDA::default().with_device_id(*device_id).build()
             }
-            Provider::OpenVino { device_type, cache_dir } => {
+            Provider::OpenVino {
+                device_type,
+                cache_dir,
+            } => {
                 std::fs::create_dir_all(cache_dir)?;
                 ort::ep::OpenVINO::default()
                     .with_device_type(device_type.clone())
                     .with_cache_dir(cache_dir.to_string_lossy())
                     .build()
             }
-            Provider::Vitis { config_file, cache_dir, cache_key } => {
+            Provider::Vitis {
+                config_file,
+                cache_dir,
+                cache_key,
+            } => {
                 std::fs::create_dir_all(cache_dir)?;
                 ort::ep::Vitis::default()
                     .with_config_file(config_file.to_string_lossy())
@@ -95,7 +111,7 @@ impl Provider {
     }
 
     /// Log a loud, consistent "using X" line plus (for non-CPU providers) a
-    /// reminder of exactly what to grep ONNX Runtime's own log output for —
+    /// reminder of exactly what to grep ONNX Runtime's own log output for:
     /// this is the "at minimum log EP registration success/failure loudly
     /// by default" half of the fix, independent of whether the caller has
     /// wired up `tracing_subscriber` (all three current consumers already
@@ -105,7 +121,7 @@ impl Provider {
         if !matches!(self, Provider::Cpu) {
             tracing::info!(
                 "bread-onnx: check ONNX Runtime's own log output for \"Successfully registered \
-                 `{}`\" — if it's missing, the ONNX Runtime build in use wasn't compiled/shipped \
+                 `{}`\": if it's missing, the ONNX Runtime build in use wasn't compiled/shipped \
                  with this provider and inference silently fell back to CPU. This line only \
                  appears if a `tracing` subscriber is initialized.",
                 self.ort_registration_name()
@@ -115,22 +131,22 @@ impl Provider {
 }
 
 /// MIGraphX has no Rust-level "cache directory" builder (unlike OpenVINO/
-/// Vitis above) — it's controlled purely by the `ORT_MIGRAPHX_MODEL_CACHE_PATH`
+/// Vitis above); it's controlled purely by the `ORT_MIGRAPHX_MODEL_CACHE_PATH`
 /// environment variable, read by the underlying MIGraphX library at EP-
 /// registration time. Left unset, MIGraphX still *works*, but recompiles
-/// every kernel from scratch on every single session build — no persistence
+/// every kernel from scratch on every single session build, no persistence
 /// between runs, or even between two sessions in the same process. Found via
 /// this pass's own migration: `breadmill`'s packaged systemd unit already
 /// sets this explicitly (`packaging/breadmill.service`), but nothing
 /// enforced any other consumer doing the same, and `breadpad` (which had no
-/// systemd unit or cache path at all) hit exactly this — every
+/// systemd unit or cache path at all) hit exactly this: every
 /// `Classifier::load` call during its own test suite recompiled from a cold
 /// cache, visible as repeated `migraphx_save: Error: ... write_buffer:
 /// Failure opening file: ""/<hash>.mxr` log lines (an empty path prefix,
 /// i.e. the env var was never set) and multi-minute test runs.
 ///
 /// This sets a sensible shared default (`~/.cache/bread-onnx/migraphx`) if
-/// the caller hasn't already set one — so every consumer gets kernel-cache
+/// the caller hasn't already set one, so every consumer gets kernel-cache
 /// persistence for free instead of only the ones that remembered to
 /// configure it themselves.
 fn ensure_migraphx_cache_path_default() -> anyhow::Result<()> {
@@ -145,7 +161,7 @@ fn ensure_migraphx_cache_path_default() -> anyhow::Result<()> {
         dir.display()
     );
     // SAFETY: this runs before any session build spawns worker threads that
-    // might read the environment concurrently — same caveat as any
+    // might read the environment concurrently, same caveat as any
     // `set_var` call, documented here rather than papered over.
     unsafe { std::env::set_var("ORT_MIGRAPHX_MODEL_CACHE_PATH", &dir) };
     Ok(())

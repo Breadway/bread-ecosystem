@@ -1,133 +1,162 @@
-# The third compiled-in builtin (bread-theme/src/shell/builtin.rs), demo 04
-# in THEME_SYSTEM_PLAN.md — "Spotlight": breadbar's bar IS the launcher, a
-# centred capsule that expands into results (plan §7). Values are taken from
-# bos-ui-demos/04-spotlight.html's <style> block; where the demo is silent
-# (satellite offsets, bar-adjacent chip sizing) this file re-derives from the
-# capsule's own top edge the same way glass-workbench re-derives from its
-# flush bar's edge — see that file's header comment for the method.
+# The third compiled-in builtin (bread-theme/src/shell/builtin.rs).
 #
-# Two exceptions, same shape as glass-workbench's: font (Outfit is not
-# installed on the dev machine, so this renders in fallback until the user
-# installs ttf-outfit — same gap liquid-motion already has) and colour (the
-# demo's #e87898 pink is a *flat* accent — `--accent` doubling as both the
-# capsule's dot fill and its only gradient stop — so it maps to the
-# palette's `pink` token for both accent_from and accent_to, never a literal
-# hex value).
+# BAR-27 phase 1: a redesign of Spotlight, replacing the old capsule-launcher
+# demo (04-spotlight.html: the bar WAS the launcher) with the floating pill
+# from bos-ui-demos/proposed/spotlight-stage.html. Phase 1 is the pill only:
+# workspaces, a divider, widget slots either side of the clock, a low-battery
+# flag, an unread-notification dot, and auto-hide. The stage (the search/
+# launcher overlay that used to live in `centre`/`drawer`) is deliberately
+# NOT wired back up here; `launcher_entry`/`launcher_results` are no longer
+# named in `[bar.slots]`, so breadbar still builds them (every builtin
+# module is unconditional, see `bar::slots::ModuleRegistry`) but they sit
+# unparented, same as `cpu`/`ram` under liquid-motion. A later phase repoints
+# `centre`/`drawer` at whatever the stage turns out to need. `[launcher]`
+# below is left as-is (dormant) for that phase to pick back up rather than
+# deleted, since the schema still requires SOME `[launcher]` shape and this
+# one is the closest match to the stage's eventual search UI.
 #
-# Phase 6c (this pass): query modes (`=` calc, `>` command, `.` url) and
-# result sections ("recent"/"apps") are now implemented — `modes` lists all
-# four and `sections` is `true`. The demo's `.searching .capsule` state
-# (480px -> 520px width, 22px -> 20px radius) is modeled via two new
-# `[launcher]` keys, `search_width`/`search_radius`, read only by
-# `LauncherMode::Embedded` hosts (breadbar's capsule; unread by breadbox's
-# overlay window, which stays `mode = "overlay"`).
+# Colour: the mockup's palette is mapped to palette ROLES, never raw hex
+# (bread-theme has a test rejecting raw hex in a theme's rendered CSS):
+# --light (warm-white fills and text) -> `fg`, --brass (caret, mode badge,
+# app names, unread dot) -> `accent`, --red (critical, armed, low battery)
+# -> `red`, --ash/--line -> alpha(fg, .52)/alpha(fg, .12), --stage -> `bg`,
+# --velvet/--velvet-2 -> mix(bg, fg, .07)/(.11). See base.css's spotlight
+# block for the full table.
+#
+# Font: the mockup's `--display` (Big Shoulders Display, for the time and
+# workspace numbers) is this theme's `tokens.font_family`, with Hanken
+# Grotesk (the mockup's own `--ui` font) as `font_fallback` for shell body
+# text. Shared app body and control typography stays on the app design tokens.
+# BAR-30 phases 2-4: Big Shoulders Display, Hanken Grotesk and Martian Mono
+# (the mockup's `--mono`, for small-caps labels: the stage's mode badge,
+# group headers, notification app names, the surtitle's app name, the power
+# row's labels) are all installed and resolve for real now; the stage/
+# surtitle CSS in base.css names Martian Mono directly on those rules
+# instead of falling back to the UI font.
 
 name = "Spotlight"
 id   = "spotlight"
 
 [tokens]
-# Declared-but-not-yet-consumed: see liquid-motion/theme.toml's identical
-# note next to these three keys — neither breadbar nor breadbox reads them.
-font_family    = "Outfit"
-font_fallback  = "Varela Round, sans-serif"
+font_family    = "Big Shoulders Display"
+font_fallback  = "Hanken Grotesk, sans-serif"
 font_size_base = 13
-radius_bar     = 22
+radius_bar     = 999
 radius_card    = 12
 radius_sm      = 8
 radius_pill    = 999
 pad            = 14
-# Demo: `background: color-mix(in oklab, var(--glass) 82%, transparent)`.
-bg_alpha       = 0.82
-# The demo's one curve (`--spring: cubic-bezier(.22,1.35,.36,1)`) — the same
-# overshoot liquid-motion calls `spring`. No separate flatter "settle" curve
-# is defined in 04's stylesheet, so both accessors point at it, same
-# reasoning as glass-workbench's single-curve tokens.
-spring         = "cubic-bezier(0.22, 1.35, 0.36, 1)"
-spring_settle  = "cubic-bezier(0.22, 1.35, 0.36, 1)"
-# Palette token NAMES, not hex — #e87898 is this palette's `pink`. Equal
-# from/to because the demo's accent here is flat, not liquid-motion's
-# accent→teal gradient. accent_from IS read (the dots' active fill,
-# theme.rs); accent_to is declared-but-not-yet-consumed, same as every
-# other theme's — see Tokens::accent_to's doc comment.
-accent_from    = "pink"
-accent_to      = "pink"
-# Demo: `.barrow { height: 36px }` with no separate workspace-chip height —
-# the dots (`.dots button`) are sized entirely by `dot_widths` below, not by
-# chip_height, but this token still feeds any other chip-shaped element
-# (e.g. a future result-row affordance) at the bar's own row height.
-chip_height    = 22
-# Demo: `.ico { width: 30px; height: 30px }` for a result row's icon
-# swatch — the icon glyph itself sits inside that box with implicit
-# padding, so the icon_px passed to bread-launcher's `ResultsList` is sized
-# a little under the swatch box, same margin glass-workbench leaves between
-# its 18px icon_px and larger chip_height.
-icon_px        = 22
-# Floating centred capsule, full rounded border on every edge — same
-# reasoning as liquid-motion's island, not glass-workbench's flush bar.
+# Demo: `.wick{background:rgba(15,13,12,.8)}`.
+bg_alpha       = 0.8
+spring         = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
+# The mockup's `--light` active/on-accent fill is a flat warm-white, not a
+# pywal hue (phase-1 review must-fix): both ends point at `fg`, the
+# ecosystem's fixed near-white foreground token, never `accent` (which
+# tracks the wallpaper and drifted from the mockup's own colour). This is
+# what `.workspace-btn.active` (the lit workspace chip), `.pill-ws-current-
+# value` (the "WS current" mode's big number), the stage's sliders/caret-
+# free selected-row fill, and every "on" chip in the stage floor resolve
+# against.
+accent_from    = "fg"
+accent_to      = "fg"
+chip_height    = 20
+icon_px        = 16
+# Fully rounded: `.wick{border-radius:999px}` (a 30px-tall pill), same
+# "full" shape as liquid-motion's island, just pushed to a full pill by
+# `radius_bar = 999` above rather than a modest corner radius.
 bar_border     = "full"
+# `chip_gap` spaces the bar's stat chips; the pill has none. Its own 10px
+# item gap (`.wick{gap:10px}`) is breadbar's pill row spacing.
+chip_gap       = 10
 
 [bar.window]
-# Anchored top ONLY: gtk4-layer-shell centres a surface anchored to
-# neither left nor right (THEME_SYSTEM_PLAN.md §7) — this is what makes the
-# capsule float centred instead of spanning the screen width.
+# Anchored top ONLY, `width = "fill"`: gtk4-layer-shell centres a surface
+# anchored to neither left nor right, and "fill" on a horizontal bar with no
+# left/right anchor to stretch between just means "hug the content's natural
+# width" (see breadbar's `Width::Fill` handling) rather than the edge-to-edge
+# stretch it means on liquid-motion. That's what makes the pill's own width
+# track its content (workspace count, whether widgets are on) instead of a
+# fixed number.
 anchors   = ["top"]
-width     = 480
-height    = 36
-margin    = { top = 16 }
-# No exclusive zone: tiled clients run full-height behind the capsule,
-# unlike Island/Edge's reserved strip — the capsule floats over content.
+width     = "fill"
+height    = 30
+margin    = { top = 10 }
+# No exclusive zone: windows use the full screen behind the pill.
 exclusive = "none"
-# Hands keyboard focus over only while `launcher_entry` holds it (plan §7)
-# — Island/Edge themes keep "none", unchanged.
-keyboard  = "on_demand"
+keyboard  = "none"
 layer     = "top"
 
 [bar.slots]
-left   = ["workspaces"]
-centre = ["launcher_entry"]
-# `widget:left_of_stats` (Phase 6c decision, see task notes): a Lua widget
-# that requests this same placement (`bread-shared`'s `WidgetPlacement::
-# LeftOfStats`, e.g. a real user's `git-branch-widget.lua`) would otherwise
-# be silently undeliverable under spotlight — no `[bar.slots]` entry named
-# any `widget:*` key at all, so `reconcile_widgets` drops it every time
-# (quietly, since the Phase 6b fix, but still dropped). Deliberately just
-# this one alias, not all five liquid-motion carries: spotlight has no
-# clock module to anchor `left_of_clock`/`right_of_clock` against and no
-# workspace-adjacent affordance next to its compact dots, so adding those
-# would clutter a launcher-focused capsule with slots nothing here asks
-# for. `left_of_stats` sits right where `battery` already does, matching
-# liquid-motion's own ordering (`widget:left_of_stats` before its module).
-right  = ["widget:left_of_stats", "battery"]
-drawer = ["launcher_results"]
+# Everything in ONE slot, not spread across left/centre/right: the pill is
+# a single tight flex row (`display:flex;gap:10px` in the mockup), not three
+# independently-justified groups. It has to be the CENTRE slot: the bar row
+# is a GtkCenterBox, whose natural width is `centre + 2 * max(left, right)`
+# so the centre child stays centred. With everything in `left` the pill
+# measured twice its content's width and rendered the content in its left
+# half with dead space on the right. With `left`/`right` empty the pill
+# hugs its content exactly. `widget:left_of_clock`/`widget:right_of_clock`
+# are the same `WidgetPlacement` aliases liquid-motion already uses for its
+# own clock-flanking Lua widgets.
+left   = []
+# `widget:right_of_workspaces` and `widget:left_of_stats` are the bar
+# placements other themes give Lua widgets beside the workspace strip and the
+# system stats. The pill has no stats of its own, so both sit in its row, in
+# the order the other themes' bars would put them. Widgets registered at the
+# `tray` placement (the control panel's cards elsewhere) are the stage's cards.
+# BAR-38: `nowplaying` (the track title while a player is playing) follows
+# the time, `pill_battery` (charge gauge and percentage, a setting) sits where
+# the other themes' bars keep their stats, and `dnd` (a moon while
+# do-not-disturb is on) sits before the unread count.
+centre = ["workspaces", "sep", "widget:right_of_workspaces", "widget:left_of_clock", "clock", "nowplaying", "widget:right_of_clock", "widget:left_of_stats", "pill_battery", "dnd", "level", "flag", "unread"]
+right  = []
+drawer = []
+
+[bar.autohide]
+enabled              = true
+hover_zone_width     = 420
+hover_zone_height    = 14
+retuck_delay_ms      = 600
+notification_peek_ms = 3800
+level_peek_ms        = 1400
+workspace_peek_ms    = 1200
+
+# BAR-30 phase 4: surtitles and in-pill levels replace the standalone toast/
+# OSD windows every other builtin still uses. Both default to the old
+# behaviour ("toast"/"window") for every theme that omits these tables, so
+# this is additive-only.
+[notifications]
+style = "surtitle"
+
+[osd]
+style = "pill"
 
 [modules.workspaces]
-style      = "dots"
-show_empty = true
-# 0/1/2/3-or-more open windows → dot width in px
-# (`04-spotlight.html`'s `.dots button[data-n="N"]` rules).
-dot_widths = [8, 13, 17, 22]
+# Pill style (numbered chips, active one solid-filled), not Trail's dragged
+# highlight or Dots' width-encoded row: the mockup's `.wsb` buttons are
+# plain numbered chips.
+style      = "pill"
+# `display = "all"` (occupied workspaces plus the active one) already gets
+# `show_empty = false`'s existing Pill-style filtering; `display` layers a
+# `none`/`current` OVERRIDE on top for the two new modes, see
+# `WorkspaceDisplay`'s own doc comment. This is the mockup's own default
+# (`data-ws="all"` starts `aria-pressed="true"`).
+show_empty = false
+display    = "all"
 
 [modules.clock]
-# No clock label at all — `launcher_entry`'s placeholder IS the clock
-# (`04-spotlight.html`: `q.placeholder = t` in `clock()`, replaced by the
-# search prompt only once focused/open).
-style             = "none"
-# Declared-but-not-yet-consumed under style = "none": no clock module is
-# built at all, so there's no format/date to apply this to — see
-# ClockModule::format's doc comment. Kept for the same "state actual design
-# intent" reason as liquid-motion's Flip-style note.
-format            = "%H:%M"
-show_date         = false
-placeholder_clock = true
+# Plain, not Flip: the mockup's `.time` is one static button, no per-digit
+# flip animation.
+style     = "plain"
+format    = "%H:%M"
+show_date = false
 
 [launcher]
+# Dormant (see this file's header comment): kept at the previous pass's
+# values so schema validation still has a `[launcher]` table to resolve,
+# but nothing in `[bar.slots]` names `launcher_entry`/`launcher_results`
+# under phase 1, so none of this actually renders yet.
 mode     = "embedded"
-# Unread by an embedded launcher (breadbar's launcher_entry/launcher_results
-# read [bar.window].width and this table's radius/icon_px instead of
-# width/top — those two fields exist only for LauncherMode::Overlay, which
-# breadbox's own window still uses). Kept at the bar's own width/22px radius
-# for consistency with a reader who expects [launcher] to describe the
-# launcher's shape regardless of mode.
 width    = 480
 top      = "16px"
 radius   = 22
@@ -135,34 +164,21 @@ icon_px  = 22
 row_anim = "none"
 rule     = "none"
 footer   = "count_apps"
-# Phase 6c: "recent" / "apps" headers in the idle (empty-query) drawer view
-# — `bread_launcher::split_sections` groups the same already-loaded/sorted
-# entries `LaunchHistory`'s counts already rank, no new tracking needed.
 sections = true
-# `04-spotlight.html`'s three prefixes: `=` calc, `>` command, `.` url —
-# `bread_launcher::parse_query`/`eval_calc`/`filter_commands` implement the
-# pure logic; breadbar's capsule wiring (main.rs) gates on this list so an
-# unlisted prefix character just falls through to a literal "apps" query.
 modes    = ["apps", "calc", "cmd", "url"]
-# `04-spotlight.html`: `.searching .capsule { width: 520px; border-radius:
-# 20px }` vs the idle 480px/22px above — animated via
-# `bread_theme::anim::spring_to` (width) and a `.searching` CSS class
-# (radius) in breadbar's capsule wiring.
 search_width  = 520
 search_radius = 20
 
-# Same five satellite namespaces as liquid-motion/glass-workbench, keyed
-# identically. This bar's edge sits at margin.top(16) + height(36) = 52px —
-# re-deriving glass-workbench's own edge+8/edge relationship (44 = 36+8,
-# 36 = 36) against 52 gives 60 (52+8) and 52.
+# Same four satellite namespaces as before; offsets re-derived from the new
+# pill edge (margin.top(10) + height(30) = 40px) the same way glass-
+# workbench/liquid-motion derive theirs from their own bar's edge.
 [surfaces."breadbar-notif"]
 anchor = "top_right"
-offset = [16, 60]
+offset = [16, 48]
 width  = 320
 layer  = "overlay"
 
 [surfaces."breadbar-osd"]
-# Independent of bar height — unchanged from liquid-motion/glass-workbench.
 anchor = "bottom_centre"
 offset = 80
 width  = 180
@@ -170,21 +186,19 @@ layer  = "overlay"
 
 [surfaces."breadbar-panel"]
 anchor = "top_right"
-offset = [16, 60]
+offset = [16, 48]
 width  = "auto"
 layer  = "overlay"
 
 [surfaces."breadbar-dismiss"]
 anchor = "fill"
-offset = 52
+offset = 40
 width  = "fill"
 layer  = "overlay"
 
-# Appearance-only, identical in shape to liquid-motion/glass-workbench's
-# rules — blur strength is still global (plan §9 known limit).
 [compositor."breadbar"]
 blur         = true
-ignore_alpha = 0.18
+ignore_alpha = 0.2
 blur_popups  = true
 animation    = "slide top"
 
@@ -209,5 +223,25 @@ no_anim = true
 [compositor."breadbox"]
 blur         = true
 ignore_alpha = 0.2
+no_anim      = true
 
-# No `css = "..."` overlay — compiled-in builtin, same as its two siblings.
+# The stage, surtitle and pill hot zone are spotlight's own surfaces. Without
+# a rule Hyprland gives each its default layer "popin": on the full-screen,
+# translucent stage that reads as a dark box growing out of nothing. They
+# animate in GTK (or not at all), so the compositor must not. BAR-38: the
+# stage blurs the desktop behind its scrim, so a busy window underneath
+# (htop, a terminal full of logs) stops competing with the stage's text.
+[compositor."breadbar-stage"]
+blur         = true
+ignore_alpha = 0.2
+no_anim      = true
+
+[compositor."breadbar-surtitle"]
+blur         = true
+ignore_alpha = 0.2
+no_anim      = true
+
+[compositor."breadbar-pill-hotzone"]
+no_anim = true
+
+# No `css = "..."` overlay: compiled-in builtin, same as its siblings.

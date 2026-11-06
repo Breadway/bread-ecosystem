@@ -1,5 +1,5 @@
 # The second compiled-in builtin (bread-theme/src/shell/builtin.rs), demo 02
-# in THEME_SYSTEM_PLAN.md — "Glass Workbench": a flush edge-to-edge bar with
+# in THEME_SYSTEM_PLAN.md: "Glass Workbench", a flush edge-to-edge bar with
 # plain pill workspaces, a plain date+time clock, and cpu/ram chips instead
 # of the media widget liquid-motion carries. Values are taken from
 # bos-ui-demos/02-glass-workbench.html's <style> block; where the demo is
@@ -7,25 +7,24 @@
 # scales liquid-motion's own numbers down by the same 36/44 bar-height ratio
 # rather than inventing something unrelated to either source.
 #
-# Unlike liquid-motion, this builtin has no "as the code exists today" tether
-# — it is new, so demo fidelity is the only source of truth. See Phase 5's
+# Unlike liquid-motion, this builtin has no "as the code exists today" tether:
+# it is new, so demo fidelity is the only source of truth. See Phase 5's
 # task notes for the two exceptions: font (IBM Plex Sans is not installed on
 # the dev machine, so this renders in fallback until the user installs
-# ttf-ibm-plex — this now matters for real: breadbox's launcher panel
+# ttf-ibm-plex, this now matters for real: breadbox's launcher panel
 # consumes font_family/font_fallback below, see [tokens]'s own note) and
 # colour (the demo's #7a9a88 sage is a *flat* accent, so it maps to the
-# palette's `green` token for both accent_from and accent_to — never a
-# literal hex value, or pywal theming breaks).
+# palette's `green` token for both accent_from and accent_to, never a
+# literal hex value, or palette theming breaks).
 
 name = "Glass Workbench"
 id   = "glass-workbench"
 
 [tokens]
-# font_family/font_fallback/font_size_base are consumed by breadbox's
-# launcher panel only (breadbox::main::build_css's entry.search/row rules —
-# see Tokens::font_family's doc comment for the exact scope); breadbar's
-# bar/chip/clock text still comes from bread_theme::stylesheet()'s own
-# hardcoded FONT_FAMILY constant, unaffected by this key.
+# font_family / font_fallback / font_size_base drive the whole shell (bar +
+# launcher) and the shared ecosystem stylesheet. IBM Plex Sans is not on the
+# dev machine, so this renders in `font_fallback` until `ttf-ibm-plex` is
+# installed.
 font_family    = "IBM Plex Sans"
 font_fallback  = "Inter, Noto Sans, sans-serif"
 font_size_base = 13
@@ -36,19 +35,15 @@ radius_pill    = 999
 pad            = 12
 bg_alpha       = 0.72
 # The demo defines exactly one easing curve (`--spring: cubic-bezier(.22,
-# 1.2, .36, 1)`), not liquid-motion's overshoot/settle pair — there's no
+# 1.2, .36, 1)`), not liquid-motion's overshoot/settle pair; there's no
 # digit-flip or trail-stretch here to want a bounce for. Both `spring` and
 # `spring_settle` point at the demo's one curve rather than inventing a
 # second value the demo never specifies.
 spring         = "cubic-bezier(0.22, 1.2, 0.36, 1)"
 spring_settle  = "cubic-bezier(0.22, 1.2, 0.36, 1)"
-# Palette token NAMES, not hex — #7a9a88 is this palette's `green`. Equal
-# from/to because the demo's accent is flat, not a gradient. accent_from IS
-# read (Pill-style workspace fill, theme.rs); accent_to is declared-but-
-# not-yet-consumed regardless of style — nothing reads it outside the
-# breadbar Trail gradient this theme doesn't use, and even Trail hardcodes
-# its own literal gradient rather than substituting it. See
-# Tokens::accent_to's doc comment.
+# Palette token NAMES, not hex: #7a9a88 is this palette's `green`. Equal
+# from/to because the demo's accent is flat, not a gradient (the Pill-style
+# workspace fill and the popover caret both read `accent_from`).
 accent_from    = "green"
 accent_to      = "green"
 # Demo: `.ws button { height: 20px }`. Liquid-motion's chip_height (32) is
@@ -75,7 +70,7 @@ keyboard  = "none"
 layer     = "top"
 
 [bar.slots]
-# No media module — demo 02 has no media widget at all (plan §1 table).
+# No media module: demo 02 has no media widget at all (plan §1 table).
 # breadbar must tolerate the omission: `media_widget` is still built and
 # registered under the "media" module name (main.rs), it just never appears
 # in any of this theme's slot lists, so it's never appended anywhere.
@@ -94,7 +89,7 @@ format    = "%H:%M"
 show_date = true
 
 [launcher]
-# Glass Workbench — dense and technical, the deliberate opposite of Liquid
+# Glass Workbench: dense and technical, the deliberate opposite of Liquid
 # Motion's soft/roomy numbers: a tight panel radius, snug row insets/padding,
 # small 22px icons, a flat (no section headers) list, and a denser accent
 # selection fill. Spec: bos-ui-demos/proposed/glass-workbench.html's `.bx`
@@ -142,7 +137,7 @@ width  = 320
 layer  = "overlay"
 
 [surfaces."breadbar-osd"]
-# Independent of bar height (an OSD pill near the bottom of the screen) —
+# Independent of bar height (an OSD pill near the bottom of the screen),
 # unchanged from liquid-motion.
 anchor = "bottom_centre"
 offset = 80
@@ -162,7 +157,7 @@ width  = "fill"
 layer  = "overlay"
 
 # Appearance-only, never placement/workspace/focus (plan §12 Layer B
-# boundary) — identical to liquid-motion's rules. Blur *strength* is global
+# boundary), identical to liquid-motion's rules. Blur *strength* is global
 # (plan §9 known limit), so this theme cannot independently match the demo's
 # per-surface blur radii (20px bar / 16px launcher / 22px popovers / 6px
 # window borders); only on/off, ignore_alpha and slide direction are
@@ -195,4 +190,4 @@ no_anim = true
 blur         = true
 ignore_alpha = 0.2
 
-# No `css = "..."` overlay — compiled-in builtin, same as liquid-motion.
+# No `css = "..."` overlay: compiled-in builtin, same as liquid-motion.

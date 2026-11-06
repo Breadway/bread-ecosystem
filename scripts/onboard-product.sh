@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# onboard-product.sh — register a new product in registry/bread-ecosystem.toml.
+# onboard-product.sh: register a new product in registry/bread-ecosystem.toml.
 #
 # This is the one step in bringing a product under bakery that's a genuine
 # write action; everything else (bakery.toml, CI workflows, the
@@ -13,7 +13,7 @@
 #
 # Example:
 #   scripts/onboard-product.sh breadcast Breadway/breadcast \
-#     "Cast your screen to any Chromecast/Google TV or DLNA renderer — daemon + GTK4 popup"
+#     "Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup"
 
 set -euo pipefail
 

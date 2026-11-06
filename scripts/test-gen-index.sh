@@ -23,6 +23,11 @@ printf '[Unit]\nDescription=fakepkg\n' > "${PKG_VER_DIR}/fakepkg.service"
 # bread ships breadbug-status.timer this way (ECO-87).
 printf '[Unit]\nDescription=fakepkg timer\n' > "${PKG_VER_DIR}/fakepkg-status.timer"
 printf '# example config\n' > "${PKG_VER_DIR}/fakepkg.example.toml"
+printf 'fake LICENSE content\n' > "${PKG_VER_DIR}/LICENSE"
+# LICENSE and the config example have no .sha256 sidecar, so exactly one
+# binary may survive into the index: regression for the breadram dev-index
+# leak where non-binary sidecars ended up listed as "binaries" with empty
+# checksums, breaking `bakery install <pkg>` for every client
 
 cat > "${PKG_VER_DIR}/bakery.toml" <<'TOML'
 name = "fakepkg"
@@ -108,6 +113,14 @@ check "config.example" \
 check "binaries[0].name" \
     "fakepkg-x86_64" \
     "$(jq -r '.packages.fakepkg.binaries[0].name' "${OUT}")"
+
+check "binaries[0].sha256" \
+    "$(sha256sum "${PKG_VER_DIR}/fakepkg-x86_64" | awk '{print $1}')" \
+    "$(jq -r '.packages.fakepkg.binaries[0].sha256' "${OUT}")"
+
+check "binaries count (sidecars must not leak in)" \
+    "1" \
+    "$(jq '.packages.fakepkg.binaries | length' "${OUT}")"
 
 check "post_install[0]" \
     "echo installed" \

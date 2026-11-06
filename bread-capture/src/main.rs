@@ -3,15 +3,15 @@
 //! Drives each target app's `--screenshot <view> --output <path>` mode (see
 //! `bread-screenshots` for what that mode does inside the app) and reports
 //! pass/fail per view/app. Plain `bread-capture` with no flags captures
-//! every known app's every view in one run — each app's binary is resolved
+//! every known app's every view in one run: each app's binary is resolved
 //! by its own bare name via `$PATH`, same as running it directly by name
 //! would. `--app <name>` restricts to one app; `--app-path <path>`
 //! overrides where its binary is found (and, without `--app`, also selects
-//! which app by its file stem — so `--app-path ./target/release/breadbox`
+//! which app by its file stem, so `--app-path ./target/release/breadbox`
 //! alone still works); `--view <name>` further restricts to one view. The
 //! view list for each app is looked up from [`TARGETS`] below. Each app
-//! gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<view>.png`)
-//! — no versioned `screenshots/vX.Y.Z/latest` structure or manifest file
+//! gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<view>.png`),
+//! no versioned `screenshots/vX.Y.Z/latest` structure or manifest file
 //! yet, since that's still not earning its complexity over a handful of
 //! apps.
 //!
@@ -19,7 +19,7 @@
 //! (see [`isolation`]) rather than the operator's live desktop, so another
 //! window (or their own differently-themed real bar) can't leak into a
 //! capture. `--no-isolate` skips that and captures directly against whatever
-//! session bread-capture itself is running in — useful for debugging the
+//! session bread-capture itself is running in; useful for debugging the
 //! capture sequence itself, since you can then actually watch it happen.
 
 mod isolation;
@@ -33,7 +33,7 @@ use std::time::Duration;
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Per-app (view name, output filename) lists. Keyed by the app's binary
-/// name — see `--app-name`. Filenames are plain (no app prefix): each app
+/// name; see `--app-name`. Filenames are plain (no app prefix): each app
 /// gets its own subdirectory under `--out-dir` (`<out-dir>/<app>/<file>`),
 /// so the prefix would just be redundant with the folder name.
 const TARGETS: &[(&str, &[(&str, &str)])] = &[
@@ -51,16 +51,56 @@ const TARGETS: &[(&str, &[(&str, &str)])] = &[
             ("osd-brightness", "osd-brightness.png"),
             ("wifi-add-dialog", "wifi-add-dialog.png"),
             // Theme 04/spotlight's embedded capsule (only rendered under
-            // `BREAD_SHELL_THEME=spotlight` — every other theme's [bar.slots]
+            // `BREAD_SHELL_THEME=spotlight`; every other theme's [bar.slots]
             // never places launcher_entry/launcher_results anywhere).
             ("capsule-collapsed", "capsule-collapsed.png"),
             ("capsule-expanded", "capsule-expanded.png"),
             // Phase 6c: query sections (idle "Recent"/"Apps" headers) and
-            // the `=` calc mode — see breadbar's own `screenshot::KNOWN_VIEWS`
+            // the `=` calc mode; see breadbar's own `screenshot::KNOWN_VIEWS`
             // doc comment for why the search-state width/radius change
             // (item E) doesn't need a view of its own.
             ("capsule-sections", "capsule-sections.png"),
             ("capsule-calc", "capsule-calc.png"),
+            // BAR-27 phase 1: the spotlight pill redesign (only rendered
+            // under `BREAD_SHELL_THEME=spotlight`, same caveat as the
+            // capsule views above). "pill-ws-none"/"pill-ws-current"/
+            // "pill-ws-all" all dispatch through the same capture code as
+            // "pill-shown" inside breadbar's own `screenshot.rs`; what
+            // actually varies between them is `modules.workspaces.display`
+            // in the theme selected via `BREAD_SHELL_THEME`/
+            // `XDG_CONFIG_HOME`, not anything in breadbar's dispatch logic,
+            // so a caller wanting all three needs three separate
+            // invocations with three different themes, not three flags to
+            // this one.
+            ("pill-shown", "pill-shown.png"),
+            ("pill-tucked", "pill-tucked.png"),
+            ("pill-hover", "pill-hover.png"),
+            ("pill-widgets-off", "pill-widgets-off.png"),
+            ("pill-widgets-on", "pill-widgets-on.png"),
+            ("pill-ws-none", "pill-ws-none.png"),
+            ("pill-ws-current", "pill-ws-current.png"),
+            ("pill-ws-all", "pill-ws-all.png"),
+            ("pill-low-battery", "pill-low-battery.png"),
+            // Phase-1 review must-fix: the tucked hot-zone's narrowed input
+            // region (a debug-only overlay; see breadbar's
+            // `pill_hotzone::set_debug_visible`).
+            ("pill-tucked-input", "pill-tucked-input.png"),
+            // BAR-30 phases 2-4: the spotlight stage, surtitles, and
+            // in-pill levels.
+            ("stage-idle", "stage-idle.png"),
+            ("stage-results", "stage-results.png"),
+            ("stage-commands", "stage-commands.png"),
+            ("stage-calc", "stage-calc.png"),
+            ("stage-power-armed", "stage-power-armed.png"),
+            ("stage-settings", "stage-settings.png"),
+            ("stage-narrow", "stage-narrow.png"),
+            // BAR-31: parity views for the empty-results hint, a
+            // notification row's hover state and a critical caption.
+            ("stage-empty", "stage-empty.png"),
+            ("stage-note-hover", "stage-note-hover.png"),
+            ("surtitle", "surtitle.png"),
+            ("surtitle-critical", "surtitle-critical.png"),
+            ("pill-level", "pill-level.png"),
         ],
     ),
     ("breadbox", &[("launcher", "launcher.png")]),
@@ -140,7 +180,7 @@ struct Cli {
 
     /// Path to that app's binary (resolved via $PATH if not a path).
     /// Without `--app`, this also selects *which* app by its file stem
-    /// (e.g. `./target/release/breadbox` -> `breadbox`) — so a single-app
+    /// (e.g. `./target/release/breadbox` -> `breadbox`), so a single-app
     /// run never needs both flags. Ignored (with a warning) if given
     /// together with a multi-app run (no `--app`, and the path isn't
     /// resolvable to exactly one app).
@@ -171,21 +211,38 @@ struct Cli {
     /// Height of the isolated session's capture canvas.
     #[arg(long, default_value_t = 1080)]
     isolate_height: u32,
+
+    /// Image to use as the isolated session's background instead of the
+    /// generated rainbow (for example a render of a design mockup's desktop,
+    /// so a capture can be laid over the mockup's own backdrop).
+    #[arg(long)]
+    background: Option<PathBuf>,
 }
 
 fn known_app_names() -> String {
-    TARGETS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+    TARGETS
+        .iter()
+        .map(|(n, _)| *n)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// (app_name, binary_path, views) per selected app.
-type SelectedTarget = (&'static str, String, &'static [(&'static str, &'static str)]);
+type SelectedTarget = (
+    &'static str,
+    String,
+    &'static [(&'static str, &'static str)],
+);
 
 /// Resolves which `TARGETS` entries this run covers, and the binary path
 /// to use for each.
 fn selected_targets(cli: &Cli) -> Result<Vec<SelectedTarget>> {
     if let Some(app) = &cli.app {
         let Some((name, views)) = TARGETS.iter().find(|(n, _)| n == app) else {
-            bail!("no known view list for app '{app}' (known: {})", known_app_names());
+            bail!(
+                "no known view list for app '{app}' (known: {})",
+                known_app_names()
+            );
         };
         let path = cli.app_path.clone().unwrap_or_else(|| name.to_string());
         return Ok(vec![(name, path, views)]);
@@ -197,14 +254,20 @@ fn selected_targets(cli: &Cli) -> Result<Vec<SelectedTarget>> {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
         let Some((name, views)) = TARGETS.iter().find(|(n, _)| *n == stem) else {
-            bail!("no known view list for app '{stem}' (known: {})", known_app_names());
+            bail!(
+                "no known view list for app '{stem}' (known: {})",
+                known_app_names()
+            );
         };
         return Ok(vec![(name, path.clone(), views)]);
     }
 
     // No --app / --app-path at all: every known app, resolved by its own
     // bare name via $PATH.
-    Ok(TARGETS.iter().map(|(name, views)| (*name, name.to_string(), *views)).collect())
+    Ok(TARGETS
+        .iter()
+        .map(|(name, views)| (*name, name.to_string(), *views))
+        .collect())
 }
 
 fn main() -> Result<ExitCode> {
@@ -212,20 +275,27 @@ fn main() -> Result<ExitCode> {
     let targets = selected_targets(&cli)?;
 
     if let Some(view) = &cli.view {
-        if !targets.iter().any(|(_, _, views)| views.iter().any(|(v, _)| v == view)) {
+        if !targets
+            .iter()
+            .any(|(_, _, views)| views.iter().any(|(v, _)| v == view))
+        {
             bail!("view '{view}' doesn't match any selected app's views");
         }
     }
 
     // Bound, not dropped-and-discarded: `_isolation`'s teardown (kill the
     // compositor, remove its socket/config) must run via Drop regardless of
-    // how this function returns below — returning an ExitCode rather than
+    // how this function returns below: returning an ExitCode rather than
     // calling `std::process::exit` (which skips destructors entirely) is
     // what makes that true on the failure path too.
     let _isolation = if cli.no_isolate {
         None
     } else {
-        Some(isolation::Isolation::start(cli.isolate_width, cli.isolate_height)?)
+        Some(isolation::Isolation::start(
+            cli.isolate_width,
+            cli.isolate_height,
+            cli.background.as_deref(),
+        )?)
     };
 
     let width_str = cli.isolate_width.to_string();
@@ -242,10 +312,14 @@ fn main() -> Result<ExitCode> {
             let result = bread_utils::proc::run(
                 app_path,
                 &[
-                    "--screenshot", view,
-                    "--output", &out_str,
-                    "--width", &width_str,
-                    "--height", &height_str,
+                    "--screenshot",
+                    view,
+                    "--output",
+                    &out_str,
+                    "--width",
+                    &width_str,
+                    "--height",
+                    &height_str,
                 ],
                 CAPTURE_TIMEOUT,
             );
@@ -258,5 +332,9 @@ fn main() -> Result<ExitCode> {
         }
     }
 
-    Ok(if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS })
+    Ok(if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }

@@ -1,4 +1,4 @@
-//! `bread_theme::shell` — the shell theme manifest system (Phase 1 of the
+//! `bread_theme::shell`: the shell theme manifest system (Phase 1 of the
 //! `THEME_SYSTEM_PLAN.md` design: manifest types, discovery, `extends`
 //! merge, validation, `css()`, `watch()`, and the one compiled-in
 //! `liquid-motion` builtin describing breadbar/breadbox as they exist
@@ -6,7 +6,7 @@
 //!
 //! This module is intentionally gtk-free except for [`watch`] (only
 //! compiled under the `gtk` feature, since `gio::FileMonitor` is a gtk4
-//! dependency) — `bread` (the daemon) and `breadcrumbs` (the CLI) can read
+//! dependency); `bread` (the daemon) and `breadcrumbs` (the CLI) can read
 //! and validate a theme without linking GTK at all.
 //!
 //! ## Discovery (plan §4)
@@ -17,27 +17,27 @@
 //! 3. the compiled-in builtin (currently only `liquid-motion`)
 //!
 //! The *active* id comes from `~/.config/bread/shell.toml`'s `active = "..."`
-//! key — this is the **primary, shared selector**: every host reads the same
+//! key: this is the **primary, shared selector**: every host reads the same
 //! file, so it's the only mechanism that can coordinate two already-running
 //! processes (breadbar and breadbox) onto the same theme. It can be
 //! overridden by `$BREAD_SHELL_THEME`, but that override is a
-//! **single-process convenience for testing/development only** — it's read
+//! **single-process convenience for testing/development only**: it's read
 //! once per process (`active_theme_id`), so setting it in one shell before
 //! launching breadbar has no effect on a separately-launched breadbox unless
 //! both processes' launch environments happen to inherit it from the same
 //! place (e.g. a compositor-wide `exec-once environment` directive). Do not
 //! rely on it to switch themes for a running system; edit `shell.toml`
 //! instead (the `--theme` CLI flag mentioned in the plan is a consumer-side
-//! concern — breadbar/breadbox would set `$BREAD_SHELL_THEME` themselves
+//! concern; breadbar/breadbox would set `$BREAD_SHELL_THEME` themselves
 //! before calling [`load`], rather than this crate parsing argv).
 //!
 //! ## `extends` (plan §4/§11)
 //!
 //! One level, deep-merged: a theme's raw TOML is merged over its `extends`
-//! target's raw TOML (child wins key-by-key, recursing into tables; arrays —
-//! including slot lists — are replaced wholesale, not concatenated). If the
+//! target's raw TOML (child wins key-by-key, recursing into tables; arrays,
+//! including slot lists, are replaced wholesale, not concatenated). If the
 //! base itself declares `extends`, that second-level `extends` is dropped
-//! before merging — chains longer than one level are not supported, by
+//! before merging: chains longer than one level are not supported, by
 //! design (plan explicitly scopes this to "one level").
 //!
 //! ## Never fails (plan §4/§5)
@@ -45,11 +45,17 @@
 //! [`load`] cannot fail: a missing or malformed *active* theme falls back to
 //! the compiled-in builtin, logging once via `tracing::warn!`
 //! ([`load_named`] is the fallible primitive underneath, for callers that
-//! want to know *why* — e.g. a "broken theme" banner in bos-settings).
+//! want to know *why*, e.g. a "broken theme" banner in bos-settings).
 
 mod builtin;
 mod manifest;
+pub mod modules;
+mod schema;
+mod style;
 mod types;
+
+pub use schema::{describe, describe_json};
+pub use style::chip_height;
 
 #[cfg(feature = "gtk")]
 mod hotreload;
@@ -66,7 +72,7 @@ use manifest::RawManifest;
 
 /// A theme, fully resolved: every default filled, every enum validated.
 /// Built once by [`load`]/[`load_named`] and handed to consumers as an
-/// immutable snapshot — a theme *change* (edit, `extends` retarget, hot
+/// immutable snapshot: a theme *change* (edit, `extends` retarget, hot
 /// reload) produces a new `ShellTheme` rather than mutating this one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShellTheme {
@@ -77,10 +83,19 @@ pub struct ShellTheme {
     slots: Slots,
     modules: Modules,
     launcher: Launcher,
+    panel: Panel,
+    osd: Osd,
+    notifications: Notifications,
+    autohide: AutoHide,
+    widgets: Vec<ThemeWidget>,
     surfaces: BTreeMap<String, Surface>,
     compositor: BTreeMap<String, LayerRule>,
-    css_template: String,
-    extra_css: Option<String>,
+    /// The theme's full stylesheet, already rendered: `[tokens]` substituted
+    /// into the CSS template and the optional `extra.css` overlay appended.
+    /// `@name` palette references are left intact for GTK's `@define-color`
+    /// (or the per-output hex inlining in `bread_theme::gtk::bind_window*`)
+    /// to resolve when the provider is attached.
+    resolved_css: String,
 }
 
 impl ShellTheme {
@@ -105,6 +120,33 @@ impl ShellTheme {
     pub fn launcher(&self) -> &Launcher {
         &self.launcher
     }
+    /// `[panel]`: the hamburger control-panel popover's `min_width` (CSS)
+    /// and section order.
+    pub fn panel(&self) -> &Panel {
+        &self.panel
+    }
+    /// `[osd]`: which on-screen displays are enabled, their linger time, and
+    /// (BAR-30 phase 4) whether a level change draws in a standalone window
+    /// or inside the bar pill.
+    pub fn osd(&self) -> &Osd {
+        &self.osd
+    }
+    /// `[notifications]` (BAR-30 phase 4): whether an incoming notification
+    /// shows as a standalone toast or a surtitle caption under the pill.
+    pub fn notifications(&self) -> &Notifications {
+        &self.notifications
+    }
+    /// `[bar.autohide]`: whether the bar tucks itself away above the top
+    /// edge and the hot-zone/peek timings that bring it back. `enabled` is
+    /// `false` for every theme that doesn't set this table.
+    pub fn autohide(&self) -> &AutoHide {
+        &self.autohide
+    }
+    /// `[[bar.widget]]`: theme-declared live bar widgets (each a poll + a
+    /// node tree). Empty for every builtin except where a demo adds one.
+    pub fn widgets(&self) -> &[ThemeWidget] {
+        &self.widgets
+    }
     pub fn surfaces(&self) -> &BTreeMap<String, Surface> {
         &self.surfaces
     }
@@ -112,57 +154,29 @@ impl ShellTheme {
         &self.compositor
     }
 
-    /// Token substitution into the theme's CSS template, plus the optional
-    /// `extra.css` overlay appended last — plan §5.
+    /// The theme's full stylesheet: `[tokens]` substituted into the CSS
+    /// template with the optional `extra.css` overlay appended. Rendered once
+    /// at resolve time (see `RawManifest::resolve`); this is a cheap clone.
     ///
-    /// **Declared-but-not-yet-consumed in production**, as of this writing:
-    /// neither breadbar nor breadbox calls this method. Both hand-roll their
-    /// own CSS instead (`breadbar::theme::load_css` reads individual
-    /// `Tokens::xxx()` accessors and `format!`s a literal stylesheet;
-    /// `breadbox::main::build_css` reads a growing set of individual
-    /// `Launcher`/`Tokens` accessors — `radius`, `width`, `icon_px`,
-    /// `row_radius`, `row_inset`, `row_padding_v/h`, `icon_radius`,
-    /// `search_font_size`, `search_padding_v/h`, `selection_alpha`,
-    /// `sections`, `footer`, `font_family`, `font_fallback`,
-    /// `font_size_base` as of the liquid-motion/glass-workbench redesign —
-    /// and still never calls this method or its template substitution).
-    /// That means the compiled-in `assets/shell/*/*.css` templates this method
-    /// substitutes into render nothing a user ever sees, and a theme's
-    /// `css = "extra.css"` overlay (parsed, path-resolved, read from disk,
-    /// token-substituted into [`Self::extra_css`] below) is fully
-    /// implemented and then never applied. This method itself is correct
-    /// and covered by this crate's own tests
-    /// (`builtin_css_substitutes_tokens_and_leaves_palette_names_untouched`,
-    /// `extra_css_overlay_is_appended_and_token_substituted`) — the gap is
-    /// entirely on the consumer side, in breadbar/breadbox, not here. Wiring
-    /// either app onto this method (replacing their own hand-rolled builders)
-    /// is out of scope for this crate to do unilaterally, since it's a
-    /// behavior change to code this crate doesn't own.
-    ///
-    /// `palette` is accepted to match the plan §5 signature and for parity
-    /// with [`crate::stylesheet_resolved`]-style consumers in the future,
-    /// but is deliberately unused today: per this task's brief, `@accent` /
-    /// `@on-bg` *pass through untouched* here, the same way
-    /// [`crate::stylesheet`] leaves them for GTK's own `@define-color`
-    /// mechanism to resolve once the CSS provider is attached
-    /// (`bgtk::bind_window_with_app_css` / `apply_app_css`). A caller that
-    /// wants hex-resolved CSS combines this with
-    /// [`crate::resolve_color_names`] itself, exactly as
-    /// `breadbar::theme::load_css_for` does today.
+    /// `@name` palette references (`@accent`, `@on-bg`, …) pass through
+    /// untouched, the same way [`crate::stylesheet`] leaves them for GTK's
+    /// `@define-color` to resolve once the provider is attached. A caller that
+    /// wants per-output hex-resolved CSS combines this with
+    /// [`crate::resolve_color_names`] (as `breadbar::theme::load_css_for`
+    /// does). `palette` is accepted for signature parity with
+    /// [`crate::stylesheet_resolved`] and is deliberately unused.
     #[allow(unused_variables)]
     pub fn css(&self, palette: &crate::Palette) -> String {
-        let mut out = self.tokens.substitute(&self.css_template);
-        if let Some(extra) = &self.extra_css {
-            if !out.is_empty() && !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(&self.tokens.substitute(extra));
-        }
-        out
+        self.resolved_css.clone()
+    }
+
+    /// The rendered stylesheet without the clone, for callers that only read.
+    pub fn css_str(&self) -> &str {
+        &self.resolved_css
     }
 }
 
-/// Where a discovered theme's manifest text came from — also [`ThemeSummary`]'s
+/// Where a discovered theme's manifest text came from: also [`ThemeSummary`]'s
 /// `source` field for a picker UI (bos-settings, plan §5 `list()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeSource {
@@ -209,7 +223,7 @@ enum Source {
     User(PathBuf),
     System(PathBuf),
     /// Carries the id rather than being a bare unit variant now that there's
-    /// more than one compiled-in theme — [`read_source`]/[`css_template_for`]
+    /// more than one compiled-in theme: [`read_source`]/[`css_template_for`]
     /// need to know *which* builtin's assets to hand back.
     Builtin(String),
 }
@@ -247,18 +261,32 @@ fn read_source(src: &Source) -> anyhow::Result<(String, Option<PathBuf>)> {
     }
 }
 
+/// The CSS template a theme renders from. Every builtin points at the one
+/// shared `assets/shell/base.css`; a standalone user/system theme (one that
+/// is neither a builtin nor `extends` a builtin) gets that same template
+/// rather than an empty string, so it renders the full shell out of the box
+/// and only needs `[tokens]` + an optional `extra.css` on top.
 fn css_template_for(id: &str) -> String {
     builtin::find(id)
         .map(|t| t.css.to_string())
-        .unwrap_or_default()
+        .unwrap_or_else(|| builtin::BASE_CSS.to_string())
 }
 
 /// The fallible primitive: look up `id` through discovery, apply one level
 /// of `extends`, validate, and resolve. Returns `Err` (naming the offending
-/// key/path) rather than falling back — [`load`] is the caller that turns a
+/// key/path) rather than falling back; [`load`] is the caller that turns a
 /// failure into the builtin.
 pub fn load_named(id: &str) -> anyhow::Result<ShellTheme> {
     resolve_theme(id, 0)
+}
+
+/// `None` if theme `id` resolves cleanly, otherwise a one-line reason
+/// (`"theme 'x': tokens.bar_border = \"…\" is not full|bottom|segmented"`,
+/// `"…references unknown module \"teleporter\""`, …), for a settings UI
+/// showing why a theme is broken instead of silently falling back to the
+/// builtin ([`load`]'s behaviour). Same check [`load_named`] runs.
+pub fn diagnose(id: &str) -> Option<String> {
+    load_named(id).err().map(|e| format!("{e:#}"))
 }
 
 fn resolve_theme(id: &str, extends_depth: u8) -> anyhow::Result<ShellTheme> {
@@ -317,12 +345,12 @@ fn resolve_theme(id: &str, extends_depth: u8) -> anyhow::Result<ShellTheme> {
 }
 
 /// Bypasses discovery entirely and resolves straight from the compiled-in
-/// `liquid-motion` assets — used as [`load`]'s fallback specifically
+/// `liquid-motion` assets, used as [`load`]'s fallback specifically
 /// *because* it cannot be affected by a broken user override file at the
 /// same id (unlike calling `load_named("liquid-motion")` again, which would
 /// hit that same broken file first via discovery and fail identically).
 /// Deliberately always `liquid-motion`, not "whichever theme was active" or
-/// "the first entry in `builtin::ALL`" — this is the one theme every other
+/// "the first entry in `builtin::ALL`": this is the one theme every other
 /// fallback path in this module bottoms out at, so its identity has to stay
 /// pinned regardless of how many more builtins `glass-workbench` grows
 /// siblings.
@@ -343,7 +371,7 @@ fn resolve_builtin() -> ShellTheme {
 static FALLBACK_LOGGED: std::sync::Once = std::sync::Once::new();
 
 /// The active theme. Never fails: a missing or malformed active theme logs
-/// once (`tracing::warn!`) and falls back to the compiled-in builtin — "the
+/// once (`tracing::warn!`) and falls back to the compiled-in builtin: "the
 /// shell must never fail to start because a theme file is malformed" (plan
 /// §4).
 pub fn load() -> ShellTheme {
@@ -364,7 +392,7 @@ pub fn load() -> ShellTheme {
 }
 
 /// `$BREAD_SHELL_THEME`, else `shell.toml`'s `active` key, else the builtin
-/// default — see the module doc's "Discovery" section for which of these is
+/// default; see the module doc's "Discovery" section for which of these is
 /// the primary/shared selector (`shell.toml`) versus a per-process testing
 /// override (`$BREAD_SHELL_THEME`) that cannot coordinate more than one
 /// already-running process.
@@ -422,7 +450,7 @@ fn scan_theme_dir(
     }
 }
 
-/// Every theme discoverable across user config, system dir, and builtins —
+/// Every theme discoverable across user config, system dir, and builtins:
 /// for a picker UI (plan §5: "bos-settings picker"). User shadows system
 /// shadows builtin for the same id, matching [`load_named`]'s discovery
 /// order.
@@ -479,7 +507,7 @@ mod tests {
     /// guard's lifetime.
     fn isolated_xdg() -> EnvGuard {
         // Shared with `layerrules::tests`, which also isolates
-        // XDG_CONFIG_HOME — see `crate::test_support` for why this must be
+        // XDG_CONFIG_HOME; see `crate::test_support` for why this must be
         // the *same* lock rather than a module-private one.
         let lock = crate::test_support::XDG_CONFIG_HOME_LOCK
             .lock()
@@ -534,6 +562,98 @@ mod tests {
         // highlight height on the interactive reference (bos-ui-demos/proposed/).
         assert_eq!(theme.tokens().chip_height(), 26);
         assert_eq!(theme.tokens().icon_px(), 24);
+    }
+
+    #[test]
+    fn left_docked_theme_with_fixed_width_resolves_as_vertical() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "sidedock",
+            r#"
+                id = "sidedock"
+                [bar.window]
+                anchors = ["left", "top", "bottom"]
+                width = 56
+            "#,
+        );
+        let theme = load_named("sidedock").expect("side-docked theme should resolve");
+        assert_eq!(theme.window().orientation(), WindowOrientation::Vertical);
+        assert!(matches!(theme.window().width, Width::Px(56)));
+    }
+
+    #[test]
+    fn vertical_dock_with_fill_width_is_a_hard_error() {
+        // "fill" only means something on the bar's own length axis; for a
+        // side dock that's top/bottom (already filled by the anchors
+        // themselves), so `width = "fill"` here has nothing to apply to.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "badvertical",
+            r#"
+                id = "badvertical"
+                [bar.window]
+                anchors = ["right", "top", "bottom"]
+                width = "fill"
+            "#,
+        );
+        let err = load_named("badvertical").expect_err("fill width on a vertical dock must error");
+        assert!(format!("{err:#}").contains("vertical"));
+    }
+
+    // ---- ECO-17: chip_height must actually reach the CSS it controls ------
+
+    #[test]
+    fn explicit_chip_height_reaches_the_media_widget_and_stat_pair_css() {
+        // Before the fix, `chip_height_px` came from a hardcoded per-style
+        // table, not `tokens.chip_height`; a theme's own value here was
+        // silently ignored (see `resolve_tokens`'s note). A custom font/size
+        // combo that needs a taller chip than the style's demo number had no
+        // way to ask for one.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "tallchips",
+            r#"
+                id = "tallchips"
+                [tokens]
+                chip_height = 50
+                [modules.workspaces]
+                style = "dots"
+            "#,
+        );
+        let theme = load_named("tallchips").expect("theme should resolve");
+        assert_eq!(theme.tokens().chip_height(), 50);
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("min-height: 50px"),
+            "explicit chip_height should reach the rendered CSS"
+        );
+        assert!(
+            !css.contains("min-height: 22px"),
+            "the dots-style hardcoded fallback (22px) must not win over an explicit value"
+        );
+    }
+
+    #[test]
+    fn omitted_chip_height_falls_back_to_the_style_default_not_the_stale_32() {
+        // `Tokens::default().chip_height` is 32, breadbar's pre-theme-
+        // system global constant, not a sensible size for any one style.
+        // A theme that never mentions chip_height should still get the
+        // per-style demo number (22 for pill), not that stale default.
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "nochipheight",
+            r#"
+                id = "nochipheight"
+                [modules.workspaces]
+                style = "pill"
+            "#,
+        );
+        let theme = load_named("nochipheight").expect("theme should resolve");
+        assert_eq!(theme.tokens().chip_height(), 22);
     }
 
     #[test]
@@ -604,7 +724,12 @@ mod tests {
         );
         assert_eq!(
             theme.slots().centre,
-            vec!["media", "widget:left_of_clock", "clock", "widget:right_of_clock"]
+            vec![
+                "media",
+                "widget:left_of_clock",
+                "clock",
+                "widget:right_of_clock"
+            ]
         );
         assert!(matches!(
             theme.modules().workspaces.style,
@@ -616,7 +741,7 @@ mod tests {
     #[test]
     fn builtin_launcher_matches_liquid_motion_demo_geometry() {
         // bos-ui-demos/proposed/liquid-motion.html's `.bx` block is the spec
-        // as of the launcher-core redesign — radius=20/icon_px=28, not the
+        // as of the launcher-core redesign: radius=20/icon_px=28, not the
         // old pre-redesign hardcoded CSS's 8/32 (see git history for that
         // era's `builtin_launcher_matches_current_breadbox_geometry`).
         let theme = resolve_builtin();
@@ -626,7 +751,10 @@ mod tests {
         assert_eq!(l.top, "120px");
         assert_eq!(l.radius, 20);
         assert_eq!(l.icon_px, 28);
-        assert!(l.sections, "liquid-motion shows Recent/Apps section headers");
+        assert!(
+            l.sections,
+            "liquid-motion shows Recent/Apps section headers"
+        );
         assert_eq!(l.row_radius, 12);
         assert_eq!(l.row_inset, 8);
         assert_eq!((l.row_padding_v, l.row_padding_h), (10, 12));
@@ -638,8 +766,8 @@ mod tests {
 
     #[test]
     fn glass_workbench_launcher_matches_demo_geometry_and_differs_from_liquid_motion() {
-        let theme = load_named(builtin::GLASS_WORKBENCH_ID)
-            .expect("glass-workbench should resolve");
+        let theme =
+            load_named(builtin::GLASS_WORKBENCH_ID).expect("glass-workbench should resolve");
         let l = theme.launcher();
         assert_eq!(l.width, 560);
         assert_eq!(l.top, "64px");
@@ -647,7 +775,7 @@ mod tests {
         assert_eq!(l.icon_px, 22);
         assert!(
             !l.sections,
-            "glass-workbench is a flat list — no Recent/Apps headers"
+            "glass-workbench is a flat list, no Recent/Apps headers"
         );
         assert_eq!(l.row_radius, 6);
         assert_eq!(l.row_inset, 6);
@@ -698,6 +826,292 @@ mod tests {
         }
     }
 
+    /// Golden snapshot of every builtin's rendered stylesheet
+    /// (`ShellTheme::css` against the default palette). The `.expected.css`
+    /// files are the reviewable record of what each theme actually paints:
+    /// diff them in review when a template or a token default changes.
+    /// Regenerate after an intended change with `BLESS_GOLDEN=1 cargo test`.
+    #[test]
+    fn builtin_css_matches_golden_snapshot() {
+        let _xdg = isolated_xdg();
+        let bless = std::env::var("BLESS_GOLDEN").is_ok();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
+        std::fs::create_dir_all(&dir).unwrap();
+        for b in builtin::ALL {
+            let theme = load_named(b.id).unwrap_or_else(|e| panic!("{}: {e:#}", b.id));
+            let got = theme.css(&crate::Palette::default());
+            let path = dir.join(format!("{}.css", b.id));
+            if bless {
+                std::fs::write(&path, &got).unwrap();
+                continue;
+            }
+            let want = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+                panic!(
+                    "missing golden {}: run `BLESS_GOLDEN=1 cargo test -p bread-theme`",
+                    path.display()
+                )
+            });
+            assert_eq!(
+                got,
+                want,
+                "rendered CSS for '{}' drifted from its golden snapshot \
+                 ({}). If intended: BLESS_GOLDEN=1 cargo test -p bread-theme",
+                b.id,
+                path.display()
+            );
+        }
+    }
+
+    /// Shell theme typography reaches shell CSS and stays out of app CSS.
+    #[test]
+    fn shell_typography_stays_out_of_shared_app_stylesheet() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "testfont",
+            r#"
+                name = "Test Font"
+                id   = "testfont"
+                [tokens]
+                font_family    = "Test Face"
+                font_fallback  = "Noto Sans, sans-serif"
+                font_size_base = 17
+                font_weight    = 650
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "testfont");
+
+        let ty = crate::Typography::active();
+        assert_eq!(ty, crate::Typography::default());
+
+        let sheet = crate::stylesheet(&ty, &crate::Palette::default());
+        assert!(
+            sheet.contains("font-family: 'Varela Round', sans-serif;"),
+            "shared app stylesheet must retain app typography:\n{sheet}"
+        );
+        assert!(sheet.contains("font-size: 14px; font-weight: 400;"));
+
+        // A standalone theme (no `extends`) still renders the full shell from
+        // the shared base template, so its own CSS carries the font too, the
+        // live-switch path breadbar reloads on a `shell.toml` edit.
+        let css = load_named("testfont")
+            .unwrap()
+            .css(&crate::Palette::default());
+        assert!(
+            css.contains("font-family: 'Test Face', 'Noto Sans', sans-serif;"),
+            "shell CSS missing the theme font-family"
+        );
+        assert!(
+            css.contains("font-size: 17px;"),
+            "shell CSS missing the theme font size"
+        );
+        assert!(
+            css.contains("font-weight: 650;"),
+            "shell CSS missing the theme font-weight"
+        );
+
+        let spotlight = load_named("spotlight").expect("builtin Spotlight theme");
+        assert_eq!(spotlight.tokens().font_family, "Big Shoulders Display");
+        let spotlight_css = spotlight.css(&crate::Palette::default());
+        assert!(
+            spotlight_css
+                .contains("font-family: 'Big Shoulders Display', 'Hanken Grotesk', sans-serif;"),
+            "Spotlight display face should remain available to shell elements"
+        );
+    }
+
+    /// Axis 2: the chrome tokens render into the CSS and reject typos.
+    #[test]
+    fn chrome_tokens_render_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "chrome",
+            r#"
+                name = "Chrome"
+                id   = "chrome"
+                [tokens]
+                sep_style         = "dot"
+                bar_shadow        = "soft"
+                osd_style         = "bar"
+                media_eq_style    = "none"
+                ws_gradient_angle = 45
+                chip_gap          = 8
+                [modules.workspaces]
+                style = "trail"
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "chrome");
+        let css = load_named("chrome")
+            .unwrap()
+            .css(&crate::Palette::default());
+        assert!(css.contains("linear-gradient(45deg,"), "ws_gradient_angle");
+        assert!(css.contains("box-shadow: 0 8px 28px"), "bar_shadow=soft");
+        assert!(css.contains("margin: 0 0 0 8px"), "chip_gap");
+        assert!(
+            css.contains(".media-eq { opacity: 0"),
+            "media_eq_style=none"
+        );
+        // osd_style=bar → card radius (8px default), not the pill 999px.
+        assert!(css.contains("window.breadbar-osd {"));
+        assert!(!css.contains("border-radius: 999px;\n  border: 1px solid"));
+
+        write_theme(
+            &xdg,
+            "badsep",
+            r#"
+                name = "Bad"
+                id   = "badsep"
+                [tokens]
+                sep_style = "squiggle"
+            "#,
+        );
+        let err = diagnose("badsep").expect("bad enum must fail");
+        assert!(
+            err.contains("sep_style") && err.contains("line|none|dot"),
+            "{err}"
+        );
+    }
+
+    /// Axis 3: `[panel]` / `[osd]` resolve, reorder, and reject typos.
+    #[test]
+    fn panel_and_osd_tables_resolve_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "po",
+            r#"
+                name = "PO"
+                id   = "po"
+                [panel]
+                min_width = 420
+                sections  = ["power", "volume"]
+                [osd]
+                enabled    = ["volume"]
+                dismiss_ms = 600
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "po");
+        let t = load_named("po").unwrap();
+        assert_eq!(t.panel().min_width, 420);
+        assert_eq!(t.panel().sections, vec!["power", "volume"]);
+        assert_eq!(t.osd().enabled, vec!["volume"]);
+        assert_eq!(t.osd().dismiss_ms, 600);
+        // min_width flows into the rendered CSS.
+        assert!(t
+            .css(&crate::Palette::default())
+            .contains("min-width: 420px;"));
+
+        // A default theme keeps every section and both OSDs.
+        let def = load_named("liquid-motion").unwrap();
+        assert_eq!(def.panel().sections.len(), 6);
+        assert_eq!(def.osd().enabled, vec!["volume", "brightness"]);
+
+        write_theme(
+            &xdg,
+            "badpanel",
+            r#"
+                name = "Bad"
+                id   = "badpanel"
+                [panel]
+                sections = ["volume", "teleporter"]
+            "#,
+        );
+        let err = diagnose("badpanel").expect("bad section must fail");
+        assert!(err.contains("teleporter"), "{err}");
+    }
+
+    /// Axis 4: `[[bar.widget]]` resolves, binds parse, the tree + style
+    /// vocab validate, and a missing slot is a hard error.
+    #[test]
+    fn theme_widgets_resolve_and_validate() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "tw",
+            r#"
+                name = "TW"
+                id   = "tw"
+                [bar.slots]
+                left   = ["workspaces"]
+                centre = ["clock"]
+                right  = ["widget:right_of_clock", "control"]
+                [[bar.widget]]
+                id   = "loadavg"
+                slot = "right_of_clock"
+                bind = { cmd = "cut -d' ' -f1 /proc/loadavg", every = "5s" }
+                node = { kind = "box", children = [
+                    { kind = "icon", name = "cpu" },
+                    { kind = "label", text = "{value}", color = "accent", weight = "bold" },
+                ] }
+            "#,
+        );
+        std::env::set_var("BREAD_SHELL_THEME", "tw");
+        let t = load_named("tw").unwrap();
+        assert_eq!(t.widgets().len(), 1);
+        let w = &t.widgets()[0];
+        assert_eq!(w.slot, "right_of_clock");
+        assert_eq!(w.bind.every_ms, 5000);
+        match &w.node {
+            crate::shell::ThemeNode::Box { children, .. } => assert_eq!(children.len(), 2),
+            _ => panic!("expected box root"),
+        }
+
+        // bad duration
+        write_theme(
+            &xdg,
+            "twbad",
+            r#"
+            name = "B"
+            id = "twbad"
+            [bar.slots]
+            right = ["widget:x"]
+            [[bar.widget]]
+            id = "w"
+            slot = "x"
+            bind = { cmd = "true", every = "soon" }
+            node = { kind = "label", text = "hi" }
+        "#,
+        );
+        assert!(diagnose("twbad").unwrap().contains("not a duration"));
+
+        // slot with no widget: entry
+        write_theme(
+            &xdg,
+            "twns",
+            r#"
+            name = "N"
+            id = "twns"
+            [bar.slots]
+            right = ["control"]
+            [[bar.widget]]
+            id = "w"
+            slot = "nowhere"
+            bind = { cmd = "true", every = "1s" }
+            node = { kind = "label", text = "hi" }
+        "#,
+        );
+        assert!(diagnose("twns").unwrap().contains("never be shown"));
+
+        // bad style value
+        write_theme(
+            &xdg,
+            "twsty",
+            r#"
+            name = "S"
+            id = "twsty"
+            [bar.slots]
+            right = ["widget:x"]
+            [[bar.widget]]
+            id = "w"
+            slot = "x"
+            bind = { cmd = "true", every = "1s" }
+            node = { kind = "label", text = "hi", color = "chartreuse" }
+        "#,
+        );
+        assert!(diagnose("twsty").unwrap().contains("chartreuse"));
+    }
+
     // ---- glass-workbench builtin (plan §11 phase 5) -----------------------
 
     #[test]
@@ -714,7 +1128,7 @@ mod tests {
                 .any(|s| s.id == "glass-workbench" && s.source == ThemeSource::Builtin),
             "glass-workbench missing from list(): {summaries:?}"
         );
-        // Both builtins must be listed side by side — Phase 5 must not have
+        // Both builtins must be listed side by side; Phase 5 must not have
         // dropped liquid-motion in the process of adding a second theme.
         assert!(summaries
             .iter()
@@ -746,7 +1160,7 @@ mod tests {
         );
         assert_eq!(
             theme.tokens().bar_border(),
-            "bottom",
+            BarBorder::Bottom,
             "flush bar draws only a bottom hairline, not liquid-motion's full border"
         );
     }
@@ -786,12 +1200,12 @@ mod tests {
         );
         assert!(
             !css.contains("#7a9a88"),
-            "the demo's sage hex must never leak into the manifest — pywal theming depends on \
+            "the demo's sage hex must never leak into the manifest, palette theming depends on \
              this staying a palette token name:\n{css}"
         );
     }
 
-    // ---- spotlight builtin (plan §11 phase 6) ------------------------------
+    // ---- spotlight builtin (BAR-27 phase 1: the pill redesign) ------------
 
     #[test]
     fn spotlight_loads_and_appears_in_list_alongside_the_other_two() {
@@ -806,7 +1220,7 @@ mod tests {
                 .any(|s| s.id == "spotlight" && s.source == ThemeSource::Builtin),
             "spotlight missing from list(): {summaries:?}"
         );
-        // All three builtins must be listed side by side — adding the third
+        // All three builtins must be listed side by side; adding the third
         // must not have displaced either of the first two.
         for id in ["liquid-motion", "glass-workbench"] {
             assert!(
@@ -819,83 +1233,143 @@ mod tests {
     }
 
     #[test]
-    fn spotlight_window_is_a_centred_capsule_not_a_full_width_bar() {
+    fn spotlight_window_is_a_floating_content_hugging_pill() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
         let w = theme.window();
-        // Anchored top ONLY — neither left nor right, which is what makes
-        // gtk4-layer-shell centre the surface instead of stretching it
-        // (THEME_SYSTEM_PLAN.md §7).
+        // Anchored top ONLY: neither left nor right, which is what makes
+        // gtk4-layer-shell centre the surface instead of stretching it.
         assert_eq!(w.anchors, vec!["top"]);
-        assert_eq!(w.width, Width::Px(480));
-        assert_eq!(w.height, 36);
-        assert_eq!(w.margin.top, 16);
+        // "fill" on a bar with no left/right anchor to stretch between means
+        // "hug the content's natural width" (see breadbar's `Width::Fill`
+        // handling), not liquid-motion's edge-to-edge stretch: this is what
+        // lets the pill's own width track its workspace/widget content.
+        assert_eq!(w.width, Width::Fill);
+        assert_eq!(w.height, 30);
+        assert_eq!(w.margin.top, 10);
         assert_eq!(
             w.exclusive,
             Exclusive::None,
-            "the capsule floats over tiled content, unlike Island/Edge's reserved strip"
+            "no exclusive zone: windows use the full screen behind the pill"
         );
+    }
+
+    #[test]
+    fn spotlight_bar_border_is_full_and_rounds_to_a_pill() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.bar_border(), BarBorder::Full);
+        // A 30px-tall window with a >=15px corner radius renders fully
+        // rounded (GTK clamps radius to half the shorter side); 999
+        // guarantees that regardless of the window's exact measured height.
+        assert!(t.radius_bar() >= 15);
+    }
+
+    #[test]
+    fn spotlight_pill_slots_are_one_flat_row_in_mockup_order() {
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        // Workspaces, divider, left widget slot, time, right widget slot,
+        // low-battery flag, unread dot: bos-ui-demos/proposed/
+        // spotlight-stage.html's `.wick` row, in that exact order, plus the
+        // other themes' right_of_workspaces / left_of_stats widget
+        // placements so widgets registered there still render. Everything
+        // lives in ONE slot (not spread across left/centre/right) so the
+        // pill renders as a single tight flex row with no CenterBox-induced
+        // gaps between groups of uneven width. The centre slot specifically:
+        // GtkCenterBox measures `centre + 2 * max(left, right)`, so a
+        // left-slot row would render at twice its content's width.
         assert_eq!(
-            w.keyboard,
-            Keyboard::OnDemand,
-            "keyboard focus hands over only while launcher_entry holds it"
+            theme.slots().centre,
+            vec![
+                "workspaces",
+                "sep",
+                "widget:right_of_workspaces",
+                "widget:left_of_clock",
+                "clock",
+                "nowplaying",
+                "widget:right_of_clock",
+                "widget:left_of_stats",
+                "pill_battery",
+                "dnd",
+                "level",
+                "flag",
+                "unread",
+            ]
         );
-    }
-
-    #[test]
-    fn spotlight_launcher_is_embedded_not_an_overlay_window() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert_eq!(theme.launcher().mode, LauncherMode::Embedded);
-        assert_eq!(theme.slots().centre, vec!["launcher_entry"]);
-        assert_eq!(theme.slots().drawer, vec!["launcher_results"]);
+        assert!(theme.slots().left.is_empty());
+        assert!(theme.slots().right.is_empty());
         assert!(
-            !theme.slots().drawer.is_empty(),
-            "spotlight is the one builtin that actually uses the drawer slot"
+            theme.slots().drawer.is_empty(),
+            "phase 1 is the pill only; the stage/drawer isn't wired up yet"
         );
     }
 
     #[test]
-    fn spotlight_launcher_widget_slot_gives_left_of_stats_widgets_a_home() {
+    fn spotlight_workspaces_are_pill_style_showing_all_by_default() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let ws = &theme.modules().workspaces;
+        assert!(matches!(ws.style, WorkspaceStyle::Pill));
+        assert!(matches!(ws.display, WorkspaceDisplay::All));
         assert!(
-            theme
-                .slots()
-                .right
-                .iter()
-                .any(|s| s == "widget:left_of_stats"),
-            "a Lua widget requesting WidgetPlacement::LeftOfStats (e.g. \
-             git-branch-widget.lua) must have a home under spotlight: {:?}",
-            theme.slots().right
+            !ws.show_empty,
+            "display=all means occupied-plus-active, same as show_empty=false already did"
         );
     }
 
     #[test]
-    fn spotlight_query_modes_and_sections_are_enabled_phase_6c() {
+    fn spotlight_clock_is_plain_not_flip_or_none() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let l = theme.launcher();
-        assert!(l.sections, "phase 6c: recent/apps headers are implemented");
-        for mode in ["apps", "calc", "cmd", "url"] {
-            assert!(
-                l.modes.iter().any(|m| m == mode),
-                "spotlight.modes should list \"{mode}\": {:?}",
-                l.modes
-            );
-        }
+        assert!(matches!(theme.modules().clock.style, ClockStyle::Plain));
     }
 
     #[test]
-    fn spotlight_launcher_search_state_geometry_differs_from_idle() {
+    fn spotlight_autohide_is_enabled_with_the_mockups_own_timings() {
         let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let l = theme.launcher();
-        assert_eq!(l.width, 480);
-        assert_eq!(l.search_width, 520);
-        assert_eq!(l.radius, 22);
-        assert_eq!(l.search_radius, 20);
+        let a = theme.autohide();
+        assert!(a.enabled);
+        assert_eq!(a.hover_zone_width, 420);
+        assert_eq!(a.hover_zone_height, 14);
+        assert_eq!(a.retuck_delay_ms, 600);
+        assert_eq!(a.notification_peek_ms, 3800);
+        assert_eq!(a.level_peek_ms, 1400);
+        assert_eq!(a.workspace_peek_ms, 1200);
+    }
+
+    #[test]
+    fn autohide_defaults_to_disabled_for_every_theme_that_omits_the_table() {
+        // liquid-motion (and every other builtin but spotlight) never sets
+        // [bar.autohide]: "always visible" must be what a theme gets for
+        // free, not something every theme has to opt into.
+        let theme = resolve_builtin();
+        assert!(!theme.autohide().enabled);
+        assert_eq!(theme.autohide(), &AutoHide::default());
+    }
+
+    #[test]
+    fn spotlight_light_fill_is_flat_and_a_palette_token_not_hex() {
+        // Phase-1 review must-fix: the mockup's `--light` (warm-white
+        // active-chip/on-accent fill) is a fixed foreground tone, not the
+        // wallpaper-tracking accent hue, so `accent_from`/`accent_to` point
+        // at `fg`, not `accent`. Still flat (both ends the same token) and
+        // still a palette token, not raw hex.
+        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
+        let t = theme.tokens();
+        assert_eq!(t.accent_from(), "fg");
+        assert_eq!(t.accent_to(), "fg");
+        let css = theme.css(&crate::Palette::default());
+        assert!(
+            css.contains("@fg"),
+            "accent_from/accent_to must resolve to the @fg palette token:\n{css}"
+        );
+        assert!(
+            !css.contains("#e87898"),
+            "the demo's pink hex must not leak into this palette-token theme:\n{css}"
+        );
     }
 
     #[test]
     fn launcher_search_geometry_defaults_to_idle_values_when_unset() {
         // liquid-motion's own [launcher] table never sets search_width/
-        // search_radius — a theme that omits them must fall back to "no
+        // search_radius; a theme that omits them must fall back to "no
         // change while searching", not some hardcoded magic number.
         let theme = resolve_builtin();
         let l = theme.launcher();
@@ -903,39 +1377,106 @@ mod tests {
         assert_eq!(l.search_radius, l.radius);
     }
 
+    // ---- modules.workspaces.display (BAR-27 phase 1) ----------------------
+
     #[test]
-    fn spotlight_workspaces_are_dots_with_the_demos_own_widths() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert!(matches!(theme.modules().workspaces.style, WorkspaceStyle::Dots));
-        assert_eq!(theme.modules().workspaces.dot_widths, [8, 13, 17, 22]);
+    fn workspace_display_defaults_to_all_when_unset() {
+        let theme = resolve_builtin();
+        assert!(matches!(
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::All
+        ));
     }
 
     #[test]
-    fn spotlight_clock_is_none_with_placeholder_clock_set() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        assert!(matches!(theme.modules().clock.style, ClockStyle::None));
-        assert!(
-            theme.modules().clock.placeholder_clock,
-            "spotlight's entry placeholder stands in for a clock module entirely"
+    fn workspace_display_none_and_current_parse() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "wsnone",
+            r#"
+            name = "N"
+            id = "wsnone"
+            [modules.workspaces]
+            display = "none"
+        "#,
         );
+        let theme = load_named("wsnone").unwrap();
+        assert!(matches!(
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::None
+        ));
+
+        write_theme(
+            &xdg,
+            "wscur",
+            r#"
+            name = "C"
+            id = "wscur"
+            [modules.workspaces]
+            display = "current"
+        "#,
+        );
+        let theme = load_named("wscur").unwrap();
+        assert!(matches!(
+            theme.modules().workspaces.display,
+            WorkspaceDisplay::Current
+        ));
     }
 
     #[test]
-    fn spotlight_accent_is_flat_pink_and_a_palette_token_not_hex() {
-        let theme = load_named(builtin::SPOTLIGHT_ID).expect("spotlight should resolve");
-        let t = theme.tokens();
-        assert_eq!(t.accent_from(), "pink");
-        assert_eq!(t.accent_to(), "pink");
-        let css = theme.css(&crate::Palette::default());
-        assert!(
-            css.contains("@pink"),
-            "accent_from/accent_to must resolve to the @pink palette token, not a hex literal:\n{css}"
+    fn workspace_display_bad_value_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "wsbad",
+            r#"
+            name = "B"
+            id = "wsbad"
+            [modules.workspaces]
+            display = "sometimes"
+        "#,
         );
-        assert!(
-            !css.contains("#e87898"),
-            "the demo's pink hex must never leak into the manifest — pywal theming depends on \
-             this staying a palette token name:\n{css}"
+        let err = load_named("wsbad").unwrap_err();
+        assert!(format!("{err:#}").contains("none|current|all"));
+    }
+
+    // ---- bar.autohide validation (BAR-27 phase 1) --------------------------
+
+    #[test]
+    fn autohide_negative_duration_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "ahbad",
+            r#"
+            name = "A"
+            id = "ahbad"
+            [bar.autohide]
+            enabled = true
+            retuck_delay_ms = -1
+        "#,
         );
+        let err = load_named("ahbad").unwrap_err();
+        assert!(format!("{err:#}").contains("retuck_delay_ms"));
+    }
+
+    #[test]
+    fn autohide_zero_hover_zone_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "ahzero",
+            r#"
+            name = "A"
+            id = "ahzero"
+            [bar.autohide]
+            enabled = true
+            hover_zone_width = 0
+        "#,
+        );
+        let err = load_named("ahzero").unwrap_err();
+        assert!(format!("{err:#}").contains("hover_zone_width"));
     }
 
     // ---- daylight builtin (plan §11 phase 7) -------------------------
@@ -1001,7 +1542,7 @@ mod tests {
         ] {
             assert!(
                 !rules[ns].blur,
-                "compositor.{ns}.blur must be false under daylight — a theme must be able \
+                "compositor.{ns}.blur must be false under daylight: a theme must be able \
                  to DISABLE a compositor rule, not just tune it"
             );
         }
@@ -1010,7 +1551,12 @@ mod tests {
         // No ignore_alpha anywhere: that key only means something to a
         // blurred surface, and setting it on an unblurred one would be a
         // never-consumed value.
-        for ns in ["breadbar", "breadbar-osd", "breadbar-notif", "breadbar-panel"] {
+        for ns in [
+            "breadbar",
+            "breadbar-osd",
+            "breadbar-notif",
+            "breadbar-panel",
+        ] {
             assert!(
                 rules[ns].ignore_alpha.is_none(),
                 "compositor.{ns}.ignore_alpha should be unset when blur is off"
@@ -1040,8 +1586,11 @@ mod tests {
     #[test]
     fn daylight_is_light_and_segmented() {
         let theme = load_named(builtin::DAYLIGHT_ID).expect("daylight should resolve");
-        assert!(theme.tokens().light(), "daylight must set tokens.light = true");
-        assert_eq!(theme.tokens().bar_border(), "segmented");
+        assert!(
+            theme.tokens().light(),
+            "daylight must set tokens.light = true"
+        );
+        assert_eq!(theme.tokens().bar_border(), BarBorder::Segmented);
     }
 
     #[test]
@@ -1062,14 +1611,67 @@ mod tests {
         );
         assert!(
             !css.contains("#2f6d7a") && !css.contains("#c2683c"),
-            "the demo's teal/amber hex must never leak into the manifest — pywal theming \
+            "the demo's teal/amber hex must never leak into the manifest, palette theming \
              depends on this staying palette token names:\n{css}"
         );
     }
 
+    // ---- loaf builtin (declarative-system dogfood) ----------------------
+
+    #[test]
+    fn loaf_extends_glass_workbench_with_no_rust_and_no_css() {
+        let loaf = load_named(builtin::LOAF_ID).expect("loaf should resolve");
+        let gw = load_named(builtin::GLASS_WORKBENCH_ID).expect("gw should resolve");
+
+        assert_eq!(loaf.name(), "Loaf");
+        // Inherited from glass-workbench, untouched by loaf's theme.toml:
+        // which is what makes a glass-workbench <-> loaf switch a *live* one
+        // (breadbar `theme::needs_restart` keys off `modules()`).
+        assert_eq!(loaf.modules(), gw.modules());
+
+        // Its own token overrides.
+        let t = loaf.tokens();
+        assert_eq!(t.bar_border(), BarBorder::Segmented);
+        assert_eq!(t.radius_bar(), 19);
+        assert_eq!(t.accent_from(), "yellow");
+        assert_eq!(loaf.window().height, 38);
+        assert_eq!(
+            loaf.window().margin,
+            Margin {
+                top: 10,
+                left: 18,
+                right: 18,
+                bottom: 0
+            }
+        );
+
+        // `"+"` spliced glass-workbench's centre slot (`["clock"]`) in, then
+        // added the widget entry after it.
+        assert_eq!(loaf.slots().centre, vec!["clock", "widget:right_of_clock"]);
+        assert_eq!(loaf.slots().right, vec!["wifi", "battery", "control"]);
+
+        // Renders from the shared base template, no per-theme CSS file.
+        // Renders from the shared base template (no per-theme CSS file), and
+        // `resolve` already guarantees no `{token}` is left unsubstituted.
+        let css = loaf.css(&crate::Palette::default());
+        assert!(
+            css.contains("border-radius: 19px"),
+            "radius_bar not substituted"
+        );
+        assert!(
+            css.contains("background: @yellow"),
+            "accent_from must stay a palette token"
+        );
+
+        // Discoverable in the picker.
+        assert!(list()
+            .iter()
+            .any(|s| s.id == "loaf" && s.source == ThemeSource::Builtin));
+    }
+
     #[test]
     fn light_token_defaults_false_for_every_other_builtin() {
-        // The other three builtins must render unchanged — this flag must
+        // The other three builtins must render unchanged; this flag must
         // not flip anything unless a theme explicitly opts in.
         for id in [
             builtin::LIQUID_MOTION_ID,
@@ -1077,7 +1679,10 @@ mod tests {
             builtin::SPOTLIGHT_ID,
         ] {
             let theme = load_named(id).unwrap_or_else(|e| panic!("{id} should resolve: {e:#}"));
-            assert!(!theme.tokens().light(), "{id} must default tokens.light to false");
+            assert!(
+                !theme.tokens().light(),
+                "{id} must default tokens.light to false"
+            );
         }
     }
 
@@ -1146,6 +1751,54 @@ mod tests {
     }
 
     #[test]
+    fn extends_slot_splice_marker_inserts_the_inherited_list() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "spbase",
+            r#"
+                id = "spbase"
+                [bar.slots]
+                left  = ["workspaces"]
+                right = ["volume", "wifi", "battery"]
+            "#,
+        );
+        write_theme(
+            &xdg,
+            "spchild",
+            r#"
+                id = "spchild"
+                extends = "spbase"
+                [bar.slots]
+                left  = ["widget:logo", "+"]
+                right = ["+", "widget:tray", "control"]
+            "#,
+        );
+        let theme = load_named("spchild").expect("splice child should resolve");
+        assert_eq!(theme.slots().left, vec!["widget:logo", "workspaces"]);
+        assert_eq!(
+            theme.slots().right,
+            vec!["volume", "wifi", "battery", "widget:tray", "control"]
+        );
+    }
+
+    #[test]
+    fn splice_marker_without_extends_is_a_hard_error() {
+        let xdg = isolated_xdg();
+        write_theme(
+            &xdg,
+            "lonesplice",
+            r#"
+                id = "lonesplice"
+                [bar.slots]
+                left = ["+", "workspaces"]
+            "#,
+        );
+        let err = load_named("lonesplice").expect_err("\"+\" without extends must error");
+        assert!(format!("{err:#}").contains("splice marker"));
+    }
+
+    #[test]
     fn extends_chain_is_capped_at_one_level() {
         let xdg = isolated_xdg();
         write_theme(
@@ -1179,7 +1832,7 @@ mod tests {
         let theme = load_named("child").expect("child theme should resolve");
         // Only one level is honored: child merges with parent (pad=2), and
         // parent's own `extends = "grandparent"` is dropped rather than
-        // chased — the grandparent's pad=1 never applies.
+        // chased; the grandparent's pad=1 never applies.
         assert_eq!(theme.tokens().pad(), 2);
     }
 
@@ -1331,7 +1984,7 @@ mod tests {
     #[test]
     fn malformed_active_theme_falls_back_to_builtin_without_panicking() {
         let xdg = isolated_xdg();
-        // A broken override sitting at the *active* id's own path — this is
+        // A broken override sitting at the *active* id's own path: this is
         // the case resolve_builtin() exists to survive without re-touching
         // the same broken file.
         write_theme(&xdg, "liquid-motion", "this is not [valid toml");
@@ -1462,7 +2115,7 @@ mod tests {
     // isolation but fails `resolve_theme` at runtime (bad slot name, an
     // unrecognized field after a schema change, a broken `extends`), so
     // `load()` silently falls back to liquid-motion. breadbar has no tracing
-    // subscriber, so that fallback's `warn!` goes nowhere — the shell just
+    // subscriber, so that fallback's `warn!` goes nowhere; the shell just
     // quietly ignores `active = "spotlight"`. CI must catch it instead.
 
     #[test]
@@ -1471,7 +2124,12 @@ mod tests {
         for b in builtin::ALL {
             let theme = load_named(b.id)
                 .unwrap_or_else(|e| panic!("builtin '{}' failed to load: {e:#}", b.id));
-            assert_eq!(theme.id(), b.id, "builtin '{}' resolved to a different id", b.id);
+            assert_eq!(
+                theme.id(),
+                b.id,
+                "builtin '{}' resolved to a different id",
+                b.id
+            );
             assert_eq!(theme.name(), b.name, "builtin '{}' name mismatch", b.id);
             assert!(
                 !theme.window().anchors.is_empty(),

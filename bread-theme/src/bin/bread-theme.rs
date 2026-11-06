@@ -1,16 +1,18 @@
-//! `bread-theme` — generates the ecosystem's shared GTK stylesheet from the
-//! current pywal palette and writes it to the canonical path that every bread
-//! GUI loads. Run it at session start, and again after the wallpaper/palette
-//! changes (e.g. from a pywal hook); apps watch the file and recolour live.
+//! `bread-theme`: generates the ecosystem's shared GTK stylesheet from the
+//! current session-global palette and writes it to the canonical path that
+//! every bread GUI loads. Run it at session start, and again after the
+//! wallpaper/palette changes (e.g. from breadpaper); apps watch the file and
+//! recolour live.
 //!
 //!   bread-theme            # same as `generate`
 //!   bread-theme generate   # render + write the shared stylesheet
-//!   bread-theme reload      # re-render from the current pywal palette and
+//!   bread-theme reload      # re-render from the current palette and
 //!                           # signal every running bread GUI to recolour
 //!   bread-theme path       # print the stylesheet path
 //!   bread-theme print      # render to stdout (no write)
 //!   bread-theme generate-output <OUTPUT> --image <PATH> [--shared]
 //!   bread-theme generate-output <OUTPUT> --from-json <PATH> [--shared]
+//!   bread-theme notice     # print third-party notices (NOTICE)
 //!   bread-theme layerrules  # write the active theme's [compositor] table
 //!                           # to ~/.config/hypr/layerrules.json (plan §9)
 
@@ -32,24 +34,32 @@ fn write_and_report(verb: &str) -> ExitCode {
 fn print_help_to(mut w: impl std::io::Write) {
     let _ = write!(
         &mut w,
-        "bread-theme — shared stylesheet generator\n\n\
+        "bread-theme: shared stylesheet generator\n\n\
          USAGE:\n\
          \x20 bread-theme [generate|reload|path|print|layerrules]\n\
          \x20 bread-theme generate-output <OUTPUT> --image <PATH> [--shared]\n\
          \x20 bread-theme generate-output <OUTPUT> --from-json <WAL-OR-PALETTE.json> [--shared]\n\n\
-         generate          render the pywal palette to the shared stylesheet (default)\n\
+         generate          render the current palette to the shared stylesheet (default)\n\
          reload            re-render and signal running bread GUIs to recolour live\n\
          path              print the stylesheet path ({})\n\
          print             render to stdout without writing\n\
          generate-output   write palettes/<OUTPUT>.json and themes/<OUTPUT>.css\n\
-         \x20                --image      isolated `wal -i` (does not touch ~/.cache/wal)\n\
-         \x20                --from-json  wal colors.json or a color1-6 object\n\
+         \x20                --image      extract accents natively from an image (no\n\
+         \x20                             external tool, does not touch any cache files;\n\
+         \x20                             needs this binary built with the `extract`\n\
+         \x20                             feature)\n\
+         \x20                --from-json  wal-shaped colors.json or a color1-6 object\n\
          \x20                --shared     also write the session-global theme.css\n\
          layerrules        write the active shell theme's [compositor] table to\n\
-         \x20                {} —\n\
+         \x20                {}:\n\
          \x20                scripts/ui/rules.lua reads it for per-namespace blur/\n\
          \x20                animation, falling back to its hardcoded rules if this\n\
-         \x20                is missing or malformed",
+         \x20                is missing or malformed\n\
+         describe          print the theme.toml schema as JSON (tokens, enums, modules)\n\
+         diagnose <id>     exit 0 if theme <id> resolves, else print the reason and exit 1\n\
+         notice            print third-party notices (ImageMagick, libjpeg-turbo/IJG code\n\
+         \x20                 ported into bread-palette-extract; only when this binary was\n\
+         \x20                 built with the `extract` feature)",
         bread_theme::shared_css_path().display(),
         bread_theme::layerrules_path().display()
     );
@@ -69,12 +79,15 @@ fn print_help_err() {
 
 fn generate_output_cmd() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(2).collect();
-    if args.iter().any(|a| matches!(a.as_str(), "-h" | "--help" | "help")) {
+    if args
+        .iter()
+        .any(|a| matches!(a.as_str(), "-h" | "--help" | "help"))
+    {
         print_help();
         return ExitCode::SUCCESS;
     }
     if args.is_empty() {
-        // Missing arguments is an error, not a help request — usage goes to
+        // Missing arguments is an error, not a help request; usage goes to
         // stderr.
         print_help_err();
         return ExitCode::FAILURE;
@@ -130,15 +143,7 @@ fn generate_output_cmd() -> ExitCode {
             eprintln!("bread-theme: generate-output needs --image <PATH> or --from-json <PATH>");
             ExitCode::FAILURE
         }
-        (Some(path), None) => {
-            match bread_theme::generate_output(output, std::path::Path::new(path)) {
-                Ok(css) => finish_generate_output(output, css, shared),
-                Err(e) => {
-                    eprintln!("bread-theme: generate-output failed: {e}");
-                    ExitCode::FAILURE
-                }
-            }
-        }
+        (Some(path), None) => generate_output_from_image(output, path, shared),
         (None, Some(path)) => match write_output_from_json(output, path, shared) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -147,6 +152,57 @@ fn generate_output_cmd() -> ExitCode {
             }
         },
     }
+}
+
+/// Third-party notices, so a bare binary install (bakery ships only the
+/// executable) still carries them. Only bread-palette-extract's ported
+/// ImageMagick/libjpeg-turbo code needs this: a build without the `extract`
+/// feature has nothing third-party to disclose.
+#[cfg(feature = "extract")]
+fn print_notice() {
+    print!(
+        "{}\n\n{}\n\n{}",
+        bread_palette_extract::NOTICE,
+        bread_palette_extract::LICENSE_IMAGEMAGICK,
+        bread_palette_extract::LICENSE_LIBJPEG_TURBO,
+    );
+}
+
+#[cfg(not(feature = "extract"))]
+fn print_notice() {
+    println!(
+        "bread-theme: MIT licensed. This build was compiled without the \
+         `extract` feature, so it contains no ImageMagick- or \
+         libjpeg-turbo/IJG-derived code and has nothing third-party to \
+         disclose."
+    );
+}
+
+/// `generate-output <OUTPUT> --image <PATH>`: needs the `extract` feature
+/// (bread-palette-extract, gated for licensing; see `notice`). A build
+/// without it still parses `--image` fine (see [`generate_output_cmd`]);
+/// only the extraction itself is unavailable, with a clear error instead of
+/// a missing-symbol build failure.
+#[cfg(feature = "extract")]
+fn generate_output_from_image(output: &str, path: &str, shared: bool) -> ExitCode {
+    match bread_theme::generate_output(output, std::path::Path::new(path)) {
+        Ok(css) => finish_generate_output(output, css, shared),
+        Err(e) => {
+            eprintln!("bread-theme: generate-output failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(not(feature = "extract"))]
+fn generate_output_from_image(_output: &str, _path: &str, _shared: bool) -> ExitCode {
+    eprintln!(
+        "bread-theme: --image needs this binary to be built with the `extract` \
+         feature (native ImageMagick/libjpeg-turbo palette extraction); this \
+         build was compiled without it. Use --from-json instead, or install a \
+         build with `extract` enabled."
+    );
+    ExitCode::FAILURE
 }
 
 fn write_output_from_json(output: &str, json_path: &str, shared: bool) -> std::io::Result<()> {
@@ -171,6 +227,7 @@ fn write_output_from_json(output: &str, json_path: &str, shared: bool) -> std::i
     Ok(())
 }
 
+#[cfg(feature = "extract")]
 fn finish_generate_output(output: &str, css: std::path::PathBuf, shared: bool) -> ExitCode {
     eprintln!("bread-theme: wrote {}", css.display());
     if shared {
@@ -215,19 +272,47 @@ fn main() -> ExitCode {
         }
         "generate" => write_and_report("wrote"),
         // `reload` is `generate` from the caller's view, but it's the verb to use
-        // after changing pywal colours: rewriting the file (atomic rename) trips
+        // after changing the palette: rewriting the file (atomic rename) trips
         // the file monitor in every running bread GUI, so they all re-read the
-        // palette and recolour live — shared widgets *and* each app's own rules.
+        // palette and recolour live: shared widgets *and* each app's own rules.
         "reload" => write_and_report("reloaded"),
         "generate-output" => generate_output_cmd(),
         "layerrules" => layerrules_cmd(),
+        // Machine-readable `theme.toml` schema: token fields with types and
+        // defaults, the closed enum vocabularies, the known slot modules. For
+        // a theme editor (bos-settings).
+        "notice" => {
+            print_notice();
+            ExitCode::SUCCESS
+        }
+        "describe" => {
+            println!("{}", bread_theme::shell::describe_json());
+            ExitCode::SUCCESS
+        }
+        // `diagnose <id>`: exit 0 and print nothing if the theme resolves;
+        // exit 1 and print the one-line reason if it doesn't (instead of
+        // `load()`'s silent fall-back to the builtin).
+        "diagnose" => match std::env::args().nth(2) {
+            Some(id) => match bread_theme::shell::diagnose(&id) {
+                None => ExitCode::SUCCESS,
+                Some(reason) => {
+                    eprintln!("{reason}");
+                    ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("bread-theme: diagnose needs a theme id");
+                ExitCode::FAILURE
+            }
+        },
         "-h" | "--help" | "help" => {
             print_help();
             ExitCode::SUCCESS
         }
         other => {
             eprintln!(
-                "bread-theme: unknown command '{other}' (try generate|reload|path|print|generate-output|layerrules)"
+                "bread-theme: unknown command '{other}' \
+                 (try generate|reload|path|print|generate-output|layerrules|describe|diagnose)"
             );
             ExitCode::FAILURE
         }
