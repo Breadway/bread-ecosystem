@@ -122,7 +122,14 @@ print(d.get('data_archive', ''))
     for bin_path in "${version_dir}"/*; do
         [[ "${bin_path}" == *.sha256 ]]  && continue
         [[ "${bin_path}" == *.toml ]]    && continue
-        [[ "${bin_path}" == *.service ]] && continue
+        # Systemd units ship next to the binaries but are not binaries. Skip
+        # every unit type, not just .service: breadbug-status.timer was being
+        # collected as an executable artifact with no .sha256 beside it, so
+        # the index published it with an empty checksum and bakery refused to
+        # install the whole package (ECO-87). The whole set stays together so
+        # the next unit type cannot repeat it: service, socket, device, mount,
+        # automount, swap, target, path, timer, slice and scope.
+        [[ "${bin_path}" =~ \.(service|socket|device|mount|automount|swap|target|path|timer|slice|scope)$ ]] && continue
         [[ "${bin_path}" == *.css ]]     && continue
         [[ "${bin_path}" == *.txt ]]     && continue
         [[ "${bin_path}" == *.minisig ]] && continue
