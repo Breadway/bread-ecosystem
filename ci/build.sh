@@ -100,9 +100,10 @@ fi
 
 # Serialize builds per product. Two jobs for the same product (a dev-release
 # and a check, say) share one target directory: while one job's cargo is
-# rewriting `incremental/`, the other's final `cp -a /cargo-target/. target/`
-# fails with "cannot stat '/cargo-target/./debug/incremental/...'" (seen on
-# breadcast). The lock is held until this script exits, since fd 9 stays open
+# rewriting `incremental/`, the other's final copy out of /cargo-target
+# (copy-artifacts.sh; it used to copy the whole cache) fails with "cannot
+# stat '/cargo-target/./debug/incremental/...'" (seen on breadcast). The lock
+# is held until this script exits, since fd 9 stays open
 # through the docker build and run. Different products never contend, and
 # neither do repos that build on different runners.
 #
@@ -169,12 +170,15 @@ docker run --rm \
     -e HOME=/tmp \
     -e CARGO_HOME=/cargo-home \
     -e CARGO_TARGET_DIR=/cargo-target \
+    -e BREAD_CI_COPY_TARGET="${BREAD_CI_COPY_TARGET:-artifacts}" \
+    -v "${CI_DIR}/copy-artifacts.sh:/bread-ci/copy-artifacts.sh:ro" \
     "bread-ci:${PRODUCT}" \
     bash -c '
         set -euo pipefail
         "$@"
-        mkdir -p "/workspace/'"${REPO_NAME}"'/target"
-        cp -a /cargo-target/. "/workspace/'"${REPO_NAME}"'/target/"
+        # Only the artifacts later steps read, not the whole cache: see
+        # copy-artifacts.sh.
+        bash /bread-ci/copy-artifacts.sh /cargo-target "/workspace/'"${REPO_NAME}"'/target"
     ' bash "$@"
 
 # Keep the lease fresh through the artifact copyback above. A release workflow
