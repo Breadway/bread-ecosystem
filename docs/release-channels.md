@@ -67,8 +67,8 @@ not *which branch you push to*:
 
 | Track  | Index URL | Artifact root | Trigger |
 |---|---|---|---|
-| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `vX.Y.Z` |
-| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `vX.Y.Z-rc.N` |
+| stable | `dl.breadway.dev/index.json` | `/srv/breadway-dl/<pkg>/<ver>/` | push tag `vX.Y.Z`, only once the beta gate passes |
+| beta | `dl.breadway.dev/beta/index.json` | `/srv/breadway-dl/beta/<pkg>/<ver>/` | push tag `vX.Y.Z-rc.N` (mandatory stage) |
 | dev | `dl.breadway.dev/dev/index.json` | `/srv/breadway-dl/dev/<pkg>/<ver>/` | push to branch `main` |
 
 `scripts/gen-index.sh` takes a `TRACK` env var (default `stable`) to select
@@ -89,17 +89,66 @@ the tag itself pointed at fresh code. Collapsing everything onto one
 branch removes the class of bug entirely: there's nothing left to fall
 out of sync.
 
-**The full lifecycle** (see also `CONTRIBUTING.md`): day-to-day work lands
-on `feature/<name>` or `fix/<issue>` branches, merged into `main`. `main`
-publishes a fresh dev-track build on every push; this is the "test for a
-while, fix forward with another push" loop. When you want to stabilize
-before a real release, tag a release candidate directly off whatever
-commit on `main` you're happy with: `git tag vX.Y.Z-rc.1 && git push
-origin vX.Y.Z-rc.1` (both remotes). "Freezing" is just pausing pushes to
-`main` while the RC gets tested, not a branch operation; cut `-rc.2`,
-`-rc.3`, etc. for further fixes without needing to touch any branch. Once
-an RC has gone without issues, tag the real release the same way, dropping
-the `-rc.N` suffix (`vX.Y.Z`): that's what fires `release.yml`.
+**The promotion ladder** (see also `CONTRIBUTING.md`): day-to-day work
+lands on `feature/<name>` or `fix/<issue>` branches, merged into `main`.
+Every push to `main` publishes a fresh dev-track build. That is the "test
+for a while, fix forward with another push" loop, not a release.
+
+A stable release is a three-stage promotion. No stage can be skipped:
+
+1. **dev**. The change is merged to `main` and has a dev build. Switch to
+   it with `bakery track set dev && bakery update --all` if you want it
+   before a release.
+2. **beta**. Tag an RC on the exact `main` commit you intend to ship:
+   `git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1` (both remotes).
+   `rc-release.yml` publishes it to `dl.breadway.dev/beta`. Install it with
+   `bakery track set beta && bakery update --all`, run it as the real
+   build for at least **3 days**, and fix problems by cutting `-rc.2`,
+   `-rc.3`, and so on from the new commit. Do not tag stable while an RC
+   is still under test.
+3. **stable**. Tag `vX.Y.Z` on the **same commit** as the RC that finished
+   soaking:
+   `git tag vX.Y.Z <commit> && git push origin vX.Y.Z`. That is what fires
+   `release.yml` and republishes the tested source state to the stable
+   track.
+
+"Freezing" is pausing pushes to `main` while an RC is tested, not a branch
+operation. If a fix lands after the RC, it needs a new RC. Stable is never
+allowed to contain code that beta never saw.
+
+### Beta promotion gate (enforced)
+
+Every bakery-channel `release.yml` runs
+`scripts/check-promotion.sh REPO PKG TAG COMMIT` after checkout and before
+it builds anything. The gate requires both:
+
+- a `vX.Y.Z-rc.N` tag pointing at the exact commit being tagged stable, and
+- a beta artifact directory for that RC at
+  `/srv/breadway-dl/beta/<pkg>/<rc-version>/`, published at least 3 days
+  ago, containing `bakery.toml` and at least one checksummed binary.
+
+If either is missing, the release fails before a single artifact is built
+or published, and names the RC command to run next. There is no bypass
+flag. A release candidate that only exists as a tag (never published to
+beta), or a stable tag cut from a newer commit than its RC, is rejected.
+
+The gate is time-based on purpose, but a timestamp is not the whole test:
+re-running an RC publish resets that version directory's time, so a rebuilt
+RC starts its soak over. The 3 day floor is the minimum, not a target;
+letting an RC sit until the next release is actually needed is normal.
+
+**Hotfixes**: there is no emergency shortcut through the gate. Cut
+`vX.Y.Z-rc.N` from the fix, publish it to beta, and promote after the soak.
+If a situation genuinely cannot wait 3 days, that is an explicit process
+decision for a human to make and record, not something CI should allow
+silently.
+
+**What counts as testing**: the beta stage exists so the build runs on a
+real machine doing real work, not so `cargo test` has another audience.
+Install the RC on the machine that would use the stable release, exercise
+the changed behavior, and file anything broken as a breadboard issue
+against the repo. An RC that was never installed has not been through beta,
+even if 3 days passed.
 
 ## Stale dev-track warnings
 
@@ -160,14 +209,40 @@ workspace version cannot publish a dev build that sorts *older* than
 installed bakery; that fallback is not permission to leave the workspace
 version stale.
 
-Adding dev/beta to a bakery-channel repo: copy `dev-bakery.yml` /
-`rc-bakery.yml` (or `bread`'s `dev-release.yml` / `rc-release.yml` if the
-repo isn't part of this monorepo) from `bread-ecosystem`/`bread`, and swap
-the repo/binary names the same way the checklist below describes for
-`release.yml`. No branch setup needed beyond the repo's single `main`. Not
-every bakery-channel repo needs beta/dev on day one; `gen-index.sh`
-silently skips any product with no release dir under a given track's tree,
-same as it already does for an unreleased product on stable.
+Adding a bakery-channel repo: copy `dev-bakery.yml` / `rc-bakery.yml` (or
+`bread`'s `dev-release.yml` / `rc-release.yml` if the repo isn't part of
+this monorepo) from `bread-ecosystem`/`bread`, and swap the repo/binary
+names the same way the checklist below describes for `release.yml`. No
+branch setup needed beyond the repo's single `main`. Every bakery-channel
+repo needs all three workflows, not just stable: without `rc-release.yml`
+the repo can never satisfy the promotion gate, so it can never publish a
+stable release. `gen-index.sh` silently skips a product with no release dir
+under a given track's tree, but the gate is what makes that skip visible at
+tag time instead of leaving a hole in the stable index.
+
+`release.yml` must call the gate after checkout and before build:
+
+```yaml
+      - name: check promotion through beta
+        env:
+          REPO: ${{ github.repository }}
+          PKG: <package-name>
+        run: |
+          set -euo pipefail
+          COMMIT="$(git -C src rev-parse HEAD)"
+          ECO_DIR="$(mktemp -d /tmp/bread-promotion-XXXXXX)"
+          trap 'rm -rf -- "${ECO_DIR}"' EXIT
+          git clone --depth 1 \
+            https://git.breadway.dev/Breadway/bread-ecosystem.git "${ECO_DIR}"
+          bash "${ECO_DIR}/scripts/check-promotion.sh" \
+            "${REPO}" "${PKG}" "${GITHUB_REF_NAME}" "${COMMIT}"
+```
+
+(`bread` checks out into `$BREAD_CI_JOB_DIR/src`, and `bread-ecosystem`
+itself runs `src/scripts/check-promotion.sh` from its own checkout.)
+
+The gate script has a regression suite: `bash
+scripts/test-check-promotion.sh`.
 
 Client side: `bakery track show` / `bakery track set <stable|beta|dev>`
 remembers a global track preference (`~/.local/state/bakery/installed.json`)

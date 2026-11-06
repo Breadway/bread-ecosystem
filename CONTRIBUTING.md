@@ -44,10 +44,16 @@ just **tags** on `main`, not branches that need to be kept in sync:
    candidate: `git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1` (push to
    both remotes). That tag alone triggers a beta-track build:
    "freezing" is just pausing pushes to `main` while you test it, not a
-   branch operation. Cut `-rc.2`, `-rc.3`, etc. for further fixes.
-3. Once an RC has gone without issues, tag the real release:
-   `git tag vX.Y.Z && git push origin vX.Y.Z`: that's what triggers the
-   signed stable release build.
+   branch operation. Install the beta build (`bakery track set beta &&
+   bakery update --all`) and use it for at least 3 days. Cut `-rc.2`,
+   `-rc.3`, etc. for further fixes from the new commit.
+3. Once an RC has finished soaking with no open issues, tag the real
+   release on the **same commit** as that RC:
+   `git tag vX.Y.Z <rc-commit> && git push origin vX.Y.Z`: that's what
+   triggers the signed stable release build. Its first step is the beta
+   promotion gate, which rejects a stable tag that has no RC on the same
+   commit or whose RC was published to beta less than 3 days earlier. See
+   `docs/release-channels.md` ("Beta promotion gate").
 
 **Version honesty**: bakery's compiled `--version` is
 `[workspace.package] version` in the root `Cargo.toml`. The bakery

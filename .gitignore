@@ -18,3 +18,7 @@ graphify-out/
 .cargo/
 .dev-deps/
 dev-deps.lock.txt
+
+# Python bytecode from ci/ helper tests.
+__pycache__/
+*.pyc
