@@ -24,6 +24,11 @@ printf 'fake-binary-content' > "${PKG_VER_DIR}/fakepkg-x86_64"
 sha256sum "${PKG_VER_DIR}/fakepkg-x86_64" | awk '{print $1}' \
     > "${PKG_VER_DIR}/fakepkg-x86_64.sha256"
 printf '# example config\n' > "${PKG_VER_DIR}/fakepkg.example.toml"
+printf 'fake LICENSE content\n' > "${PKG_VER_DIR}/LICENSE"
+# LICENSE and the config example have no .sha256 sidecar, so exactly one
+# binary may survive into the index: regression for the breadram dev-index
+# leak where non-binary sidecars ended up listed as "binaries" with empty
+# checksums, breaking `bakery install <pkg>` for every client
 
 # For each unit type, ship one unit declared under [[service]] and one that is
 # not declared at all. Neither may be published as a binary: an undeclared
@@ -155,6 +160,10 @@ done
 check "binaries are exactly the real binary" \
     "fakepkg-x86_64" \
     "$(jq -r '.packages.fakepkg.binaries | map(.name) | join(",")' "${OUT}")"
+
+check "binaries[0].sha256" \
+    "$(sha256sum "${PKG_VER_DIR}/fakepkg-x86_64" | awk '{print $1}')" \
+    "$(jq -r '.packages.fakepkg.binaries[0].sha256' "${OUT}")"
 
 check "binary count" \
     "1" \
