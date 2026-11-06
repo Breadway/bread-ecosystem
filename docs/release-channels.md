@@ -314,9 +314,33 @@ declared anywhere in the app's Cargo.toml manifests, it:
 2. Writes a `.cargo/config.toml` `[patch]` block pointing each affected
    crate at its clone.
 3. Runs `cargo update -p <crate>` for the patched crates so Cargo.lock
-   matches.
+   matches. It does this in the app root and in every nested cargo
+   workspace under it that has its own `Cargo.lock` (for example
+   `crates/<tool>/Cargo.lock`), because each workspace has its own lock
+   and updating only the root would leave a nested workspace building the
+   pinned tag.
 4. Records each dependency repo's resolved SHA to `dev-deps.lock.txt`
    (printed and written to the app root) so a dev build is reproducible.
+
+Cargo only applies a `[patch]` entry when the patched version is
+semver-compatible with the version the product manifest requires. For 0.x
+versions a minor bump is a breaking change, so a product that pins
+`version = "0.7.2"` plus `tag = "v0.7.2"` keeps resolving that tag even
+though the patch is 0.8.1, and Cargo reports:
+
+```
+warning: patch `bread-utils v0.8.1 (...)` was not used in the crate graph
+```
+
+The script treats that warning as a hard failure (it names the crate, the
+manifest requirement and tag, the patched version, and the lockfile entry
+that Cargo kept) instead of exiting 0 and letting the build test the tag.
+The manual workaround is to relax the manifest requirement so it accepts
+the patched version: drop the crate's `version` key (a tag pin alone is
+compatible) or raise it to the patched version, then rerun the script.
+`cargo update -p <crate> --precise <version>` does not help here: for a
+git dependency Cargo interprets the precise version as a git revision and
+fails, because the manifest requirement still excludes the patch.
 
 A clone directory the script created itself is marked and refreshed in
 place on a later run (`git fetch --depth 1 origin main && git reset --hard

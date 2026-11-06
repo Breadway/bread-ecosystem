@@ -22,7 +22,10 @@
 #   4. Writes a CI-owned `.cargo/config.toml` at the app root with a
 #      `[patch]` block per repo, pointing each crate at its clone's path.
 #   5. Runs `cargo update -p <crate>` for every patched crate so
-#      Cargo.lock matches the new resolution.
+#      Cargo.lock matches the new resolution, in the app root and in every
+#      nested cargo workspace that has its own Cargo.lock. Fails loudly if
+#      Cargo reports that a patch was not used instead of leaving a tree
+#      that silently builds the tag.
 #   6. Prints and writes a dependency-SHA record (default
 #      "dev-deps.lock.txt") for reproducibility.
 #
@@ -322,12 +325,206 @@ sed 's/^/    /' "${CONFIG_FILE}"
 
 # --- 4. cargo update the patched packages so Cargo.lock matches ------------
 
-UPDATE_ARGS=()
-for crate in "${PATCHED_CRATES[@]}"; do
-    UPDATE_ARGS+=(-p "${crate}")
-done
+# Cargo only applies a `[patch]` entry when the patched version is
+# semver-compatible with the version the manifest requires. For 0.x versions
+# a minor bump is a breaking change, so a product pinned to 0.7.x with an
+# explicit `version = "0.7.x"` keeps resolving the tag even though the patch
+# is 0.8.x. `cargo update -p` then succeeds, prints only a warning, and the
+# build silently tests the tag instead of bread-ecosystem main. If Cargo
+# says the patch was not used, fail before the caller builds.
+#
+# A product may also have more than one cargo workspace under its root (the
+# main checkout plus, for example, crates/<tool> with its own Cargo.lock).
+# Cargo discovers this script's .cargo/config.toml from any of them by
+# walking up the tree, but each workspace has its own lock: updating only
+# the root leaves a nested workspace locked to the old tag. Update every
+# lock found under the root.
 
-echo "==> dev-deps.sh: cargo update ${UPDATE_ARGS[*]}"
-(cd "${APP_ROOT}" && cargo update "${UPDATE_ARGS[@]}")
+mapfile -t LOCK_DIRS < <(
+    {
+        echo "${APP_ROOT}"
+        find "${APP_ROOT}" -name Cargo.lock \
+            -not -path '*/target/*' \
+            -not -path '*/.dev-deps/*' \
+            -not -path '*/.git/*' \
+            -exec dirname {} \;
+    } | sort -u
+)
+
+report_unused_patches() {
+    local err_file="$1"
+    local lock_dir="$2"
+    local msg
+
+    while IFS= read -r msg; do
+        [ -n "${msg}" ] && echo "::error::dev-deps.sh: ${msg}" >&2
+    done < <(python3 - "${err_file}" "${lock_dir}" "${DEV_DEPS_HOST}" "${MANIFESTS[@]}" <<'PYEOF'
+import os
+import re
+import sys
+import tomllib
+
+err_file, lock_dir, host = sys.argv[1:4]
+manifests = sys.argv[4:]
+
+with open(err_file, "r", encoding="utf-8", errors="replace") as f:
+    stderr_text = f.read()
+
+warnings = re.findall(
+    r"warning: patch `([^`]+) v([^` ]+) \((.*?)\)` was not used in the crate graph",
+    stderr_text,
+)
+if not warnings:
+    sys.exit(0)
+
+
+def dep_tables(doc):
+    tables = []
+    for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+        if key in doc:
+            tables.append(doc[key])
+    for tgt in doc.get("target", {}).values():
+        for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+            if key in tgt:
+                tables.append(tgt[key])
+    if "workspace" in doc and "dependencies" in doc["workspace"]:
+        tables.append(doc["workspace"]["dependencies"])
+    return tables
+
+
+declared = {}
+for manifest in manifests:
+    try:
+        with open(manifest, "rb") as f:
+            doc = tomllib.load(f)
+    except Exception:
+        continue
+    for table in dep_tables(doc):
+        for name, spec in table.items():
+            if not isinstance(spec, dict):
+                continue
+            git = spec.get("git", "")
+            if not isinstance(git, str) or host not in git:
+                continue
+            parts = []
+            if "version" in spec:
+                parts.append(f'a version requirement of "{spec["version"]}"')
+            if "tag" in spec:
+                parts.append(f'tag {spec["tag"]}')
+            if "rev" in spec:
+                parts.append(f'rev {spec["rev"]}')
+            if "branch" in spec:
+                parts.append(f'branch {spec["branch"]}')
+            if not parts:
+                parts.append("no version or tag requirement")
+            declared.setdefault(name, [])
+            entry = (manifest, ", ".join(parts))
+            if entry not in declared[name]:
+                declared[name].append(entry)
+
+locked = []
+lock_path = os.path.join(lock_dir, "Cargo.lock")
+if os.path.exists(lock_path):
+    try:
+        with open(lock_path, "rb") as f:
+            lock_doc = tomllib.load(f)
+        for pkg in lock_doc.get("package", []):
+            if str(pkg.get("source", "")).startswith("git+"):
+                locked.append(pkg)
+    except Exception:
+        pass
+
+seen = set()
+for name, patched_version, patch_path in warnings:
+    key = (name, patched_version)
+    if key in seen:
+        continue
+    seen.add(key)
+    print(
+        f"Cargo did not use the patch for {name} {patched_version} ({patch_path})."
+    )
+    for manifest, description in declared.get(name, []):
+        print(f"{manifest} declares {name} with {description}.")
+    matching = [pkg for pkg in locked if pkg.get("name") == name]
+    for pkg in matching:
+        print(
+            f"{lock_path} still pins {name} {pkg.get('version')} "
+            f"from {pkg.get('source')}."
+        )
+    if not declared.get(name) and not matching:
+        print(
+            f"no manifest under {os.path.dirname(err_file)} declares {name}; "
+            "the patch may be stale or the crate may have moved."
+        )
+PYEOF
+    )
+
+    echo "::error::dev-deps.sh: refusing to continue with a silently unpatched tree: the build would test the pinned tag, not bread-ecosystem main." >&2
+    echo "::error::dev-deps.sh: manual workaround: in the product manifest, drop the crate's \"version\" requirement or raise it to accept the patched version, then rerun this script. Raising only the Cargo.lock with cargo update is not enough because Cargo applies a patch only when it is semver-compatible with the manifest requirement." >&2
+    exit 1
+}
+
+run_cargo_update() {
+    local lock_dir="$1"
+    shift
+    local -a args=()
+    local crate out err rc
+
+    for crate in "$@"; do
+        args+=(-p "${crate}")
+    done
+
+    out="$(mktemp)"
+    err="$(mktemp)"
+
+    echo "==> dev-deps.sh: cargo update ${args[*]} (workspace ${lock_dir})"
+    set +e
+    (cd "${lock_dir}" && cargo update "${args[@]}") >"${out}" 2>"${err}"
+    rc=$?
+    set -e
+
+    # Never swallow Cargo's own diagnostics: they are how the unused-patch
+    # warning reaches the operator.
+    cat "${out}"
+    cat "${err}" >&2
+
+    if [ "${rc}" -ne 0 ]; then
+        echo "::error::dev-deps.sh: cargo update failed in ${lock_dir} (exit ${rc})" >&2
+        rm -f "${out}" "${err}"
+        exit 1
+    fi
+
+    if grep -qF 'was not used in the crate graph' "${err}"; then
+        report_unused_patches "${err}" "${lock_dir}"
+        rm -f "${out}" "${err}"
+        exit 1
+    fi
+
+    rm -f "${out}" "${err}"
+}
+
+# Deduplicate crate names so a crate declared in more than one manifest does
+# not produce repeated -p arguments.
+mapfile -t PATCHED_CRATES < <(printf '%s\n' "${PATCHED_CRATES[@]}" | sort -u)
+
+for lock_dir in "${LOCK_DIRS[@]}"; do
+    if [ "${lock_dir}" = "${APP_ROOT}" ]; then
+        run_cargo_update "${lock_dir}" "${PATCHED_CRATES[@]}"
+        continue
+    fi
+
+    # A nested workspace only needs the crates it actually resolves.
+    WORKSPACE_CRATES=()
+    for crate in "${PATCHED_CRATES[@]}"; do
+        if grep -qF "name = \"${crate}\"" "${lock_dir}/Cargo.lock"; then
+            WORKSPACE_CRATES+=("${crate}")
+        fi
+    done
+    if [ "${#WORKSPACE_CRATES[@]}" -eq 0 ]; then
+        echo "==> dev-deps.sh: no patched crates in ${lock_dir}/Cargo.lock; nothing to update there"
+        continue
+    fi
+    run_cargo_update "${lock_dir}" "${WORKSPACE_CRATES[@]}"
+done
 
 echo "==> dev-deps.sh: done. Build without --locked to pick up the patched deps."
