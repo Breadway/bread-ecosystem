@@ -179,14 +179,20 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("elf-fifo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let fifo = dir.join("pipe");
-        let made = std::process::Command::new("mkfifo").arg(&fifo).status().map(|s| s.success()).unwrap_or(false);
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
         if made {
             let (tx, rx) = std::sync::mpsc::channel();
             let p = fifo.clone();
             std::thread::spawn(move || {
                 let _ = tx.send(read(&p));
             });
-            let got = rx.recv_timeout(std::time::Duration::from_secs(2)).expect("read() on a FIFO must not block");
+            let got = rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .expect("read() on a FIFO must not block");
             assert!(got.is_none());
         }
         assert!(read(Path::new("/dev/null")).is_none());
