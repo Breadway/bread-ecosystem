@@ -21,8 +21,8 @@
 #      repos and workspace layouts resolve correctly).
 #   4. Writes a CI-owned `.cargo/config.toml` at the app root with a
 #      `[patch]` block per repo, pointing each crate at its clone's path.
-#   5. Runs `cargo update -p <crate>` for every patched crate so
-#      Cargo.lock matches the new resolution, in the app root and in every
+#   5. Runs `cargo update -p <crate>` for every patched crate each
+#      Cargo.lock under the root resolves, in the app root and in every
 #      nested cargo workspace that has its own Cargo.lock. Fails loudly if
 #      Cargo reports that a patch was not used instead of leaving a tree
 #      that silently builds the tag.
@@ -507,16 +507,22 @@ run_cargo_update() {
 # not produce repeated -p arguments.
 mapfile -t PATCHED_CRATES < <(printf '%s\n' "${PATCHED_CRATES[@]}" | sort -u)
 
-for lock_dir in "${LOCK_DIRS[@]}"; do
-    if [ "${lock_dir}" = "${APP_ROOT}" ]; then
-        run_cargo_update "${lock_dir}" "${PATCHED_CRATES[@]}"
-        continue
-    fi
+# A crate can be declared only in a nested workspace (or only in a manifest
+# whose target is not part of the root workspace), so the root lock may not
+# resolve it at all. `cargo update -p` fails with "did not match any
+# packages" in that case, which used to abort the script before any nested
+# lock was updated. Every lock, root included, only needs the crates its own
+# Cargo.lock actually resolves.
+lock_resolves_crate() {
+    local lock_file="$1"
+    local crate="$2"
+    [ -f "${lock_file}" ] && grep -qF "name = \"${crate}\"" "${lock_file}"
+}
 
-    # A nested workspace only needs the crates it actually resolves.
+for lock_dir in "${LOCK_DIRS[@]}"; do
     WORKSPACE_CRATES=()
     for crate in "${PATCHED_CRATES[@]}"; do
-        if grep -qF "name = \"${crate}\"" "${lock_dir}/Cargo.lock"; then
+        if lock_resolves_crate "${lock_dir}/Cargo.lock" "${crate}"; then
             WORKSPACE_CRATES+=("${crate}")
         fi
     done

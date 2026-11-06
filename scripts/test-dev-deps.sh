@@ -14,6 +14,10 @@
 # workspace under the product root, not just the root lock, because a nested
 # workspace with its own Cargo.lock would otherwise stay tag-pinned.
 #
+# It also covers the root-lock filter (ECO-108): when a patched crate is
+# declared only in a nested workspace, the root Cargo.lock does not resolve
+# it and `cargo update -p` at the root must not be asked for it.
+#
 # No network access is needed: git URL rewriting maps the fake
 # git.breadway.dev host to a local repository, and the test uses an isolated
 # CARGO_HOME.
@@ -110,6 +114,22 @@ edition = "2021"
 bread-utils = ${dep_line}
 EOF
     echo 'fn main() { println!("{}", bread_utils::util()); }' >"${dir}/src/main.rs"
+}
+
+# write_empty_product <dir>: a root package with no dependencies at all, so
+# its Cargo.lock resolves none of the patched crates.
+write_empty_product() {
+    local dir="$1"
+    mkdir -p "${dir}/src"
+    cat >"${dir}/Cargo.toml" <<EOF
+[package]
+name = "product-root"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+EOF
+    echo 'fn main() {}' >"${dir}/src/main.rs"
 }
 
 generate_lock() {
@@ -244,5 +264,28 @@ grep -qF "crates/nested/Cargo.lock" "${WORK}/case4.log" \
     || fail "case4: error does not identify the nested lock: $(cat "${WORK}/case4.log")"
 assert_lock_is_pinned "${CASE4}/crates/nested" "case4 nested after"
 pass "nested workspace with an incompatible pin: script fails loudly and leaves the lock unpromoted"
+
+# --- 5. Patched crate only in a nested workspace: root update is filtered ---
+CASE5="${WORK}/case5"
+write_empty_product "${CASE5}"
+write_product "${CASE5}/crates/nested" "{ git = \"${DEP_URL}\", tag = \"${PINNED_TAG}\" }"
+generate_lock "${CASE5}"
+generate_lock "${CASE5}/crates/nested"
+if grep -qF 'name = "bread-utils"' "${CASE5}/Cargo.lock"; then
+    fail "case5: fixture root lock unexpectedly resolves bread-utils"
+fi
+assert_lock_is_pinned "${CASE5}/crates/nested" "case5 nested before"
+CASE5_RC="$(run_dev_deps "${CASE5}" "${WORK}/case5.log")"
+[ "${CASE5_RC}" -eq 0 ] || fail "case5: dev-deps.sh exited ${CASE5_RC}: $(cat "${WORK}/case5.log")"
+if grep -qF "cargo update -p bread-utils (workspace ${CASE5})" "${WORK}/case5.log"; then
+    fail "case5: root cargo update was asked for a crate its lock does not resolve: $(cat "${WORK}/case5.log")"
+fi
+grep -qF "cargo update -p bread-utils (workspace ${CASE5}/crates/nested)" "${WORK}/case5.log" \
+    || fail "case5: nested workspace was not updated: $(cat "${WORK}/case5.log")"
+assert_lock_is_patched "${CASE5}/crates/nested" "case5 nested after"
+if grep -qF 'name = "bread-utils"' "${CASE5}/Cargo.lock"; then
+    fail "case5: root lock gained a bread-utils package it did not have"
+fi
+pass "nested-only crate: root update is filtered to what its lock resolves and the nested lock moves to the patch"
 
 echo "All dev-deps.sh regression tests passed."
