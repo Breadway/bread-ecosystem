@@ -64,30 +64,65 @@ fi
 # Persistent cache directories (see the --user note below for why these are
 # host bind mounts). Created before anything else because the per-product
 # build lock lives in the same directory.
+#
+# Two cache layers, deliberately separate:
+#   - CACHE_ROOT holds the fetched cargo registry/git caches and the legacy
+#     target directories. BREAD_CI_CACHE_ROOT controls it and defaults to
+#     $HOME/.cache/bread-ci.
+#   - BREAD_CI_HOST_CACHE, when set, is the generated-target store. It must be
+#     an owned directory on the filesystem identified by
+#     BREAD_CI_HOST_CACHE_UUID; a missing or different mount fails closed
+#     instead of writing to the root disk. This is independent of the pinned
+#     source checkout cache that product CI may also call BREAD_CI_CACHE_ROOT.
+# Do not point the two variables at the same directory.
 CACHE_ROOT="${BREAD_CI_CACHE_ROOT:-${HOME:-/tmp}/.cache/bread-ci}"
 mkdir -p \
     "${CACHE_ROOT}/cargo-registry" \
-    "${CACHE_ROOT}/cargo-git" \
-    "${CACHE_ROOT}/target-${PRODUCT}"
+    "${CACHE_ROOT}/cargo-git"
+
+HOST_CACHE="${BREAD_CI_HOST_CACHE:-}"
+if [ -n "${HOST_CACHE}" ]; then
+    if [ -z "${BREAD_CI_HOST_CACHE_UUID:-}" ]; then
+        echo "build.sh: BREAD_CI_HOST_CACHE is set but BREAD_CI_HOST_CACHE_UUID is not; refusing an unverified cache root" >&2
+        exit 1
+    fi
+    python3 "${CI_DIR}/host_cache.py" check --root "${HOST_CACHE}" --uuid "${BREAD_CI_HOST_CACHE_UUID}"
+    HOST_KEY="$(python3 "${CI_DIR}/host_cache.py" key "${PRODUCT}")"
+    TARGET_DIR="${HOST_CACHE}/targets/${HOST_KEY}"
+    LOCK_FILE="${HOST_CACHE}/state/${HOST_KEY}.lock"
+    mkdir -p "${TARGET_DIR}" "$(dirname "${LOCK_FILE}")"
+else
+    HOST_KEY=""
+    TARGET_DIR="${CACHE_ROOT}/target-${PRODUCT}"
+    LOCK_FILE="${TARGET_DIR}.lock"
+    mkdir -p "${TARGET_DIR}"
+fi
 
 # Serialize builds per product. Two jobs for the same product (a dev-release
-# and a check, say) share `target-${PRODUCT}`: while one job's cargo is
+# and a check, say) share one target directory: while one job's cargo is
 # rewriting `incremental/`, the other's final `cp -a /cargo-target/. target/`
 # fails with "cannot stat '/cargo-target/./debug/incremental/...'" (seen on
 # breadcast). The lock is held until this script exits, since fd 9 stays open
 # through the docker build and run. Different products never contend, and
 # neither do repos that build on different runners.
+#
+# Under BREAD_CI_HOST_CACHE the same lock file is the retention lease. The
+# cleanup helper checks it with flock -n, so an active build can never be
+# deleted, and the record below is refreshed after the artifact copyback.
 if ! command -v flock >/dev/null 2>&1; then
     echo "build.sh: flock is required to protect the shared ${PRODUCT} target cache" >&2
     exit 1
 fi
-exec 9>"${CACHE_ROOT}/target-${PRODUCT}.lock"
+exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
     echo "build.sh: another ${PRODUCT} build is running; waiting for its lock..." >&2
     flock -w "${BREAD_CI_LOCK_WAIT:-3600}" 9 || {
         echo "build.sh: timed out waiting for the ${PRODUCT} build lock" >&2
         exit 1
     }
+fi
+if [ -n "${HOST_CACHE}" ]; then
+    python3 "${CI_DIR}/host_cache.py" touch "${HOST_CACHE}" "${HOST_KEY}" "${TARGET_DIR}"
 fi
 
 docker build \
@@ -113,7 +148,9 @@ docker build \
 #     directories under CACHE_ROOT instead sidesteps both: `mkdir -p` below
 #     runs as the invoking user, so the directories are already theirs
 #     before the container ever starts.
-# (CACHE_ROOT and its directories are set up above, before the build lock.)
+# (CACHE_ROOT and its directories are set up above, before the build lock.
+#  TARGET_DIR is either the legacy per-product directory under CACHE_ROOT or
+#  the lease-managed directory under BREAD_CI_HOST_CACHE.)
 
 # The host's /etc/passwd and /etc/group are mounted read-only so the numeric
 # --user below resolves to a real account inside the container. Without an
@@ -127,7 +164,7 @@ docker run --rm \
     -v "${REPO_PARENT}:/workspace" \
     -v "${CACHE_ROOT}/cargo-registry:/cargo-home/registry" \
     -v "${CACHE_ROOT}/cargo-git:/cargo-home/git" \
-    -v "${CACHE_ROOT}/target-${PRODUCT}:/cargo-target" \
+    -v "${TARGET_DIR}:/cargo-target" \
     -w "/workspace/${REPO_NAME}" \
     -e HOME=/tmp \
     -e CARGO_HOME=/cargo-home \
@@ -139,3 +176,10 @@ docker run --rm \
         mkdir -p "/workspace/'"${REPO_NAME}"'/target"
         cp -a /cargo-target/. "/workspace/'"${REPO_NAME}"'/target/"
     ' bash "$@"
+
+# Keep the lease fresh through the artifact copyback above. A release workflow
+# that copies repo/target/release therefore still sees the same path, while
+# retention treats the off-root target as in use until this point.
+if [ -n "${HOST_CACHE}" ]; then
+    python3 "${CI_DIR}/host_cache.py" touch "${HOST_CACHE}" "${HOST_KEY}" "${TARGET_DIR}"
+fi
