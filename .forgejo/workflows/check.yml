@@ -19,6 +19,10 @@ name: check
 # extraction (`palette_from_image`, `pywal_colors`, `generate_output`, and
 # the bread-palette-extract dependency itself) is gated behind it and would
 # otherwise never compile or run its tests in CI (ECO-30/ECO-33).
+#
+# The `--features bread-client` pass covers bread-utils' breadbug
+# integration: `bug::elf` (the device-map reader fixed in ECO-100) compiles
+# only behind that feature, so the default pass would never see it.
 on:
   push:
     branches: ['feature/**', 'fix/**', 'main']
@@ -83,6 +87,9 @@ jobs:
       - name: clippy (extract)
         run: cd "$ECO_CHECK_SRC" && cargo clippy --workspace --all-targets --locked --features extract -- -D warnings
 
+      - name: clippy (bread-client)
+        run: cd "$ECO_CHECK_SRC" && cargo clippy --workspace --all-targets --locked --features bread-client -- -D warnings
+
       - name: test
         run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked
 
@@ -94,6 +101,9 @@ jobs:
 
       - name: test (extract)
         run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked --features extract
+
+      - name: test (bread-client)
+        run: cd "$ECO_CHECK_SRC" && cargo test --workspace --locked --features bread-client
 
       - name: build --locked (extract)
         run: cd "$ECO_CHECK_SRC" && cargo build --workspace --locked --features extract
