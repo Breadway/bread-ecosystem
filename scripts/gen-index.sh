@@ -126,8 +126,10 @@ print(d.get('data_archive', ''))
         # every unit type, not just .service: breadbug-status.timer was being
         # collected as an executable artifact with no .sha256 beside it, so
         # the index published it with an empty checksum and bakery refused to
-        # install the whole package (ECO-87).
-        [[ "${bin_path}" =~ \.(service|timer|socket|path|target|mount|slice)$ ]] && continue
+        # install the whole package (ECO-87). The whole set stays together so
+        # the next unit type cannot repeat it: service, socket, device, mount,
+        # automount, swap, target, path, timer, slice and scope.
+        [[ "${bin_path}" =~ \.(service|socket|device|mount|automount|swap|target|path|timer|slice|scope)$ ]] && continue
         [[ "${bin_path}" == *.css ]]     && continue
         [[ "${bin_path}" == *.txt ]]     && continue
         [[ "${bin_path}" == *.minisig ]] && continue
