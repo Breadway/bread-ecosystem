@@ -56,6 +56,9 @@ jobs:
       - name: ci checkout helper regression
         run: cd "$ECO_CHECK_SRC" && bash scripts/test-ci-checkout.sh
 
+      - name: promotion gate regression
+        run: cd "$ECO_CHECK_SRC" && bash scripts/test-check-promotion.sh
+
       - name: main-trigger checkout workflow regression
         run: cd "$ECO_CHECK_SRC" && bash scripts/test-main-checkout-workflows.sh
 
