@@ -68,6 +68,9 @@ jobs:
       - name: breadbug symbol publisher
         run: cd "$ECO_CHECK_SRC" && bash scripts/test-publish-symbols.sh
 
+      - name: dev-deps script regression
+        run: cd "$ECO_CHECK_SRC" && bash scripts/test-dev-deps.sh
+
       - name: fmt
         run: cd "$ECO_CHECK_SRC" && cargo fmt --all -- --check
 
