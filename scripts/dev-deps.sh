@@ -464,14 +464,42 @@ PYEOF
     exit 1
 }
 
+lock_crate_versions() {
+    local lock_file="$1" crate="$2"
+    [ -f "${lock_file}" ] || return 0
+    python3 - "${lock_file}" "${crate}" <<'PYEOF'
+import sys, tomllib
+
+lock_file, crate = sys.argv[1], sys.argv[2]
+try:
+    with open(lock_file, "rb") as f:
+        doc = tomllib.load(f)
+except Exception:
+    sys.exit(0)
+for pkg in doc.get("package", []):
+    if pkg.get("name") == crate and pkg.get("version"):
+        print(pkg["version"])
+PYEOF
+}
+
 run_cargo_update() {
     local lock_dir="$1"
     shift
     local -a args=()
-    local crate out err rc
+    local -a versions=()
+    local crate version out err rc
 
     for crate in "$@"; do
-        args+=(-p "${crate}")
+        mapfile -t versions < <(lock_crate_versions "${lock_dir}/Cargo.lock" "${crate}")
+        if [ "${#versions[@]}" -gt 1 ]; then
+            # A workspace can intentionally carry more than one semver line
+            # of a crate. An unqualified -p is ambiguous and cargo aborts.
+            for version in "${versions[@]}"; do
+                args+=(-p "${crate}@${version}")
+            done
+        else
+            args+=(-p "${crate}")
+        fi
     done
 
     out="$(mktemp)"
