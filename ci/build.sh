@@ -33,6 +33,31 @@ PRODUCT="$1"
 REPO_ROOT="$(cd "$2" && pwd)"
 shift 2
 
+# Decide whether the per-product cargo target is copied back into the
+# checkout. Only release builds need artifacts on the host; check, test,
+# clippy and debug builds do not. A full 20+ GiB copy after every step
+# dominated CI wall time (ECO-110), so it is now release-build only.
+CARGO_SUBCOMMAND=""
+HAS_RELEASE=0
+for arg in "$@"; do
+    case "${arg}" in
+        cargo) continue ;;
+        --release) HAS_RELEASE=1; continue ;;
+        -*) continue ;;
+        *) if [ -z "${CARGO_SUBCOMMAND}" ]; then CARGO_SUBCOMMAND="${arg}"; fi ;;
+    esac
+done
+COPYBACK=0
+if [ "${CARGO_SUBCOMMAND}" = "build" ] && [ "${HAS_RELEASE}" = "1" ]; then
+    COPYBACK=1
+fi
+if [ "${BREAD_CI_FORCE_COPYBACK:-0}" = "1" ]; then COPYBACK=1; fi
+if [ "${BREAD_CI_SKIP_COPYBACK:-0}" = "1" ]; then COPYBACK=0; fi
+if [ "${BREAD_CI_ECHO:-0}" = "1" ]; then
+    printf 'copyback=%s\n' "${COPYBACK}"
+    exit 0
+fi
+
 # The container mounts REPO_ROOT's PARENT, not REPO_ROOT itself, and runs
 # with its cwd set to REPO_ROOT's own subdirectory inside that mount (see
 # -w below). This matters for scripts/dev-deps.sh (bread-ecosystem;
@@ -132,10 +157,13 @@ docker run --rm \
     -e HOME=/tmp \
     -e CARGO_HOME=/cargo-home \
     -e CARGO_TARGET_DIR=/cargo-target \
+    -e BREAD_CI_COPYBACK="${COPYBACK}" \
     "bread-ci:${PRODUCT}" \
     bash -c '
         set -euo pipefail
         "$@"
-        mkdir -p "/workspace/'"${REPO_NAME}"'/target"
-        cp -a /cargo-target/. "/workspace/'"${REPO_NAME}"'/target/"
+        if [ "${BREAD_CI_COPYBACK:-1}" = "1" ]; then
+            mkdir -p "/workspace/'"${REPO_NAME}"'/target"
+            cp -a /cargo-target/. "/workspace/'"${REPO_NAME}"'/target/"
+        fi
     ' bash "$@"
