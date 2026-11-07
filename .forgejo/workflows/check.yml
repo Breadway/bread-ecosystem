@@ -40,6 +40,9 @@ jobs:
       - name: shared CI target cache locking
         run: cd src && bash ci/test-build-lock.sh
 
+      - name: shared CI target copyback decision
+        run: cd src && bash ci/test-build-copyback.sh
+
       - name: fmt
         run: cd src && cargo fmt --all -- --check
 
