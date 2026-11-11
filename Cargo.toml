@@ -3,7 +3,7 @@ members = ["bakery", "bread-theme", "bread-palette-extract", "bread-utils", "bre
 resolver = "2"
 
 [workspace.package]
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 license = "MIT"
 authors = ["Breadway <plasticbread849@gmail.com>"]
