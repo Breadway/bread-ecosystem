@@ -21,7 +21,13 @@ jobs:
           PKG: bread-theme
         run: |
           set -euo pipefail
-          bash src/scripts/check-promotion.sh \
+          # Run the gate from a main clone, not the tag checkout: recorded
+          # promotion overrides live on main and are the release-time audit
+          # trail. Consumer repos already clone bread-ecosystem main here.
+          ECO_DIR="$(mktemp -d /tmp/bread-promotion-XXXXXX)"
+          trap 'rm -rf -- "${ECO_DIR}"' EXIT
+          git clone --depth 1 https://git.breadway.dev/Breadway/bread-ecosystem.git "${ECO_DIR}"
+          bash "${ECO_DIR}/scripts/check-promotion.sh" \
             "${GITHUB_REPOSITORY}" "${PKG}" "${GITHUB_REF_NAME}" \
             "$(git -C src rev-parse HEAD)"
 

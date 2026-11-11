@@ -1,0 +1,6 @@
+package = "bread"
+version = "0.10.1"
+commit = "7e504a09735b103a0b53347f36077b0bf6b47931"
+reason = "BOS 0.6.3 ships the current dev head of every BOS-baked bread package. The user explicitly authorized force-promoting dev to stable on 2026-11-11 and waived the three day beta soak for this release."
+recorded_by = "Riley Horsham"
+recorded_at = "2026-11-11"
