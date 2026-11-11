@@ -1,0 +1,6 @@
+package = "bos-settings"
+version = "0.10.0"
+commit = "575494417549752b66b7ad623dc1cba056a3a0dc"
+reason = "BOS 0.6.3 ships the current dev head of every BOS-baked bread package. The user explicitly authorized force-promoting dev to stable on 2026-11-11 and waived the three day beta soak for this release."
+recorded_by = "Riley Horsham"
+recorded_at = "2026-11-11"
