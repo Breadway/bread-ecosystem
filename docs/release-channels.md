@@ -128,20 +128,50 @@ it builds anything. The gate requires both:
   ago, containing `bakery.toml` and at least one checksummed binary.
 
 If either is missing, the release fails before a single artifact is built
-or published, and names the RC command to run next. There is no bypass
-flag. A release candidate that only exists as a tag (never published to
-beta), or a stable tag cut from a newer commit than its RC, is rejected.
+or published, and names the RC command to run next. CI cannot bypass the
+gate on its own: the only way past a rejection is a promotion override
+recorded in `bread-ecosystem` (below), which is a human decision checked
+into git. A release candidate that only exists as a tag (never published
+to beta), or a stable tag cut from a newer commit than its RC, is rejected.
 
 The gate is time-based on purpose, but a timestamp is not the whole test:
 re-running an RC publish resets that version directory's time, so a rebuilt
 RC starts its soak over. The 3 day floor is the minimum, not a target;
 letting an RC sit until the next release is actually needed is normal.
 
-**Hotfixes**: there is no emergency shortcut through the gate. Cut
+**Hotfixes**: there is no automatic shortcut through the gate. Cut
 `vX.Y.Z-rc.N` from the fix, publish it to beta, and promote after the soak.
 If a situation genuinely cannot wait 3 days, that is an explicit process
 decision for a human to make and record, not something CI should allow
-silently.
+silently. Record it as a promotion override:
+
+### Promotion overrides (recorded exceptions)
+
+`promotion-overrides/<pkg>-<version>.override` in this repo authorizes one
+stable release to skip a gate rejection. The file is plain `key = "value"`
+lines and must contain all of:
+
+```toml
+package = "breadbar"          # must equal the gate's PKG
+version = "0.4.1"             # must equal the tag without the leading v
+commit = "<full 40-char sha>" # must equal the commit being tagged stable
+reason = "why the soak is being skipped"
+recorded_by = "who decided"
+recorded_at = "YYYY-MM-DD"
+```
+
+`scripts/check-promotion.sh` reads these files from the `bread-ecosystem`
+checkout its release workflow already clones. When the ordinary gate would
+reject a tag, a complete record for that exact package, version and commit
+turns the rejection into a pass and prints `::warning::` lines naming the
+reason, author and date in the release log. A record for a different
+commit, a different package, or missing the reason/author/date fails the
+release instead of passing it.
+
+An override is a real audit trail only because it is committed: keep the
+PR that adds it, and say in the release notes which version skipped beta
+and why. Do not edit the record after the tag ships; add a new record for
+the next release instead.
 
 **What counts as testing**: the beta stage exists so the build runs on a
 real machine doing real work, not so `cargo test` has another audience.

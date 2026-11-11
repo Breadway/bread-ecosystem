@@ -121,6 +121,62 @@ REMOTE="${REMOTE:-https://git.breadway.dev/${REPO}.git}"
 now="${NOW_EPOCH:-$(date +%s)}"
 min_age_secs=$((MIN_AGE_DAYS * 86400))
 
+# Recorded force-promotion overrides (docs/release-channels.md, "Promotion
+# overrides"). A gate rejection may be overridden only by a checked-in record
+# naming this exact package, version and commit, plus a non-empty reason and
+# an accountable author and date. The record lives in git history and every
+# overridden release prints ::warning:: lines, so the exception is visible in
+# the run log, not silent.
+OVERRIDE_DIR="${PROMOTION_OVERRIDE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/promotion-overrides}"
+
+override_field() {
+    # override_field <file> <key>: print the quoted value of `key = "value"`.
+    sed -n -E "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$1" | head -1
+}
+
+recorded_override_for() {
+    local file="${OVERRIDE_DIR}/${PKG}-${VERSION}.override"
+    [[ -f "${file}" ]] || return 1
+
+    local o_pkg o_version o_commit o_reason o_by o_at
+    o_pkg="$(override_field "${file}" package)"
+    o_version="$(override_field "${file}" version)"
+    o_commit="$(override_field "${file}" commit)"
+    o_reason="$(override_field "${file}" reason)"
+    o_by="$(override_field "${file}" recorded_by)"
+    o_at="$(override_field "${file}" recorded_at)"
+
+    if [[ "${o_pkg}" != "${PKG}" || "${o_version}" != "${VERSION}" || "${o_commit}" != "${COMMIT}" ]]; then
+        echo "::error::check-promotion: ${file} does not match this release (package=${o_pkg}, version=${o_version}, commit=${o_commit}); refusing the override." >&2
+        return 2
+    fi
+    if [[ -z "${o_reason}" || -z "${o_by}" || -z "${o_at}" ]]; then
+        echo "::error::check-promotion: ${file} is missing reason, recorded_by or recorded_at; refusing the override." >&2
+        return 2
+    fi
+
+    echo "::warning::check-promotion: PROMOTION GATE OVERRIDDEN for ${PKG} ${VERSION} at ${COMMIT}"
+    echo "::warning::check-promotion: reason: ${o_reason}"
+    echo "::warning::check-promotion: recorded by ${o_by} on ${o_at} (${file})"
+    return 0
+}
+
+fail_gate() {
+    local rc=0
+    recorded_override_for || rc=$?
+    if (( rc == 0 )); then
+        printf 'promotion gate: override record accepted; stable release continues without a soaked beta RC\n'
+        exit 0
+    fi
+    # rc == 2 means an override file exists but is malformed or for another
+    # commit: report that as a hard error instead of falling back to the
+    # ordinary rejection message, so the broken record cannot hide.
+    if (( rc == 2 )); then
+        exit 1
+    fi
+    fail "$@"
+}
+
 # Collect every v<VERSION>-rc.N tag and the commit it ultimately points at.
 # Annotated tags appear twice in ls-remote (the tag object and `<ref>^{}`,
 # the commit it peels to); prefer the peeled line whichever order it lands.
@@ -153,7 +209,7 @@ mapfile -t all_rc_tags < <(
 )
 
 if [[ ${#all_rc_tags[@]} -eq 0 ]]; then
-    fail \
+    fail_gate \
         "stable tag ${TAG} has no release candidate: no v${VERSION}-rc.N tag exists." \
         "Cut an RC from the exact commit being promoted, publish it to beta, and let it soak for ${MIN_AGE_DAYS} days:" \
         "  git tag v${VERSION}-rc.1 ${COMMIT} && git push origin v${VERSION}-rc.1"
@@ -171,7 +227,7 @@ if [[ ${#matching_rc_tags[@]} -eq 0 ]]; then
     for rc_tag in "${all_rc_tags[@]}"; do
         detail+=" ${rc_tag}->${tag_sha[${rc_tag}]}"
     done
-    fail \
+    fail_gate \
         "stable tag ${TAG} points at ${COMMIT}, but no RC points at that commit." \
         "RC tags for ${VERSION} point elsewhere:${detail}" \
         "Fix the code first, then cut an RC from that fix: stable must reuse the exact commit that was tested on beta."
@@ -225,7 +281,7 @@ if [[ -n "${best_rc}" ]]; then
 fi
 
 if [[ ${#too_young[@]} -gt 0 ]]; then
-    fail \
+    fail_gate \
         "stable tag ${TAG} reuses a commit that was tested on beta, but not for long enough." \
         "Candidate(s) still soaking: ${too_young[*]}" \
         "The minimum beta soak is ${MIN_AGE_DAYS} days. Wait for the ready time above, or cut rc.N+1 once the next fix lands." \
@@ -233,10 +289,10 @@ if [[ ${#too_young[@]} -gt 0 ]]; then
 fi
 
 if [[ ${#not_published[@]} -gt 0 ]]; then
-    fail \
+    fail_gate \
         "stable tag ${TAG} reuses RC commit ${COMMIT}, but the RC was never published to beta." \
         "Missing beta artifacts under ${BETA_ROOT}/${PKG}/ for: ${not_published[*]}" \
         "Check that the rc-release workflow for those tags went green and wrote its version directory, then retry the stable release."
 fi
 
-fail "stable tag ${TAG} failed the beta promotion gate for an unclassified reason; inspect the RC tags and ${BETA_ROOT}/${PKG}/ manually."
+fail_gate "stable tag ${TAG} failed the beta promotion gate for an unclassified reason; inspect the RC tags and ${BETA_ROOT}/${PKG}/ manually."

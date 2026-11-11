@@ -20,6 +20,8 @@ trap 'rm -rf -- "${TMP}"' EXIT
 BETA="${TMP}/beta"
 mkdir -p "${BETA}"
 TAGS="${TMP}/tags"
+OVERRIDES="${TMP}/overrides"
+mkdir -p "${OVERRIDES}"
 
 pass=0
 fail=0
@@ -62,6 +64,7 @@ check() {
     local out rc
     set +e
     out="$(BETA_ROOT="${BETA}" TAGS_FILE="${TAGS}" NOW_EPOCH="${NOW}" \
+        PROMOTION_OVERRIDE_DIR="${OVERRIDES}" \
         bash "${SCRIPT}" "$@" 2>&1)"
     rc=$?
     set -e
@@ -149,6 +152,44 @@ make_beta breadbar "${V}-rc.9" 0
 write_tags "v${V}-rc.9:${C}"
 check "accepts an explicitly zero-day soak when artifacts exist" 0 \
     Breadway/breadbar breadbar "v${V}" "${C}" --min-age-days 0
+
+write_override() {
+    # write_override <pkg> <version> <commit> [key=value ...]
+    local pkg="$1" version="$2" commit="$3"
+    shift 3
+    local file="${OVERRIDES}/${pkg}-${version}.override"
+    {
+        printf 'package = "%s"\n' "${pkg}"
+        printf 'version = "%s"\n' "${version}"
+        printf 'commit = "%s"\n' "${commit}"
+        printf 'reason = "force promotion for a release deadline"\n'
+        printf 'recorded_by = "release manager"\n'
+        printf 'recorded_at = "2026-11-11"\n'
+        printf '%s\n' "$@"
+    } > "${file}"
+}
+
+# 14. No RC at all, but a complete recorded override for this commit.
+write_override breadbar "${V}" "${C}"
+write_tags
+check "accepts a complete recorded override without an RC" 0 \
+    Breadway/breadbar breadbar "v${V}" "${C}"
+
+# 15. An override for a different commit does not authorize this one.
+write_override breadbar "${V}" "${D}"
+check "rejects an override recorded for a different commit" 1 \
+    Breadway/breadbar breadbar "v${V}" "${C}"
+
+# 16. An override without a reason is not a record of a decision.
+printf 'package = "breadbar"\nversion = "%s"\ncommit = "%s"\n' "${V}" "${C}" \
+    > "${OVERRIDES}/breadbar-${V}.override"
+check "rejects an override with no reason" 1 \
+    Breadway/breadbar breadbar "v${V}" "${C}"
+
+# 17. An override for another package does not leak across packages.
+write_override breadbox "${V}" "${C}"
+check "rejects an override recorded for another package" 1 \
+    Breadway/breadbar breadbar "v${V}" "${C}"
 
 printf '\n%d passed, %d failed\n' "${pass}" "${fail}"
 [[ "${fail}" -eq 0 ]]

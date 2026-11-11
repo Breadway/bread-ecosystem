@@ -52,8 +52,11 @@ just **tags** on `main`, not branches that need to be kept in sync:
    `git tag vX.Y.Z <rc-commit> && git push origin vX.Y.Z`: that's what
    triggers the signed stable release build. Its first step is the beta
    promotion gate, which rejects a stable tag that has no RC on the same
-   commit or whose RC was published to beta less than 3 days earlier. See
-   `docs/release-channels.md` ("Beta promotion gate").
+   commit or whose RC was published to beta less than 3 days earlier. The
+   only exception is a promotion override committed under
+   `promotion-overrides/`, which records who decided to skip the soak, why,
+   and for exactly which commit; see `docs/release-channels.md` ("Promotion
+   overrides").
 
 **Version honesty**: bakery's compiled `--version` is
 `[workspace.package] version` in the root `Cargo.toml`. The bakery
