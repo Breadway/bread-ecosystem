@@ -85,7 +85,7 @@ class StaleTrackTests(unittest.TestCase):
         text = docs.read_text()
         self.assertIn("At the end of each normal ecosystem sweep", text)
         self.assertIn(
-            "python3 ~/Projects/bread-ecosystem/scripts/check-stale-tracks.py ~/Projects",
+            'python3 "$bread_eco/scripts/check-stale-tracks.py" "$(dirname "$bread_eco")"',
             text,
         )
         self.assertIn("do not file backlog issues", text)

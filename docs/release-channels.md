@@ -202,7 +202,8 @@ At the end of each normal ecosystem sweep, after fetching the repositories,
 run the checker against the local checkout directory:
 
 ```sh
-python3 ~/Projects/bread-ecosystem/scripts/check-stale-tracks.py ~/Projects
+bread_eco=$(find ~/Projects -maxdepth 2 -type d -name bread-ecosystem -print -quit)
+python3 "$bread_eco/scripts/check-stale-tracks.py" "$(dirname "$bread_eco")"
 ```
 
 Copy any output into a separate **stale-track warnings** section of the sweep

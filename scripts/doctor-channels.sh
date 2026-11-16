@@ -7,10 +7,11 @@
 # Usage:
 #   scripts/doctor-channels.sh [BASE_DIR]
 #
-# BASE_DIR defaults to the parent of this repo checkout (i.e. run from a
-# normal ~/Projects/bread-ecosystem checkout, it scans sibling ~/Projects/*
-# repos). Point it at a directory of worktrees (e.g. ~/Projects, which is
-# also where *-fix-worktree checkouts live) to check those instead:
+# BASE_DIR defaults to the parent of this repo checkout, so a normal checkout
+# scans sibling repo checkouts (the hermes parent is
+# ~/Projects/Bread Ecosystem; the hestia parent is ~/Projects). Point it at a
+# directory of worktrees (e.g. the bin, which is also where *-fix-worktree
+# checkouts live) to check those instead:
 #
 #   scripts/doctor-channels.sh ~/Projects
 #
