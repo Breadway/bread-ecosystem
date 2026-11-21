@@ -74,6 +74,12 @@ repo = "Breadway/bos-settings"
 description = "System settings app for Bread OS"
 
 [[products]]
+name = "egress-gui"
+repo = "Breadway/egress"
+description = "Private networking desktop app for egress"
+notes = "Desktop client; the egress daemon is installed and enrolled separately"
+
+[[products]]
 name = "breadhelp"
 repo = "Breadway/breadhelp"
 description = "Onboarding and help center for Bread OS"
