@@ -107,3 +107,9 @@ name = "breadboard-desktop"
 repo = "Breadway/breadboard"
 description = "Native desktop shell for breadboard"
 notes = "Client package, not included in the BOS ISO"
+
+[[products]]
+name = "crustd"
+repo = "Breadway/crustd"
+description = "Tiered, power-efficient presence detection daemon for Bread"
+notes = "Bakery product; laptop presence daemon, not included in the BOS ISO"
