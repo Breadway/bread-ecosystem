@@ -29,11 +29,13 @@ The table below is generated from [`registry/bread-ecosystem.toml`](registry/bre
 | `breadclip` | Wayland clipboard history manager for Hyprland |
 | `breadshot` | Screenshot utility for the bread ecosystem |
 | `bos-settings` | System settings app for Bread OS |
+| `egress-gui` | Private networking desktop app for egress (Desktop client; the egress daemon is installed and enrolled separately) |
 | `breadhelp` | Onboarding and help center for Bread OS |
 | `breadcast` | Cast your screen to any Chromecast/Google TV or DLNA renderer: daemon + GTK4 popup (Bakery product; not included in the BOS ISO) |
 | `breadarr` | Single-daemon Sonarr+Radarr+Prowlarr replacement: release watching, matching, grabbing, importing, and a terminal UI, no web UI (Homelab, not shipped on BOS) |
 | `breadboard-cli` | Command line and terminal UI for breadboard (Client package, not included in the BOS ISO) |
 | `breadboard-desktop` | Native desktop shell for breadboard (Client package, not included in the BOS ISO) |
+| `crustd` | Tiered, power-efficient presence detection daemon for Bread (Bakery product; laptop presence daemon, not included in the BOS ISO) |
 
 <!-- gen-readme-products:end -->
 
