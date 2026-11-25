@@ -351,7 +351,18 @@ print(json.dumps(d.get('install', {}).get('post_install', [])))
 }
 
 # Assemble the full index.
+# INDEX_MERGE_BASE lets a runner that only has this one product's version
+# directory (a GitHub-hosted runner, or a local targeted rebuild) update that
+# product entry while carrying every other package forward from the current
+# published index instead of dropping them.
 packages_json="{}"
+if [[ -n "${INDEX_MERGE_BASE:-}" ]]; then
+    if [[ ! -f "${INDEX_MERGE_BASE}" ]]; then
+        echo "ERROR: INDEX_MERGE_BASE=${INDEX_MERGE_BASE} does not exist" >&2
+        exit 1
+    fi
+    packages_json="$(jq -c '.packages // {}' "${INDEX_MERGE_BASE}")"
+fi
 for entry in "${products[@]}"; do
     name="$(echo "${entry}" | awk '{print $1}')"
     repo="$(echo "${entry}" | awk '{print $2}')"
